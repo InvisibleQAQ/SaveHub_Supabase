@@ -252,7 +252,7 @@ export function Sidebar() {
 
         {/* Search */}
         <div className="relative">
-          <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-sidebar-foreground/60" />
+          <Search className="absolute left-3 top-2.5 h-4 w-4 text-sidebar-foreground/60" />
           <Input
             placeholder="Search feeds and folders..."
             value={feedSearch}
