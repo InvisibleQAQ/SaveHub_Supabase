@@ -6,6 +6,7 @@ import { AddFeedDialog } from "../add-feed-dialog"
 import { AddFolderDialog } from "../add-folder-dialog"
 import { RenameDialog } from "../rename-dialog"
 import { MoveToFolderDialog } from "../move-to-folder-dialog"
+import { DeleteFolderDialog } from "./delete-folder-dialog"
 import { useRSSStore } from "@/lib/store"
 import { useSidebarState } from "./use-sidebar-state"
 
@@ -20,12 +21,16 @@ export function Sidebar() {
     feedSearch,
     setFeedSearch,
     selectedFolderId,
+    addFeedFolderId,
+    setAddFeedFolderId,
     openFolders,
     toggleFolder,
     renameDialog,
     setRenameDialog,
     moveDialog,
     setMoveDialog,
+    deleteDialog,
+    setDeleteDialog,
   } = useSidebarState()
 
   const totalArticles = articles.length
@@ -59,16 +64,28 @@ export function Sidebar() {
         openFolders={openFolders}
         onToggleFolder={toggleFolder}
         onCollapse={toggleSidebar}
-        onShowAddFeed={() => setShowAddFeed(true)}
+        onShowAddFeed={(folderId) => {
+          setAddFeedFolderId(folderId)
+          setShowAddFeed(true)
+        }}
         onShowAddFolder={() => setShowAddFolder(true)}
         onRename={setRenameDialog}
         onMove={setMoveDialog}
+        onDelete={setDeleteDialog}
         totalArticles={totalArticles}
         totalUnread={totalUnread}
         totalStarred={totalStarred}
       />
 
-      <AddFeedDialog open={showAddFeed} onOpenChange={setShowAddFeed} defaultFolderId={selectedFolderId} />
+      <AddFeedDialog
+        open={showAddFeed}
+        onOpenChange={(open) => {
+          setShowAddFeed(open)
+          if (!open) setAddFeedFolderId(undefined)
+        }}
+        defaultFolderId={addFeedFolderId || selectedFolderId}
+        lockFolder={!!addFeedFolderId}
+      />
       <AddFolderDialog open={showAddFolder} onOpenChange={setShowAddFolder} />
       <RenameDialog
         open={renameDialog.open}
@@ -84,6 +101,10 @@ export function Sidebar() {
         feedId={moveDialog.feedId}
         feedTitle={moveDialog.feedTitle}
         currentFolderId={moveDialog.currentFolderId}
+      />
+      <DeleteFolderDialog
+        state={deleteDialog}
+        onOpenChange={(open) => setDeleteDialog((prev) => ({ ...prev, open }))}
       />
     </>
   )

@@ -2,7 +2,7 @@
 
 import type React from "react"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { Plus, Loader2, Search, Globe } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import {
@@ -25,17 +25,24 @@ interface AddFeedDialogProps {
   open: boolean
   onOpenChange: (open: boolean) => void
   defaultFolderId?: string
+  lockFolder?: boolean
 }
 
-export function AddFeedDialog({ open, onOpenChange, defaultFolderId }: AddFeedDialogProps) {
+export function AddFeedDialog({ open, onOpenChange, defaultFolderId, lockFolder = false }: AddFeedDialogProps) {
   const [url, setUrl] = useState("")
   const [searchQuery, setSearchQuery] = useState("")
-  const [selectedFolderId, setSelectedFolderId] = useState<string>(defaultFolderId || "")
+  const [selectedFolderId, setSelectedFolderId] = useState<string>(defaultFolderId || "none")
   const [isLoading, setIsLoading] = useState(false)
   const [discoveredFeeds, setDiscoveredFeeds] = useState<string[]>([])
   const [isDiscovering, setIsDiscovering] = useState(false)
   const { folders, addFeed, addArticles } = useRSSStore()
   const { toast } = useToast()
+
+  useEffect(() => {
+    if (open) {
+      setSelectedFolderId(defaultFolderId || "none")
+    }
+  }, [open, defaultFolderId])
 
   const handleSubmit = async (feedUrl: string) => {
     if (!feedUrl.trim()) {
@@ -83,7 +90,7 @@ export function AddFeedDialog({ open, onOpenChange, defaultFolderId }: AddFeedDi
       // Reset form and close dialog
       setUrl("")
       setSearchQuery("")
-      setSelectedFolderId(defaultFolderId || "")
+      setSelectedFolderId(defaultFolderId || "none")
       setDiscoveredFeeds([])
       onOpenChange(false)
     } catch (error) {
@@ -199,7 +206,11 @@ export function AddFeedDialog({ open, onOpenChange, defaultFolderId }: AddFeedDi
 
                 <div className="space-y-2">
                   <Label htmlFor="folder">Folder (Optional)</Label>
-                  <Select value={selectedFolderId} onValueChange={setSelectedFolderId}>
+                  <Select
+                    value={selectedFolderId}
+                    onValueChange={setSelectedFolderId}
+                    disabled={lockFolder && !!defaultFolderId}
+                  >
                     <SelectTrigger>
                       <SelectValue placeholder="Select a folder" />
                     </SelectTrigger>
@@ -262,7 +273,11 @@ export function AddFeedDialog({ open, onOpenChange, defaultFolderId }: AddFeedDi
 
               <div className="space-y-2">
                 <Label htmlFor="folder-discover">Folder (Optional)</Label>
-                <Select value={selectedFolderId} onValueChange={setSelectedFolderId}>
+                <Select
+                  value={selectedFolderId}
+                  onValueChange={setSelectedFolderId}
+                  disabled={lockFolder && !!defaultFolderId}
+                >
                   <SelectTrigger>
                     <SelectValue placeholder="Select a folder" />
                   </SelectTrigger>

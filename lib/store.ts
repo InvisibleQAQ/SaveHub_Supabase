@@ -5,7 +5,7 @@ import { dbManager, type AppSettings, defaultSettings } from "./db"
 interface RSSReaderActions {
   // Folder management
   addFolder: (folder: Omit<Folder, "id" | "createdAt">) => void
-  removeFolder: (folderId: string) => void
+  removeFolder: (folderId: string, deleteFeeds?: boolean) => void
   renameFolder: (folderId: string, newName: string) => void
 
   // Feed management
@@ -79,15 +79,33 @@ export const useRSSStore = create<RSSReaderState & RSSReaderActions>()((set, get
         get().syncToSupabase()
       },
 
-      removeFolder: (folderId) => {
-        set((state) => ({
-          folders: state.folders.filter((f) => f.id !== folderId),
-          // Move feeds out of deleted folder
-          feeds: state.feeds.map((feed) => (feed.folderId === folderId ? { ...feed, folderId: undefined } : feed)),
-        }))
+      removeFolder: (folderId, deleteFeeds = false) => {
+        const folderFeeds = get().feeds.filter((f) => f.folderId === folderId)
+        const feedIds = folderFeeds.map((f) => f.id)
 
-        dbManager.deleteFolder(folderId).catch(console.error)
-        get().syncToSupabase()
+        if (deleteFeeds) {
+          // Delete folder and all its feeds and articles
+          set((state) => ({
+            folders: state.folders.filter((f) => f.id !== folderId),
+            feeds: state.feeds.filter((f) => f.folderId !== folderId),
+            articles: state.articles.filter((a) => !feedIds.includes(a.feedId)),
+          }))
+
+          // Delete from database
+          Promise.all([
+            dbManager.deleteFolder(folderId),
+            ...feedIds.map((id) => dbManager.deleteFeed(id)),
+          ]).catch(console.error)
+        } else {
+          // Only delete folder, move feeds out (dissolve)
+          set((state) => ({
+            folders: state.folders.filter((f) => f.id !== folderId),
+            feeds: state.feeds.map((feed) => (feed.folderId === folderId ? { ...feed, folderId: undefined } : feed)),
+          }))
+
+          dbManager.deleteFolder(folderId).catch(console.error)
+          get().syncToSupabase()
+        }
       },
 
       renameFolder: (folderId, newName) => {

@@ -9,18 +9,18 @@ import {
   DropdownMenuTrigger,
   DropdownMenuSeparator,
 } from "@/components/ui/dropdown-menu"
-import { useRSSStore } from "@/lib/store"
-import type { RenameDialogState } from "./types"
+import type { RenameDialogState, DeleteFolderDialogState } from "./types"
 
 interface FolderActionsMenuProps {
   folderId: string
   folderName: string
+  feedCount: number
   onAddFeed: () => void
   onRename: (state: RenameDialogState) => void
+  onDelete: (state: DeleteFolderDialogState) => void
 }
 
-export function FolderActionsMenu({ folderId, folderName, onAddFeed, onRename }: FolderActionsMenuProps) {
-  const { removeFolder } = useRSSStore()
+export function FolderActionsMenu({ folderId, folderName, feedCount, onAddFeed, onRename, onDelete }: FolderActionsMenuProps) {
 
   return (
     <DropdownMenu>
@@ -53,7 +53,14 @@ export function FolderActionsMenu({ folderId, folderName, onAddFeed, onRename }:
           Rename Folder
         </DropdownMenuItem>
         <DropdownMenuItem
-          onClick={() => removeFolder(folderId)}
+          onClick={() =>
+            onDelete({
+              open: true,
+              folderId,
+              folderName,
+              feedCount,
+            })
+          }
           className="text-destructive focus:text-destructive"
         >
           <Trash2 className="h-4 w-4 mr-2" />

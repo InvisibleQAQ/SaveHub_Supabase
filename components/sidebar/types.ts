@@ -11,3 +11,10 @@ export interface MoveDialogState {
   feedTitle: string
   currentFolderId?: string
 }
+
+export interface DeleteFolderDialogState {
+  open: boolean
+  folderId: string
+  folderName: string
+  feedCount: number
+}

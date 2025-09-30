@@ -15,7 +15,7 @@ import { FeedRefresh } from "../feed-refresh"
 import { useRSSStore } from "@/lib/store"
 import { cn } from "@/lib/utils"
 import type { Feed, Folder } from "@/lib/types"
-import type { RenameDialogState, MoveDialogState } from "./types"
+import type { RenameDialogState, MoveDialogState, DeleteFolderDialogState } from "./types"
 
 interface ExpandedViewProps {
   feedSearch: string
@@ -23,10 +23,11 @@ interface ExpandedViewProps {
   openFolders: Set<string>
   onToggleFolder: (folderId: string) => void
   onCollapse: () => void
-  onShowAddFeed: () => void
+  onShowAddFeed: (folderId?: string) => void
   onShowAddFolder: () => void
   onRename: (state: RenameDialogState) => void
   onMove: (state: MoveDialogState) => void
+  onDelete: (state: DeleteFolderDialogState) => void
   totalArticles: number
   totalUnread: number
   totalStarred: number
@@ -42,6 +43,7 @@ export function ExpandedView({
   onShowAddFolder,
   onRename,
   onMove,
+  onDelete,
   totalArticles,
   totalUnread,
   totalStarred,
@@ -108,7 +110,7 @@ export function ExpandedView({
         <Button
           variant="ghost"
           className="w-full justify-start gap-3 text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
-          onClick={onShowAddFeed}
+          onClick={() => onShowAddFeed()}
         >
           <Plus className="h-4 w-4" />
           Add Feed
@@ -146,10 +148,11 @@ export function ExpandedView({
                   feeds={folderFeeds}
                   isOpen={openFolders.has(folder.id)}
                   onToggle={() => onToggleFolder(folder.id)}
-                  onAddFeed={onShowAddFeed}
+                  onAddFeed={() => onShowAddFeed(folder.id)}
                   onRename={onRename}
                   onRenameChild={onRename}
                   onMoveChild={onMove}
+                  onDelete={onDelete}
                 />
               )
             })}
