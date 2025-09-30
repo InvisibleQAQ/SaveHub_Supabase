@@ -35,7 +35,7 @@ interface RSSReaderActions {
   updateSettings: (updates: Partial<AppSettings>) => void
 
   // Computed getters
-  getFilteredArticles: () => Article[]
+  getFilteredArticles: (options?: { viewMode?: "all" | "unread" | "starred"; feedId?: string | null }) => Article[]
   getUnreadCount: (feedId?: string) => number
 
   // Database initialization state and methods
@@ -251,22 +251,25 @@ export const useRSSStore = create<RSSReaderState & RSSReaderActions>()((set, get
       },
 
       // Computed getters
-      getFilteredArticles: () => {
+      getFilteredArticles: (options) => {
         const state = get()
         let filtered = state.articles
 
+        const viewMode = options?.viewMode !== undefined ? options.viewMode : state.viewMode
+        const feedId = options?.feedId !== undefined ? options.feedId : state.selectedFeedId
+
         console.log("[v0] Filtering articles - total articles:", filtered.length)
-        console.log("[v0] Current view mode:", state.viewMode)
-        console.log("[v0] Selected feed ID:", state.selectedFeedId)
+        console.log("[v0] View mode (from params):", viewMode)
+        console.log("[v0] Feed ID (from params):", feedId)
 
         // Filter by selected feed
-        if (state.selectedFeedId) {
-          filtered = filtered.filter((a) => a.feedId === state.selectedFeedId)
+        if (feedId) {
+          filtered = filtered.filter((a) => a.feedId === feedId)
           console.log("[v0] After feed filter:", filtered.length)
         }
 
         // Filter by view mode
-        switch (state.viewMode) {
+        switch (viewMode) {
           case "unread":
             filtered = filtered.filter((a) => !a.isRead)
             console.log("[v0] After unread filter:", filtered.length)

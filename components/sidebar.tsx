@@ -66,6 +66,7 @@ export function Sidebar() {
   const {
     folders,
     feeds,
+    articles,
     removeFeed,
     removeFolder,
     renameFolder,
@@ -74,7 +75,9 @@ export function Sidebar() {
     toggleSidebar,
   } = useRSSStore()
 
+  const totalArticles = articles.length
   const totalUnread = getUnreadCount()
+  const totalStarred = articles.filter(a => a.isStarred).length
 
   // Filter feeds and folders based on search
   const filteredFolders = folders.filter((folder) => folder.name.toLowerCase().includes(feedSearch.toLowerCase()))
@@ -270,9 +273,9 @@ export function Sidebar() {
           <Link href="/all">
             <BookOpen className="h-4 w-4" />
             All Articles
-            {totalUnread > 0 && (
+            {totalArticles > 0 && (
               <Badge variant="secondary" className="ml-auto bg-sidebar-accent text-sidebar-accent-foreground">
-                {totalUnread}
+                {totalArticles}
               </Badge>
             )}
           </Link>
@@ -308,6 +311,11 @@ export function Sidebar() {
           <Link href="/starred">
             <Star className="h-4 w-4" />
             Starred
+            {totalStarred > 0 && (
+              <Badge variant="secondary" className="ml-auto bg-sidebar-accent text-sidebar-accent-foreground">
+                {totalStarred}
+              </Badge>
+            )}
           </Link>
         </Button>
 
