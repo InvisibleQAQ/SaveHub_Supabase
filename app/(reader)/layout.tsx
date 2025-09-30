@@ -9,7 +9,7 @@ import { Sidebar } from "@/components/sidebar"
 import { Loader2 } from "lucide-react"
 
 export default function ReaderLayout({ children }: { children: React.ReactNode }) {
-  const { isLoading, error, isDatabaseReady, loadFromSupabase, checkDatabaseStatus, setError } = useRSSStore()
+  const { isLoading, error, isDatabaseReady, isSidebarCollapsed, loadFromSupabase, checkDatabaseStatus, setError } = useRSSStore()
   const [isCheckingDatabase, setIsCheckingDatabase] = useState(true)
 
   useRealtimeSync()
@@ -107,7 +107,7 @@ export default function ReaderLayout({ children }: { children: React.ReactNode }
   return (
     <>
       <div className="flex h-screen bg-background">
-        <div className="w-80 border-r border-border bg-sidebar">
+        <div className={`border-r border-border bg-sidebar transition-all duration-300 ${isSidebarCollapsed ? 'w-12' : 'w-80'}`}>
           <Sidebar />
         </div>
         {children}

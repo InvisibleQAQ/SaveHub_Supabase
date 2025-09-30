@@ -17,6 +17,8 @@ import {
   Edit,
   FolderOpen,
   ArrowRightToLine,
+  ChevronLeft,
+  ChevronRight,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -68,6 +70,8 @@ export function Sidebar() {
     removeFolder,
     renameFolder,
     getUnreadCount,
+    isSidebarCollapsed,
+    toggleSidebar,
   } = useRSSStore()
 
   const totalUnread = getUnreadCount()
@@ -111,6 +115,102 @@ export function Sidebar() {
     console.log("Rename feed not implemented yet")
   }
 
+  if (isSidebarCollapsed) {
+    return (
+      <div className="flex flex-col h-full bg-sidebar text-sidebar-foreground items-center py-2">
+        <Button
+          variant="ghost"
+          size="icon"
+          className="h-10 w-10 mb-2 flex items-center justify-center"
+          onClick={toggleSidebar}
+          title="Expand sidebar"
+        >
+          <ChevronRight className="h-4 w-4" />
+        </Button>
+
+        <Separator className="my-2 bg-sidebar-border w-8" />
+
+        <div className="flex flex-col items-center space-y-1">
+          <Button
+            variant={pathname === "/all" ? "secondary" : "ghost"}
+            size="icon"
+            className={cn(
+              "h-10 w-10 flex items-center justify-center",
+              pathname === "/all" && "bg-sidebar-primary text-sidebar-primary-foreground"
+            )}
+            title="All Articles"
+            asChild
+          >
+            <Link href="/all">
+              <BookOpen className="h-4 w-4" />
+            </Link>
+          </Button>
+
+          <Button
+            variant={pathname === "/unread" ? "secondary" : "ghost"}
+            size="icon"
+            className={cn(
+              "h-10 w-10 flex items-center justify-center",
+              pathname === "/unread" && "bg-sidebar-primary text-sidebar-primary-foreground"
+            )}
+            title="Unread"
+            asChild
+          >
+            <Link href="/unread">
+              <Rss className="h-4 w-4" />
+            </Link>
+          </Button>
+
+          <Button
+            variant={pathname === "/starred" ? "secondary" : "ghost"}
+            size="icon"
+            className={cn(
+              "h-10 w-10 flex items-center justify-center",
+              pathname === "/starred" && "bg-sidebar-primary text-sidebar-primary-foreground"
+            )}
+            title="Starred"
+            asChild
+          >
+            <Link href="/starred">
+              <Star className="h-4 w-4" />
+            </Link>
+          </Button>
+        </div>
+
+        <Separator className="my-2 bg-sidebar-border w-8" />
+
+        <ScrollArea className="flex-1 w-full">
+          <div className="flex flex-col items-center space-y-1 py-1">
+            {feeds.map((feed) => {
+              const isSelected = pathname === `/feed/${feed.id}`
+              return (
+                <Button
+                  key={feed.id}
+                  variant={isSelected ? "secondary" : "ghost"}
+                  size="icon"
+                  className={cn(
+                    "h-10 w-10 flex items-center justify-center",
+                    isSelected && "bg-sidebar-primary text-sidebar-primary-foreground"
+                  )}
+                  title={feed.title}
+                  asChild
+                >
+                  <Link href={`/feed/${feed.id}`}>
+                    <Rss className="h-4 w-4" />
+                  </Link>
+                </Button>
+              )
+            })}
+          </div>
+        </ScrollArea>
+
+        <Separator className="my-2 bg-sidebar-border w-8" />
+
+        <SettingsDialog collapsed />
+      </div>
+    )
+  }
+
   return (
     <div className="flex flex-col h-full bg-sidebar text-sidebar-foreground">
       {/* Header */}
@@ -118,6 +218,15 @@ export function Sidebar() {
         <div className="flex items-center justify-between mb-4">
           <h1 className="text-lg font-semibold text-sidebar-foreground">RSS Reader</h1>
           <div className="flex items-center gap-1">
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-8 w-8 text-sidebar-foreground hover:bg-sidebar-accent"
+              title="Collapse sidebar"
+              onClick={toggleSidebar}
+            >
+              <ChevronLeft className="h-4 w-4" />
+            </Button>
             <HelpDialog />
             <FeedRefresh className="h-8 w-8 text-sidebar-foreground hover:bg-sidebar-accent" />
             <Button

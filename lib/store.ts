@@ -26,6 +26,9 @@ interface RSSReaderActions {
   setViewMode: (mode: "all" | "unread" | "starred") => void
   setLoading: (loading: boolean) => void
   setError: (error: string | null) => void
+  isSidebarCollapsed: boolean
+  toggleSidebar: () => void
+  setSidebarCollapsed: (collapsed: boolean) => void
 
   // Settings
   settings: AppSettings
@@ -58,6 +61,7 @@ export const useRSSStore = create<RSSReaderState & RSSReaderActions>()((set, get
       viewMode: "all",
       settings: defaultSettings,
       isDatabaseReady: false,
+      isSidebarCollapsed: false,
 
       // Folder management actions
       addFolder: (folder) => {
@@ -228,6 +232,14 @@ export const useRSSStore = create<RSSReaderState & RSSReaderActions>()((set, get
 
       setError: (error) => {
         set({ error })
+      },
+
+      toggleSidebar: () => {
+        set((state) => ({ isSidebarCollapsed: !state.isSidebarCollapsed }))
+      },
+
+      setSidebarCollapsed: (collapsed) => {
+        set({ isSidebarCollapsed: collapsed })
       },
 
       // Settings

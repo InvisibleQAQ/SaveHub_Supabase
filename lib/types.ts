@@ -46,4 +46,5 @@ export interface RSSReaderState {
   error: string | null
   searchQuery: string
   isDatabaseReady: boolean
+  isSidebarCollapsed: boolean
 }

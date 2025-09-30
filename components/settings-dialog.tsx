@@ -22,7 +22,7 @@ import { dbManager } from "@/lib/db"
 import { useToast } from "@/hooks/use-toast"
 import { useTheme } from "next-themes"
 
-export function SettingsDialog() {
+export function SettingsDialog({ collapsed = false }: { collapsed?: boolean }) {
   const [open, setOpen] = useState(false)
   const { settings, updateSettings, syncToSupabase } = useRSSStore()
   const { theme, setTheme } = useTheme()
@@ -126,10 +126,21 @@ export function SettingsDialog() {
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>
-        <Button variant="ghost" size="sm" className="w-full justify-start gap-2">
-          <Settings className="h-4 w-4" />
-          Settings
-        </Button>
+        {collapsed ? (
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-10 w-10 flex items-center justify-center"
+            title="Settings"
+          >
+            <Settings className="h-4 w-4" />
+          </Button>
+        ) : (
+          <Button variant="ghost" size="sm" className="w-full justify-start gap-2">
+            <Settings className="h-4 w-4" />
+            Settings
+          </Button>
+        )}
       </DialogTrigger>
       <DialogContent className="sm:max-w-md">
         <DialogHeader>

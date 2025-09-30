@@ -16,7 +16,7 @@ import { formatDistanceToNow, formatFullDate, sanitizeHTML, estimateReadingTime 
 import { useToast } from "@/hooks/use-toast"
 
 export function ArticleContent() {
-  const { articles, feeds, selectedArticleId, markAsRead, markAsUnread, toggleStar, settings, updateSettings } =
+  const { articles, feeds, selectedArticleId, markAsRead, markAsUnread, toggleStar, settings, updateSettings, isSidebarCollapsed, setSidebarCollapsed } =
     useRSSStore()
   const { toast } = useToast()
 
@@ -70,7 +70,7 @@ export function ArticleContent() {
 
   if (!selectedArticle) {
     return (
-      <div className="flex items-center justify-center h-full text-muted-foreground">
+      <div className="flex items-center justify-center h-full text-muted-foreground" onClick={() => !isSidebarCollapsed && setSidebarCollapsed(true)}>
         <div className="text-center max-w-md">
           <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-muted flex items-center justify-center">
             <BookOpen className="h-8 w-8" />
@@ -89,7 +89,7 @@ export function ArticleContent() {
   const sanitizedContent = sanitizeHTML(selectedArticle.content)
 
   return (
-    <div className="flex flex-col h-full">
+    <div className="flex flex-col h-full" onClick={() => !isSidebarCollapsed && setSidebarCollapsed(true)}>
       {/* Header */}
       <div className="p-6 border-b border-border bg-card/50 flex-shrink-0">
         <div className="flex items-start justify-between gap-4 mb-4">
