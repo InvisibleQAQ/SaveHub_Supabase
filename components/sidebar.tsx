@@ -242,24 +242,6 @@ export function Sidebar() {
             </Button>
             <HelpDialog />
             <FeedRefresh className="h-8 w-8 text-sidebar-foreground hover:bg-sidebar-accent" />
-            <Button
-              variant="ghost"
-              size="icon"
-              className="h-8 w-8 text-sidebar-foreground hover:bg-sidebar-accent"
-              title="Add RSS Feed"
-              onClick={() => setShowAddFeed(true)}
-            >
-              <Rss className="h-4 w-4" />
-            </Button>
-            <Button
-              variant="ghost"
-              size="icon"
-              className="h-8 w-8 text-sidebar-foreground hover:bg-sidebar-accent"
-              title="Add Folder"
-              onClick={() => setShowAddFolder(true)}
-            >
-              <FolderPlus className="h-4 w-4" />
-            </Button>
           </div>
         </div>
 
@@ -327,6 +309,24 @@ export function Sidebar() {
             <Star className="h-4 w-4" />
             Starred
           </Link>
+        </Button>
+
+        <Button
+          variant="ghost"
+          className="w-full justify-start gap-3 text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
+          onClick={() => setShowAddFeed(true)}
+        >
+          <Plus className="h-4 w-4" />
+          Add Feed
+        </Button>
+
+        <Button
+          variant="ghost"
+          className="w-full justify-start gap-3 text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
+          onClick={() => setShowAddFolder(true)}
+        >
+          <FolderPlus className="h-4 w-4" />
+          Add Folder
         </Button>
       </div>
 

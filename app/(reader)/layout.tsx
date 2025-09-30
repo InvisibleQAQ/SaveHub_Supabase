@@ -107,7 +107,7 @@ export default function ReaderLayout({ children }: { children: React.ReactNode }
   return (
     <>
       <div className="flex h-screen bg-background">
-        <div className={`border-r border-border bg-sidebar transition-all duration-300 ${isSidebarCollapsed ? 'w-12' : 'w-80'}`}>
+        <div className={`border-r border-border bg-sidebar transition-all duration-300 ${isSidebarCollapsed ? 'w-12' : 'w-64'}`}>
           <Sidebar />
         </div>
         {children}
