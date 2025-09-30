@@ -136,7 +136,7 @@ export function Sidebar() {
             size="icon"
             className={cn(
               "h-10 w-10 flex items-center justify-center",
-              pathname === "/all" && "bg-sidebar-primary text-sidebar-primary-foreground"
+              pathname === "/all" && "bg-sidebar-primary text-sidebar-primary-foreground hover:bg-sidebar-primary hover:text-sidebar-primary-foreground"
             )}
             title="All Articles"
             asChild
@@ -151,7 +151,7 @@ export function Sidebar() {
             size="icon"
             className={cn(
               "h-10 w-10 flex items-center justify-center",
-              pathname === "/unread" && "bg-sidebar-primary text-sidebar-primary-foreground"
+              pathname === "/unread" && "bg-sidebar-primary text-sidebar-primary-foreground hover:bg-sidebar-primary hover:text-sidebar-primary-foreground"
             )}
             title="Unread"
             asChild
@@ -166,7 +166,7 @@ export function Sidebar() {
             size="icon"
             className={cn(
               "h-10 w-10 flex items-center justify-center",
-              pathname === "/starred" && "bg-sidebar-primary text-sidebar-primary-foreground"
+              pathname === "/starred" && "bg-sidebar-primary text-sidebar-primary-foreground hover:bg-sidebar-primary hover:text-sidebar-primary-foreground"
             )}
             title="Starred"
             asChild
@@ -190,7 +190,7 @@ export function Sidebar() {
                   size="icon"
                   className={cn(
                     "h-10 w-10 flex items-center justify-center",
-                    isSelected && "bg-sidebar-primary text-sidebar-primary-foreground"
+                    isSelected && "bg-sidebar-primary text-sidebar-primary-foreground hover:bg-sidebar-primary hover:text-sidebar-primary-foreground"
                   )}
                   title={feed.title}
                   asChild
@@ -268,7 +268,7 @@ export function Sidebar() {
           variant={pathname === "/all" ? "secondary" : "ghost"}
           className={cn(
             "w-full justify-start gap-3 text-sidebar-foreground",
-            pathname === "/all" ? "bg-sidebar-primary text-sidebar-primary-foreground" : "hover:bg-sidebar-accent",
+            pathname === "/all" ? "bg-sidebar-primary text-sidebar-primary-foreground hover:bg-sidebar-primary hover:text-sidebar-primary-foreground" : "hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
           )}
           asChild
         >
@@ -287,7 +287,7 @@ export function Sidebar() {
           variant={pathname === "/unread" ? "secondary" : "ghost"}
           className={cn(
             "w-full justify-start gap-3 text-sidebar-foreground",
-            pathname === "/unread" ? "bg-sidebar-primary text-sidebar-primary-foreground" : "hover:bg-sidebar-accent",
+            pathname === "/unread" ? "bg-sidebar-primary text-sidebar-primary-foreground hover:bg-sidebar-primary hover:text-sidebar-primary-foreground" : "hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
           )}
           asChild
         >
@@ -306,7 +306,7 @@ export function Sidebar() {
           variant={pathname === "/starred" ? "secondary" : "ghost"}
           className={cn(
             "w-full justify-start gap-3 text-sidebar-foreground",
-            pathname === "/starred" ? "bg-sidebar-primary text-sidebar-primary-foreground" : "hover:bg-sidebar-accent",
+            pathname === "/starred" ? "bg-sidebar-primary text-sidebar-primary-foreground hover:bg-sidebar-primary hover:text-sidebar-primary-foreground" : "hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
           )}
           asChild
         >
@@ -409,8 +409,8 @@ export function Sidebar() {
                             className={cn(
                               "w-full justify-start gap-3 text-left h-auto py-2 px-3 text-sidebar-foreground",
                               isSelected
-                                ? "bg-sidebar-primary text-sidebar-primary-foreground"
-                                : "hover:bg-sidebar-accent",
+                                ? "bg-sidebar-primary text-sidebar-primary-foreground hover:bg-sidebar-primary hover:text-sidebar-primary-foreground"
+                                : "hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
                             )}
                             asChild
                           >
@@ -508,7 +508,7 @@ export function Sidebar() {
                     variant="ghost"
                     className={cn(
                       "w-full justify-start gap-3 text-left h-auto py-2 px-3 text-sidebar-foreground",
-                      isSelected ? "bg-sidebar-primary text-sidebar-primary-foreground" : "hover:bg-sidebar-accent",
+                      isSelected ? "bg-sidebar-primary text-sidebar-primary-foreground hover:bg-sidebar-primary hover:text-sidebar-primary-foreground" : "hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
                     )}
                     asChild
                   >
