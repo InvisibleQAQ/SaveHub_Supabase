@@ -5,7 +5,7 @@ import { dbManager, type AppSettings, defaultSettings } from "./db"
 interface RSSReaderActions {
   // Folder management
   addFolder: (folder: Omit<Folder, "id" | "createdAt">) => void
-  removeFolder: (folderId: string, deleteFeeds?: boolean) => void
+  removeFolder: (folderId: string, deleteFeeds?: boolean) => Promise<void>
   renameFolder: (folderId: string, newName: string) => void
 
   // Feed management
@@ -79,7 +79,7 @@ export const useRSSStore = create<RSSReaderState & RSSReaderActions>()((set, get
         get().syncToSupabase()
       },
 
-      removeFolder: (folderId, deleteFeeds = false) => {
+      removeFolder: async (folderId, deleteFeeds = false) => {
         const folderFeeds = get().feeds.filter((f) => f.folderId === folderId)
         const feedIds = folderFeeds.map((f) => f.id)
 
@@ -91,11 +91,14 @@ export const useRSSStore = create<RSSReaderState & RSSReaderActions>()((set, get
             articles: state.articles.filter((a) => !feedIds.includes(a.feedId)),
           }))
 
-          // Delete from database
-          Promise.all([
-            dbManager.deleteFolder(folderId),
-            ...feedIds.map((id) => dbManager.deleteFeed(id)),
-          ]).catch(console.error)
+          try {
+            // Delete feeds first (CASCADE will delete articles automatically)
+            await Promise.all(feedIds.map((id) => dbManager.deleteFeed(id)))
+            // Then delete folder
+            await dbManager.deleteFolder(folderId)
+          } catch (error) {
+            console.error("Failed to delete folder and feeds:", error)
+          }
         } else {
           // Only delete folder, move feeds out (dissolve)
           set((state) => ({
@@ -103,8 +106,14 @@ export const useRSSStore = create<RSSReaderState & RSSReaderActions>()((set, get
             feeds: state.feeds.map((feed) => (feed.folderId === folderId ? { ...feed, folderId: undefined } : feed)),
           }))
 
-          dbManager.deleteFolder(folderId).catch(console.error)
-          get().syncToSupabase()
+          try {
+            // Delete folder from database (ON DELETE SET NULL will handle feeds.folder_id)
+            await dbManager.deleteFolder(folderId)
+            // Sync feeds to ensure consistency
+            await get().syncToSupabase()
+          } catch (error) {
+            console.error("Failed to delete folder:", error)
+          }
         }
       },
 

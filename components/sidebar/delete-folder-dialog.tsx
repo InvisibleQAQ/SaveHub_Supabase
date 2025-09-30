@@ -11,6 +11,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog"
+import { Button } from "@/components/ui/button"
 import { useRSSStore } from "@/lib/store"
 import type { DeleteFolderDialogState } from "./types"
 
@@ -32,13 +33,14 @@ export function DeleteFolderDialog({ state, onOpenChange }: DeleteFolderDialogPr
     setDeleteMode("dissolve")
   }
 
-  const handleNext = () => {
+  const handleNext = (e: React.MouseEvent) => {
+    e.preventDefault()
     setShowConfirmation(true)
   }
 
-  const handleConfirm = () => {
+  const handleConfirm = async () => {
     const deleteFeeds = deleteMode === "delete-all"
-    removeFolder(state.folderId, deleteFeeds)
+    await removeFolder(state.folderId, deleteFeeds)
     handleClose()
   }
 
@@ -98,7 +100,7 @@ export function DeleteFolderDialog({ state, onOpenChange }: DeleteFolderDialogPr
 
             <AlertDialogFooter>
               <AlertDialogCancel>Cancel</AlertDialogCancel>
-              <AlertDialogAction onClick={handleNext}>Next</AlertDialogAction>
+              <Button onClick={handleNext}>Next</Button>
             </AlertDialogFooter>
           </>
         ) : (
@@ -109,13 +111,13 @@ export function DeleteFolderDialog({ state, onOpenChange }: DeleteFolderDialogPr
             </AlertDialogHeader>
 
             <AlertDialogFooter>
-              <AlertDialogCancel onClick={() => setShowConfirmation(false)}>Back</AlertDialogCancel>
-              <AlertDialogAction
+              <Button variant="outline" onClick={() => setShowConfirmation(false)}>Back</Button>
+              <Button
                 onClick={handleConfirm}
-                className={deleteMode === "delete-all" ? "bg-destructive hover:bg-destructive/90" : ""}
+                variant={deleteMode === "delete-all" ? "destructive" : "default"}
               >
                 {deleteMode === "delete-all" ? "Delete All" : "Delete Folder"}
-              </AlertDialogAction>
+              </Button>
             </AlertDialogFooter>
           </>
         )}
