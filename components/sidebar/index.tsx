@@ -10,7 +10,7 @@ import { useRSSStore } from "@/lib/store"
 import { useSidebarState } from "./use-sidebar-state"
 
 export function Sidebar() {
-  const { articles, getUnreadCount, isSidebarCollapsed, toggleSidebar, renameFolder } = useRSSStore()
+  const { articles, getUnreadCount, isSidebarCollapsed, toggleSidebar, renameFolder, updateFeed } = useRSSStore()
 
   const {
     showAddFeed,
@@ -37,7 +37,7 @@ export function Sidebar() {
   }
 
   const handleRenameFeed = async (newName: string) => {
-    console.log("Rename feed not implemented yet")
+    updateFeed(renameDialog.id, { title: newName })
   }
 
   if (isSidebarCollapsed) {

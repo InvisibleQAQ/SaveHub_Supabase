@@ -18,6 +18,7 @@ interface RSSReaderActions {
   markAsRead: (articleId: string) => void
   markAsUnread: (articleId: string) => void
   toggleStar: (articleId: string) => void
+  markFeedAsRead: (feedId: string) => void
 
   // UI state
   setSelectedFeed: (feedId: string | null) => void
@@ -204,6 +205,24 @@ export const useRSSStore = create<RSSReaderState & RSSReaderActions>()((set, get
         dbManager.updateArticle(articleId, { isStarred: newStarredState }).catch(console.error)
 
         console.log("[v0] Star toggled successfully")
+      },
+
+      markFeedAsRead: (feedId) => {
+        const feedArticles = get().articles.filter((a) => a.feedId === feedId && !a.isRead)
+
+        if (feedArticles.length === 0) return
+
+        set((state) => ({
+          articles: state.articles.map((a) =>
+            a.feedId === feedId && !a.isRead ? { ...a, isRead: true } : a
+          ),
+        }))
+
+        Promise.all(
+          feedArticles.map((article) =>
+            dbManager.updateArticle(article.id, { isRead: true })
+          )
+        ).catch(console.error)
       },
 
       // UI actions
