@@ -194,7 +194,6 @@ export function ArticleList({ viewMode = "all", feedId = null }: ArticleListProp
                   className={cn(
                     "group relative p-4 cursor-pointer transition-colors hover:bg-accent/50",
                     isSelected && "bg-accent",
-                    !article.isRead && "border-l-2 border-l-primary",
                   )}
                   onClick={() => setSelectedArticle(article.id)}
                 >
