@@ -159,7 +159,11 @@ NEXT_PUBLIC_SUPABASE_ANON_KEY=your_supabase_anon_key
 
 **Main Components**:
 - `(reader)/layout.tsx`: Root layout with database init + `<Sidebar />`
-- `sidebar.tsx`: Feed/folder navigation with `<Link>` components
+- `sidebar/`: Modular sidebar (10 files, <100 lines each) - refactored from 685-line monolithic component
+  - `index.tsx`: Main entry with state management
+  - `collapsed-view.tsx` / `expanded-view.tsx`: View components
+  - `feed-item.tsx` / `folder-item.tsx`: Reusable atomic components
+  - `*-actions-menu.tsx`: Extracted duplicate dropdown menus
 - `article-list.tsx`: Article list with `viewMode?` and `feedId?` props
 - `article-content.tsx`: Article reader with read/star actions
 - `keyboard-shortcuts.tsx`: Global keyboard navigation with `router.push()`

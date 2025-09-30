@@ -33,7 +33,17 @@ rssreader3/
 │           └── validate/    # RSS 验证
 ├── components/              # React 组件
 │   ├── ui/                  # shadcn/ui 组件库
-│   ├── sidebar.tsx          # 侧边栏（使用 Link 导航）
+│   ├── sidebar/             # 侧边栏模块（模块化重构）
+│   │   ├── index.tsx        # 主入口组件
+│   │   ├── types.ts         # 共享类型定义
+│   │   ├── use-sidebar-state.ts  # 状态管理 hook
+│   │   ├── collapsed-view.tsx    # 收缩视图
+│   │   ├── expanded-view.tsx     # 展开视图
+│   │   ├── view-button.tsx       # 视图切换按钮（复用组件）
+│   │   ├── feed-item.tsx         # Feed 项组件
+│   │   ├── folder-item.tsx       # 文件夹项组件
+│   │   ├── feed-actions-menu.tsx   # Feed 操作菜单
+│   │   └── folder-actions-menu.tsx # 文件夹操作菜单
 │   ├── article-list.tsx     # 文章列表（接收 viewMode/feedId props）
 │   ├── article-content.tsx  # 文章内容
 │   ├── keyboard-shortcuts.tsx # 键盘快捷键（使用 router.push）
@@ -354,25 +364,62 @@ toast({ title: "Success", description: "..." })
 
 ### 📂 `components/` - React 组件
 
-#### `components/sidebar.tsx`
-**作用**：左侧边栏，显示文件夹和订阅源。
+#### `components/sidebar/` ⭐ **模块化重构**
 
-**功能**：
-- 显示文件夹树
-- 显示订阅源列表（可拖拽到文件夹）
-- 显示未读数量 Badge
-- "All Articles"、"Unread"、"Starred" 视图切换
-- **使用 `<Link>` 组件实现导航**（而不是 onClick 修改 store）
+**作用**：侧边栏模块，采用职责分离的模块化架构。
 
-**关键变更**：
+**重构原因**：
+- 原 `sidebar.tsx` 685 行，包含 3 个独立功能混在一起
+- 收缩视图和展开视图通过 if 分支切换，导致代码复杂
+- 大量重复代码（如 dropdown menu 重复 2 次）
+
+**新架构** (10 个文件，每个 <100 行):
+
+```
+sidebar/
+├── index.tsx (90行)               # 主入口：状态管理 + 视图路由
+├── types.ts (10行)                 # RenameDialogState, MoveDialogState
+├── use-sidebar-state.ts (52行)    # 本地状态管理 hook
+│
+├── 视图组件 (职责分离)
+│   ├── collapsed-view.tsx (70行)  # 收缩视图（图标模式）
+│   └── expanded-view.tsx (255行)  # 展开视图（完整模式）
+│
+├── 原子组件 (可复用)
+│   ├── view-button.tsx (55行)     # All/Unread/Starred 按钮（支持 icon/full 模式）
+│   ├── feed-item.tsx (90行)       # Feed 项（支持 icon/full 模式）
+│   └── folder-item.tsx (85行)     # 文件夹项 + 子 feed 列表
+│
+└── 操作菜单 (消除重复)
+    ├── feed-actions-menu.tsx (85行)    # Feed 右键菜单（刷新/移动/重命名/删除）
+    └── folder-actions-menu.tsx (65行)  # 文件夹右键菜单（添加/重命名/删除）
+```
+
+**核心改进**：
+
+1. **消除特殊情况** - collapsed/expanded 不再是 if 分支，而是两个独立组件
+2. **消除重复代码** - dropdown menu 从 2 次变为 1 次（提取为独立组件）
+3. **单一职责** - 每个文件只做一件事，易于理解和维护
+4. **可复用性** - `view-button` 和 `feed-item` 支持 `icon/full` 两种模式
+5. **可测试性** - 每个组件可独立测试
+
+**使用方式**（外部组件无需修改）:
 ```typescript
-// 旧版本：通过 store 修改状态
-<Button onClick={() => setViewMode('all')}>All Articles</Button>
+import { Sidebar } from "@/components/sidebar"  // 自动解析到 sidebar/index.tsx
 
-// 新版本：使用 Link 导航
-<Button asChild>
-  <Link href="/all">All Articles</Link>
-</Button>
+// 组件内部根据 isSidebarCollapsed 自动切换 CollapsedView/ExpandedView
+```
+
+**数据流**:
+```typescript
+index.tsx (主入口)
+  ├── useSidebarState() → 管理 dialog 和搜索状态
+  ├── useRSSStore() → 读取 folders/feeds/articles
+  └── 根据 isSidebarCollapsed 渲染:
+      ├── CollapsedView (收缩视图)
+      └── ExpandedView (展开视图)
+          ├── FolderItem → FeedItem (递归渲染文件夹树)
+          └── FeedItem (无文件夹的 feed)
 ```
 
 #### `components/article-list.tsx`
