@@ -94,12 +94,12 @@ class GenericRepository<TApp, TDb> {
 class SupabaseManager {
   private foldersRepo = new GenericRepository(
     "folders", folderToDb, dbRowToFolder,
-    { column: "created_at", ascending: true }
+    { column: "order", ascending: true }  // 按 order 字段排序
   )
 
   private feedsRepo = new GenericRepository(
     "feeds", feedToDb, dbRowToFeed,
-    { column: "created_at", ascending: true }
+    { column: "order", ascending: true }  // 按 order 字段排序
   )
 
   private articlesRepo = new GenericRepository(
@@ -349,6 +349,34 @@ partialize: (state) => ({
 - **App 层**：统一用 `Date` 对象
 - **DB 层**：存储用 ISO string（`TIMESTAMPTZ`）
 - **转换函数**：`toISOString()` 和 `new Date()` 在 `lib/db.ts` 中处理
+
+### Feed/Folder 排序机制
+
+**设计原则**：用户可以自定义 Feed 和 Folder 的顺序。
+
+**实现方式**：
+- **数据库字段**：`feeds` 和 `folders` 表都有 `order` 字段（INTEGER）
+- **排序规则**：
+  - Folders：全局按 `order` 升序排列
+  - Feeds：在同一 `folderId` 内按 `order` 升序排列
+- **初始值**：按 `created_at` 生成初始 `order`（见 `scripts/002_add_order_fields.sql`）
+
+**拖拽重组**：
+```typescript
+// 拖动 Feed 到新位置
+moveFeed(feedId, targetFolderId, targetOrder)
+  ↓
+1. 更新 Feed 的 folderId（可能从 folder 内移到 root，或反之）
+2. 重新计算目标 folder（或 root）内所有 Feed 的 order
+3. 如果跨 folder 移动，也重新计算源 folder 的 order
+4. 批量更新数据库
+```
+
+**原生 HTML5 Drag/Drop**：
+- 零依赖，30 行代码实现
+- 拖动时显示半透明效果（`opacity-50`）
+- Drop zone 显示虚线边框提示
+- 支持：folder 内 ↔ folder 外、folder ↔ folder、同级调整顺序
 
 ## 组件通信模式
 

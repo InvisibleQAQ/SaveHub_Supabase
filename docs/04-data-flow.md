@@ -283,6 +283,121 @@ const newArticles = articles.filter(a => !existingIds.has(a.id))
 
 ---
 
+### 场景 8：拖拽 Feed 重组
+
+**用户视角**：拖动 Feed 到不同位置，调整订阅列表结构。
+
+**系统内部流程**：
+
+```
+1. 用户开始拖动 Feed
+   ↓
+2. FeedItem 触发 onDragStart(feedId)
+   ↓
+3. ExpandedView 设置 draggedFeedId = feedId
+   └─→ UI 显示半透明效果（isDragging = true）
+   ↓
+4. 用户拖到目标位置（另一个 Feed 或 Folder 上）
+   ↓
+5. 目标组件触发 onDragOver（显示可放置提示）
+   ↓
+6. 用户松开鼠标，触发 onDrop
+   ↓
+7. 根据 drop 目标类型，计算新的位置：
+   ├─ 拖到 Feed 上：
+   │  ├─ 找到目标 Feed 的 folderId 和 order
+   │  └─ 调用 moveFeed(draggedFeedId, targetFolderId, targetIndex)
+   │
+   ├─ 拖到 Folder 上：
+   │  └─ 调用 moveFeed(draggedFeedId, folderId, 0)
+   │      └─→ 插入到该 Folder 的第一个位置
+   │
+   └─ 拖到 Root Level drop zone：
+      └─ 调用 moveFeed(draggedFeedId, undefined, rootLevelFeeds.length)
+          └─→ 移出所有 Folder，添加到根级别末尾
+   ↓
+8. store.moveFeed 内部逻辑：
+   ├─ 更新被拖动 Feed 的 folderId
+   ├─ 获取目标 folder（或 root）内的所有 Feed
+   ├─ 在目标位置插入被拖动的 Feed
+   ├─ 重新分配所有 Feed 的 order（0, 1, 2, ...）
+   ├─ 如果跨 folder 移动，也重排源 folder 的 order
+   └─ 调用 syncToSupabase() 批量保存
+   ↓
+9. UI 自动更新
+   └─→ Sidebar 中 Feed 显示在新位置
+```
+
+**关键实现细节**：
+
+**拖拽状态管理**：
+```typescript
+const [draggedFeedId, setDraggedFeedId] = useState<string | null>(null)
+
+// 拖动开始
+const handleFeedDragStart = (feedId: string) => {
+  setDraggedFeedId(feedId)
+}
+
+// 拖动结束
+const handleFeedDrop = (e: React.DragEvent, targetFeedId: string) => {
+  // 计算新位置
+  moveFeed(draggedFeedId, targetFolderId, targetIndex)
+  setDraggedFeedId(null)  // 清除拖拽状态
+}
+```
+
+**order 重排算法**：
+```typescript
+// 同一 folder 内的 Feed，按 order 排序
+const sameFolderFeeds = feeds
+  .filter(f => f.folderId === targetFolderId)
+  .sort((a, b) => a.order - b.order)
+
+// 移除被拖动的 Feed
+const otherFeeds = sameFolderFeeds.filter(f => f.id !== draggedFeedId)
+
+// 在目标位置插入
+otherFeeds.splice(targetIndex, 0, draggedFeed)
+
+// 重新分配 order
+const reorderedFeeds = otherFeeds.map((f, index) => ({ ...f, order: index }))
+```
+
+**跨 Folder 移动处理**：
+```typescript
+if (oldFolderId !== targetFolderId && oldFolderId !== undefined) {
+  // 重排源 folder 的 order
+  const oldFolderFeeds = feeds
+    .filter(f => f.folderId === oldFolderId)
+    .map((f, index) => ({ ...f, order: index }))
+}
+```
+
+**原生 Drag/Drop API**：
+```typescript
+// Feed 组件
+<div
+  draggable
+  onDragStart={(e) => onDragStart?.(feed.id)}
+  onDragOver={(e) => { e.preventDefault(); onDragOver?.(e, feed.id) }}
+  onDrop={(e) => { e.preventDefault(); onDrop?.(e, feed.id) }}
+  className={cn(isDragging && "opacity-50")}
+>
+```
+
+**视觉反馈**：
+- 拖动中的 Feed：`opacity-50 cursor-move`
+- Root Level drop zone：`border-2 border-dashed` + 提示文字
+- Folder drop zone：`onDragOver` 时可添加高亮效果
+
+**性能优化**：
+- 使用 `e.stopPropagation()` 避免事件冒泡
+- 只在同一层级计算 order，不影响其他 folder
+- 批量更新数据库（`syncToSupabase` 一次性保存所有 Feed）
+
+---
+
 ## 数据流动原则
 
 ### 1. 单向数据流
