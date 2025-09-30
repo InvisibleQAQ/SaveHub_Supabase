@@ -20,16 +20,19 @@ import { formatDistanceToNow, estimateReadingTime } from "@/lib/utils"
 type SortOption = "date" | "title" | "feed" | "readTime"
 type SortDirection = "asc" | "desc"
 
-export function ArticleList() {
+interface ArticleListProps {
+  viewMode?: "all" | "unread" | "starred"
+  feedId?: string | null
+}
+
+export function ArticleList({ viewMode = "all", feedId = null }: ArticleListProps) {
   const [searchQuery, setSearchQuery] = useState("")
   const [sortBy, setSortBy] = useState<SortOption>("date")
   const [sortDirection, setSortDirection] = useState<SortDirection>("desc")
   const {
-    selectedFeedId,
     selectedArticleId,
     feeds,
     articles,
-    viewMode,
     searchQuery: globalSearchQuery,
     setSelectedArticle,
     setSearchQuery: setGlobalSearchQuery,
@@ -39,7 +42,7 @@ export function ArticleList() {
     toggleStar,
   } = useRSSStore()
 
-  const selectedFeed = feeds.find((f) => f.id === selectedFeedId)
+  const selectedFeed = feeds.find((f) => f.id === feedId)
 
   const handleSearch = (query: string) => {
     setSearchQuery(query)
@@ -53,7 +56,7 @@ export function ArticleList() {
 
   // Sort and filter articles
   const sortedArticles = useMemo(() => {
-    const filteredArticles = getFilteredArticles()
+    const filteredArticles = getFilteredArticles({ viewMode, feedId })
     const feedTitles = feeds.reduce(
       (acc, feed) => {
         acc[feed.id] = feed.title
@@ -86,7 +89,7 @@ export function ArticleList() {
 
       return sortDirection === "asc" ? comparison : -comparison
     })
-  }, [articles, viewMode, selectedFeedId, globalSearchQuery, sortBy, sortDirection, feeds, getFilteredArticles])
+  }, [articles, viewMode, feedId, globalSearchQuery, sortBy, sortDirection, feeds, getFilteredArticles])
 
   const handleSort = (option: SortOption) => {
     if (sortBy === option) {

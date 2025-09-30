@@ -1,5 +1,4 @@
 import { create } from "zustand"
-import { persist } from "zustand/middleware"
 import type { Feed, Article, Folder, RSSReaderState } from "./types"
 import { dbManager, type AppSettings, defaultSettings } from "./db"
 
@@ -46,9 +45,7 @@ interface RSSReaderActions {
   loadFromSupabase: () => Promise<void>
 }
 
-export const useRSSStore = create<RSSReaderState & RSSReaderActions>()(
-  persist(
-    (set, get) => ({
+export const useRSSStore = create<RSSReaderState & RSSReaderActions>()((set, get) => ({
       // Initial state
       folders: [],
       feeds: [],
@@ -383,14 +380,4 @@ export const useRSSStore = create<RSSReaderState & RSSReaderActions>()(
           })
         }
       },
-    }),
-    {
-      name: "rss-reader-storage",
-      partialize: (state) => ({
-        // Only persist essential UI state, not the full data
-        viewMode: state.viewMode,
-        selectedFeedId: state.selectedFeedId,
-      }),
-    },
-  ),
-)
+    }))

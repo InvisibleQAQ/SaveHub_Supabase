@@ -1,6 +1,8 @@
 "use client"
 
 import { useState } from "react"
+import Link from "next/link"
+import { usePathname } from "next/navigation"
 import {
   Plus,
   Search,
@@ -58,13 +60,10 @@ export function Sidebar() {
   }>({ open: false, feedId: "", feedTitle: "", currentFolderId: undefined })
   const [openFolders, setOpenFolders] = useState<Set<string>>(new Set())
 
+  const pathname = usePathname()
   const {
     folders,
     feeds,
-    selectedFeedId,
-    viewMode,
-    setSelectedFeed,
-    setViewMode,
     removeFeed,
     removeFolder,
     renameFolder,
@@ -157,58 +156,55 @@ export function Sidebar() {
       {/* View Mode Filters */}
       <div className="p-4 space-y-2">
         <Button
-          variant={viewMode === "all" ? "secondary" : "ghost"}
+          variant={pathname === "/all" ? "secondary" : "ghost"}
           className={cn(
             "w-full justify-start gap-3 text-sidebar-foreground",
-            viewMode === "all" ? "bg-sidebar-primary text-sidebar-primary-foreground" : "hover:bg-sidebar-accent",
+            pathname === "/all" ? "bg-sidebar-primary text-sidebar-primary-foreground" : "hover:bg-sidebar-accent",
           )}
-          onClick={() => {
-            setViewMode("all")
-            setSelectedFeed(null)
-          }}
+          asChild
         >
-          <BookOpen className="h-4 w-4" />
-          All Articles
-          {totalUnread > 0 && (
-            <Badge variant="secondary" className="ml-auto bg-sidebar-accent text-sidebar-accent-foreground">
-              {totalUnread}
-            </Badge>
-          )}
+          <Link href="/all">
+            <BookOpen className="h-4 w-4" />
+            All Articles
+            {totalUnread > 0 && (
+              <Badge variant="secondary" className="ml-auto bg-sidebar-accent text-sidebar-accent-foreground">
+                {totalUnread}
+              </Badge>
+            )}
+          </Link>
         </Button>
 
         <Button
-          variant={viewMode === "unread" ? "secondary" : "ghost"}
+          variant={pathname === "/unread" ? "secondary" : "ghost"}
           className={cn(
             "w-full justify-start gap-3 text-sidebar-foreground",
-            viewMode === "unread" ? "bg-sidebar-primary text-sidebar-primary-foreground" : "hover:bg-sidebar-accent",
+            pathname === "/unread" ? "bg-sidebar-primary text-sidebar-primary-foreground" : "hover:bg-sidebar-accent",
           )}
-          onClick={() => {
-            setViewMode("unread")
-            setSelectedFeed(null)
-          }}
+          asChild
         >
-          <Rss className="h-4 w-4" />
-          Unread
-          {totalUnread > 0 && (
-            <Badge variant="secondary" className="ml-auto bg-sidebar-accent text-sidebar-accent-foreground">
-              {totalUnread}
-            </Badge>
-          )}
+          <Link href="/unread">
+            <Rss className="h-4 w-4" />
+            Unread
+            {totalUnread > 0 && (
+              <Badge variant="secondary" className="ml-auto bg-sidebar-accent text-sidebar-accent-foreground">
+                {totalUnread}
+              </Badge>
+            )}
+          </Link>
         </Button>
 
         <Button
-          variant={viewMode === "starred" ? "secondary" : "ghost"}
+          variant={pathname === "/starred" ? "secondary" : "ghost"}
           className={cn(
             "w-full justify-start gap-3 text-sidebar-foreground",
-            viewMode === "starred" ? "bg-sidebar-primary text-sidebar-primary-foreground" : "hover:bg-sidebar-accent",
+            pathname === "/starred" ? "bg-sidebar-primary text-sidebar-primary-foreground" : "hover:bg-sidebar-accent",
           )}
-          onClick={() => {
-            setViewMode("starred")
-            setSelectedFeed(null)
-          }}
+          asChild
         >
-          <Star className="h-4 w-4" />
-          Starred
+          <Link href="/starred">
+            <Star className="h-4 w-4" />
+            Starred
+          </Link>
         </Button>
       </div>
 
@@ -295,7 +291,7 @@ export function Sidebar() {
                   <CollapsibleContent className="ml-4 space-y-1">
                     {folderFeeds.map((feed) => {
                       const unreadCount = getUnreadCount(feed.id)
-                      const isSelected = selectedFeedId === feed.id
+                      const isSelected = pathname === `/feed/${feed.id}`
 
                       return (
                         <div key={feed.id} className="group relative">
@@ -307,27 +303,26 @@ export function Sidebar() {
                                 ? "bg-sidebar-primary text-sidebar-primary-foreground"
                                 : "hover:bg-sidebar-accent",
                             )}
-                            onClick={() => {
-                              setSelectedFeed(feed.id)
-                              setViewMode("all")
-                            }}
+                            asChild
                           >
-                            <div className="flex-1 min-w-0">
-                              <div className="flex items-center justify-between">
-                                <span className="font-medium truncate">{feed.title}</span>
-                                {unreadCount > 0 && (
-                                  <Badge
-                                    variant="secondary"
-                                    className="ml-2 bg-sidebar-accent text-sidebar-accent-foreground text-xs"
-                                  >
-                                    {unreadCount}
-                                  </Badge>
+                            <Link href={`/feed/${feed.id}`}>
+                              <div className="flex-1 min-w-0">
+                                <div className="flex items-center justify-between">
+                                  <span className="font-medium truncate">{feed.title}</span>
+                                  {unreadCount > 0 && (
+                                    <Badge
+                                      variant="secondary"
+                                      className="ml-2 bg-sidebar-accent text-sidebar-accent-foreground text-xs"
+                                    >
+                                      {unreadCount}
+                                    </Badge>
+                                  )}
+                                </div>
+                                {feed.description && (
+                                  <p className="text-xs text-sidebar-foreground/60 truncate mt-1">{feed.description}</p>
                                 )}
                               </div>
-                              {feed.description && (
-                                <p className="text-xs text-sidebar-foreground/60 truncate mt-1">{feed.description}</p>
-                              )}
-                            </div>
+                            </Link>
                           </Button>
 
                           {/* Feed Options */}
@@ -396,7 +391,7 @@ export function Sidebar() {
             {/* Feeds without folders */}
             {feedsByFolder.none?.map((feed) => {
               const unreadCount = getUnreadCount(feed.id)
-              const isSelected = selectedFeedId === feed.id
+              const isSelected = pathname === `/feed/${feed.id}`
 
               return (
                 <div key={feed.id} className="group relative">
@@ -406,32 +401,31 @@ export function Sidebar() {
                       "w-full justify-start gap-3 text-left h-auto py-2 px-3 text-sidebar-foreground",
                       isSelected ? "bg-sidebar-primary text-sidebar-primary-foreground" : "hover:bg-sidebar-accent",
                     )}
-                    onClick={() => {
-                      setSelectedFeed(feed.id)
-                      setViewMode("all")
-                    }}
+                    asChild
                   >
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center justify-between">
-                        <span className="font-medium truncate">{feed.title}</span>
-                        {unreadCount > 0 && (
-                          <Badge
-                            variant="secondary"
-                            className="ml-2 bg-sidebar-accent text-sidebar-accent-foreground text-xs"
-                          >
-                            {unreadCount}
-                          </Badge>
+                    <Link href={`/feed/${feed.id}`}>
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center justify-between">
+                          <span className="font-medium truncate">{feed.title}</span>
+                          {unreadCount > 0 && (
+                            <Badge
+                              variant="secondary"
+                              className="ml-2 bg-sidebar-accent text-sidebar-accent-foreground text-xs"
+                            >
+                              {unreadCount}
+                            </Badge>
+                          )}
+                        </div>
+                        {feed.description && (
+                          <p className="text-xs text-sidebar-foreground/60 truncate mt-1">{feed.description}</p>
+                        )}
+                        {feed.lastFetched && (
+                          <p className="text-xs text-sidebar-foreground/40 mt-1">
+                            Updated {new Date(feed.lastFetched).toLocaleDateString()}
+                          </p>
                         )}
                       </div>
-                      {feed.description && (
-                        <p className="text-xs text-sidebar-foreground/60 truncate mt-1">{feed.description}</p>
-                      )}
-                      {feed.lastFetched && (
-                        <p className="text-xs text-sidebar-foreground/40 mt-1">
-                          Updated {new Date(feed.lastFetched).toLocaleDateString()}
-                        </p>
-                      )}
-                    </div>
+                    </Link>
                   </Button>
 
                   {/* Feed Options */}

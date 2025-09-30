@@ -1,9 +1,12 @@
 "use client"
 
 import { useEffect } from "react"
+import { useRouter, usePathname } from "next/navigation"
 import { useRSSStore } from "@/lib/store"
 
 export function KeyboardShortcuts() {
+  const router = useRouter()
+  const pathname = usePathname()
   const {
     articles,
     selectedArticleId,
@@ -12,18 +15,27 @@ export function KeyboardShortcuts() {
     markAsUnread,
     toggleStar,
     getFilteredArticles,
-    setViewMode,
-    viewMode,
   } = useRSSStore()
 
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
-      // Don't trigger shortcuts when typing in inputs
       if (event.target instanceof HTMLInputElement || event.target instanceof HTMLTextAreaElement) {
         return
       }
 
-      const filteredArticles = getFilteredArticles()
+      // Parse current view from pathname
+      let viewMode: "all" | "unread" | "starred" = "all"
+      let feedId: string | null = null
+
+      if (pathname.startsWith("/feed/")) {
+        feedId = pathname.split("/feed/")[1]
+      } else if (pathname === "/unread") {
+        viewMode = "unread"
+      } else if (pathname === "/starred") {
+        viewMode = "starred"
+      }
+
+      const filteredArticles = getFilteredArticles({ viewMode, feedId })
       const currentIndex = selectedArticleId ? filteredArticles.findIndex((a) => a.id === selectedArticleId) : -1
 
       switch (event.key) {
@@ -75,17 +87,17 @@ export function KeyboardShortcuts() {
 
         case "1":
           event.preventDefault()
-          setViewMode("all")
+          router.push("/all")
           break
 
         case "2":
           event.preventDefault()
-          setViewMode("unread")
+          router.push("/unread")
           break
 
         case "3":
           event.preventDefault()
-          setViewMode("starred")
+          router.push("/starred")
           break
 
         case "r":
@@ -100,17 +112,7 @@ export function KeyboardShortcuts() {
 
     document.addEventListener("keydown", handleKeyDown)
     return () => document.removeEventListener("keydown", handleKeyDown)
-  }, [
-    articles,
-    selectedArticleId,
-    setSelectedArticle,
-    markAsRead,
-    markAsUnread,
-    toggleStar,
-    getFilteredArticles,
-    setViewMode,
-    viewMode,
-  ])
+  }, [articles, selectedArticleId, setSelectedArticle, markAsRead, markAsUnread, toggleStar, getFilteredArticles, router, pathname])
 
   return null
 }

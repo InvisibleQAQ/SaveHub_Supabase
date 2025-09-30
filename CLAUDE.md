@@ -2,6 +2,22 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+## 📚 Detailed Documentation
+
+**For comprehensive guides, see the `docs/` directory:**
+
+- **[Getting Started](./docs/01-getting-started.md)** - First-time setup, environment configuration
+- **[Architecture](./docs/02-architecture.md)** - System design, data flow, key decisions
+- **[File Structure](./docs/03-file-structure.md)** - What each file does, when to modify them
+- **[Data Flow](./docs/04-data-flow.md)** - How data moves through the system (7 scenarios)
+- **[Development Guide](./docs/05-development-guide.md)** - Development patterns, debugging tips
+- **[Common Tasks](./docs/06-common-tasks.md)** - Code examples for typical features
+- **[Troubleshooting](./docs/07-troubleshooting.md)** - Solutions to common problems
+
+**This file contains quick reference for development. Refer to detailed docs for in-depth explanations.**
+
+---
+
 ## Project Overview
 
 RSS Reader built with Next.js 14, React 18, Supabase for data persistence, and Zustand for state management. Uses shadcn/ui components and Radix UI primitives.
@@ -29,13 +45,36 @@ NEXT_PUBLIC_SUPABASE_ANON_KEY=your_supabase_anon_key
 
 ## Architecture
 
+### Routing Architecture (Next.js App Router)
+
+**URL as Single Source of Truth**: View state (viewMode, feedId) is derived from URL routes, not stored in Zustand.
+
+**Routes**:
+- `/` → Redirects to `/all`
+- `/all` → All articles
+- `/unread` → Unread articles
+- `/starred` → Starred articles
+- `/feed/[feedId]` → Specific feed's articles
+
+**Shared Layout** (`app/(reader)/layout.tsx`):
+- Handles database initialization
+- Loads data via `loadFromSupabase()`
+- Renders `<Sidebar />` + route-specific content
+
+**Navigation**:
+- Sidebar uses `<Link href="/all">` (not `onClick` store updates)
+- Keyboard shortcuts use `router.push('/all')` (not `setViewMode`)
+- Browser back/forward buttons work natively
+- URLs are shareable/bookmarkable
+
 ### State Management (Zustand + Supabase)
 
 **Critical Pattern**: Two-layer persistence architecture
 
-1. **Zustand Store** (`lib/store.ts`): Single source of truth for UI state
-   - Holds: folders, feeds, articles, UI state (selected items, view mode)
-   - Only persists minimal UI preferences to localStorage (viewMode, selectedFeedId)
+1. **Zustand Store** (`lib/store.ts`): Single source of truth for data
+   - Holds: folders, feeds, articles
+   - **Does NOT hold**: viewMode, selectedFeedId (moved to URL)
+   - No localStorage persistence (URL is the persistence)
    - All data mutations go through store actions
 
 2. **Supabase Manager** (`lib/db.ts`): Database persistence layer
@@ -51,6 +90,8 @@ NEXT_PUBLIC_SUPABASE_ANON_KEY=your_supabase_anon_key
 - App checks `isDatabaseReady` state before rendering main UI
 - If false, shows `DatabaseSetup` component with SQL script instructions
 - User must run `scripts/001_create_tables.sql` in Supabase SQL editor
+
+> **📖 For complete data flow scenarios (add feed, mark read, realtime sync, etc.), see [Data Flow Guide](./docs/04-data-flow.md)**
 
 ### Real-time Synchronization
 
@@ -86,18 +127,32 @@ NEXT_PUBLIC_SUPABASE_ANON_KEY=your_supabase_anon_key
 
 ### Component Structure
 
+**Route Pages** (`app/(reader)/*/page.tsx`):
+- `all/page.tsx`: Renders `<ArticleList viewMode="all" />`
+- `unread/page.tsx`: Renders `<ArticleList viewMode="unread" />`
+- `starred/page.tsx`: Renders `<ArticleList viewMode="starred" />`
+- `feed/[feedId]/page.tsx`: Renders `<ArticleList feedId={params.feedId} />`
+
 **Main Components**:
-- `rss-reader.tsx`: Root component, handles database initialization, loading states
-- `sidebar.tsx`: Feed/folder navigation, uses ResizablePanel
-- `article-list.tsx`: Article list with virtualization
+- `(reader)/layout.tsx`: Root layout with database init + `<Sidebar />`
+- `sidebar.tsx`: Feed/folder navigation with `<Link>` components
+- `article-list.tsx`: Article list with `viewMode?` and `feedId?` props
 - `article-content.tsx`: Article reader with read/star actions
-- `keyboard-shortcuts.tsx`: Global keyboard navigation
+- `keyboard-shortcuts.tsx`: Global keyboard navigation with `router.push()`
 
 **UI Components** (`components/ui/`):
 - shadcn/ui components (no modifications needed)
 - Import via `@/components/ui/*`
 
+> **📖 For detailed architecture explanation, see [Architecture Guide](./docs/02-architecture.md)**
+
 ## Key Implementation Notes
+
+### View State Management
+- **View state lives in URL**, not Zustand store
+- Components receive `viewMode` and `feedId` as props from route params
+- `getFilteredArticles({ viewMode, feedId })` takes parameters instead of reading from store
+- Navigation uses `<Link>` and `router.push()`, not store actions
 
 ### Date Handling
 - **App**: Uses `Date` objects everywhere
@@ -123,6 +178,8 @@ addArticles(articles)  // Zustand action deduplicates by article.id
 - `dbManager.clearOldArticles(days)`: Deletes read, non-starred articles older than N days
 - Runs on app load after data loaded
 
+> **📖 For implementation examples and code patterns, see [Common Tasks](./docs/06-common-tasks.md)**
+
 ## Path Aliases
 
 ```typescript
@@ -131,9 +188,9 @@ addArticles(articles)  // Zustand action deduplicates by article.id
 
 ## Dependencies to Know
 
-- **Next.js 14**: App Router, Server/Client Components
+- **Next.js 14**: App Router, Server/Client Components, `<Link>`, `useRouter`, `usePathname`
 - **Supabase**: `@supabase/supabase-js` + `@supabase/ssr`
-- **Zustand**: State management with `persist` middleware
+- **Zustand**: State management (no persist middleware - URL is persistence)
 - **Radix UI**: Headless UI primitives (via shadcn/ui)
 - **Zod**: Runtime type validation
 - **rss-parser**: RSS/Atom feed parsing
@@ -160,3 +217,13 @@ addArticles(articles)  // Zustand action deduplicates by article.id
 - Control open state with local `useState` or store
 - Use `react-hook-form` + Zod for form validation (see `add-feed-dialog.tsx`)
 - Call Zustand actions to persist changes
+
+---
+
+## 🔗 Quick Links to Detailed Docs
+
+- **Need to understand data flow?** → [Data Flow Guide](./docs/04-data-flow.md)
+- **Adding a new feature?** → [Development Guide](./docs/05-development-guide.md) + [Common Tasks](./docs/06-common-tasks.md)
+- **Encountering an error?** → [Troubleshooting](./docs/07-troubleshooting.md)
+- **Looking for a specific file?** → [File Structure](./docs/03-file-structure.md)
+- **Setting up for first time?** → [Getting Started](./docs/01-getting-started.md)

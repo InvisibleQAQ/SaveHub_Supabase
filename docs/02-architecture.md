@@ -12,13 +12,14 @@
 
 ## 三层架构
 
-### 1. UI 层（React Components）
+### 1. UI 层（React Components + Next.js Routing）
 
-**职责**：显示数据，响应用户操作。
+**职责**：显示数据，响应用户操作，管理路由状态。
 
 **特点**：
 - 组件只从 Zustand store 读数据
 - 组件调用 store actions 修改数据
+- **URL 是视图状态的单一真相来源**（viewMode 和 feedId 从路由派生）
 - **不直接操作数据库**
 
 **例子**：
@@ -43,13 +44,15 @@ function ArticleList() {
 **文件**：`lib/store.ts`
 
 **职责**：
-1. 存储所有应用状态（folders、feeds、articles、UI 状态）
-2. 提供 actions 修改状态
+1. 存储所有应用数据（folders、feeds、articles）
+2. 提供 actions 修改数据
 3. 调用 `dbManager` 持久化数据
 
 **关键概念**：Single Source of Truth（单一数据源）
 
-所有数据都在 store 里，组件从 store 读，不从数据库读。
+**重要变更**：视图状态（viewMode、selectedFeedId）已从 store 移除，改为从 URL 路由派生。
+
+所有数据都在 store 里，组件从 store 读，不从数据库读。视图状态从 URL params 读。
 
 **数据流**：
 ```
@@ -154,21 +157,27 @@ UI 自动更新
 2. **简洁**：不需要 Provider 包裹，直接 `useRSSStore()`
 3. **持久化**：内置 `persist` 中间件，自动保存到 localStorage
 
-### 为什么 localStorage 只保存 UI 状态？
+### 为什么不使用 localStorage 持久化？
 
-看 `lib/store.ts` 的 `partialize` 配置：
-
+**旧版本（已移除）**：
 ```typescript
+// ❌ 已移除
 partialize: (state) => ({
   viewMode: state.viewMode,
   selectedFeedId: state.selectedFeedId,
 })
 ```
 
+**新版本（当前）**：
+- **不持久化任何 UI 状态**
+- URL 就是持久化机制（用户可以收藏/分享链接）
+- Store 只管理数据，不管理视图状态
+
 **原因**：
-- Folders、feeds、articles 数据量大，存 localStorage 会炸
-- Supabase 是真正的数据源，localStorage 只是 UI 偏好缓存
-- 避免数据不一致问题
+- Folders、feeds、articles 数据量大，Supabase 是真正的数据源
+- viewMode 和 selectedFeedId 现在由路由管理（`/all`, `/unread`, `/starred`, `/feed/[feedId]`）
+- URL 作为单一真相来源，支持浏览器前进/后退、分享链接等 Web 标准功能
+- 避免 localStorage 和 URL 状态不一致问题
 
 ### 为什么需要 isDatabaseReady 状态？
 

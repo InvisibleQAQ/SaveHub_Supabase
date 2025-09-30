@@ -41,11 +41,9 @@ export interface RSSReaderState {
   folders: Folder[]
   feeds: Feed[]
   articles: Article[]
-  selectedFeedId: string | null
   selectedArticleId: string | null
   isLoading: boolean
   error: string | null
   searchQuery: string
-  viewMode: "all" | "unread" | "starred"
-  isDatabaseReady: boolean // Added database initialization state
+  isDatabaseReady: boolean
 }

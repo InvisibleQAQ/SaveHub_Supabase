@@ -6,22 +6,33 @@
 rssreader3/
 ├── app/                      # Next.js App Router
 │   ├── layout.tsx           # 根布局
-│   ├── page.tsx             # 首页（入口）
+│   ├── page.tsx             # 首页（重定向到 /all）
+│   ├── (reader)/            # 路由组（共享布局）
+│   │   ├── layout.tsx       # Reader 布局（Sidebar + 内容区）
+│   │   ├── all/
+│   │   │   └── page.tsx     # /all - 所有文章
+│   │   ├── unread/
+│   │   │   └── page.tsx     # /unread - 未读文章
+│   │   ├── starred/
+│   │   │   └── page.tsx     # /starred - 收藏文章
+│   │   └── feed/
+│   │       └── [feedId]/
+│   │           └── page.tsx # /feed/[feedId] - 特定订阅源
 │   └── api/                 # API Routes
 │       └── rss/
 │           ├── parse/       # RSS 解析
 │           └── validate/    # RSS 验证
 ├── components/              # React 组件
 │   ├── ui/                  # shadcn/ui 组件库
-│   ├── rss-reader.tsx       # 主组件
-│   ├── sidebar.tsx          # 侧边栏
-│   ├── article-list.tsx     # 文章列表
+│   ├── sidebar.tsx          # 侧边栏（使用 Link 导航）
+│   ├── article-list.tsx     # 文章列表（接收 viewMode/feedId props）
 │   ├── article-content.tsx  # 文章内容
+│   ├── keyboard-shortcuts.tsx # 键盘快捷键（使用 router.push）
 │   └── [其他对话框组件]
 ├── lib/                     # 核心逻辑
-│   ├── store.ts             # Zustand 状态管理
+│   ├── store.ts             # Zustand 状态管理（移除了 viewMode/selectedFeedId）
 │   ├── db.ts                # Supabase 数据库操作
-│   ├── types.ts             # 类型定义
+│   ├── types.ts             # 类型定义（移除了 viewMode/selectedFeedId）
 │   ├── rss-parser.ts        # RSS 解析客户端
 │   ├── realtime.ts          # 实时同步管理
 │   ├── utils.ts             # 工具函数
@@ -44,11 +55,67 @@ rssreader3/
 ### 📂 `app/` - Next.js 路由
 
 #### `app/page.tsx`
-**作用**：应用入口，渲染主组件。
+**作用**：应用入口，重定向到 `/all`。
 
 ```typescript
+import { redirect } from "next/navigation"
+
 export default function Home() {
-  return <RSSReader />  // 就这么简单
+  redirect("/all")  // URL 是单一真相来源
+}
+```
+
+#### `app/(reader)/layout.tsx`
+**作用**：共享布局，包含 Sidebar 和数据加载逻辑。
+
+**关键点**：
+- 所有 reader 路由共享此布局
+- 处理数据库初始化检查
+- 调用 `loadFromSupabase()` 加载数据
+- 包裹 Sidebar 和 children（ArticleList + ArticleContent）
+
+#### `app/(reader)/all/page.tsx`
+**作用**：显示所有文章。
+
+```typescript
+export default function AllArticlesPage() {
+  return (
+    <>
+      <div className="w-96"><ArticleList viewMode="all" /></div>
+      <div className="flex-1"><ArticleContent /></div>
+    </>
+  )
+}
+```
+
+#### `app/(reader)/unread/page.tsx`
+**作用**：显示未读文章。
+
+```typescript
+export default function UnreadArticlesPage() {
+  return (
+    <>
+      <div className="w-96"><ArticleList viewMode="unread" /></div>
+      <div className="flex-1"><ArticleContent /></div>
+    </>
+  )
+}
+```
+
+#### `app/(reader)/starred/page.tsx`
+**作用**：显示收藏文章。
+
+#### `app/(reader)/feed/[feedId]/page.tsx`
+**作用**：显示特定订阅源的文章。
+
+```typescript
+export default function FeedArticlesPage({ params }: { params: { feedId: string } }) {
+  return (
+    <>
+      <div className="w-96"><ArticleList feedId={params.feedId} /></div>
+      <div className="flex-1"><ArticleContent /></div>
+    </>
+  )
 }
 ```
 
@@ -124,12 +191,12 @@ export default function Home() {
 
 **数据过滤逻辑**：
 ```typescript
-getFilteredArticles: () => {
+getFilteredArticles: ({ viewMode = "all", feedId = null }) => {
   let filtered = state.articles
 
   // 1. 按选中的 Feed 过滤
-  if (selectedFeedId) {
-    filtered = filtered.filter(a => a.feedId === selectedFeedId)
+  if (feedId) {
+    filtered = filtered.filter(a => a.feedId === feedId)
   }
 
   // 2. 按查看模式过滤（all/unread/starred）
@@ -147,6 +214,8 @@ getFilteredArticles: () => {
   return filtered.sort(...)  // 按发布时间排序
 }
 ```
+
+**重要变更**：`getFilteredArticles` 现在接收 `{ viewMode, feedId }` 参数，而不是从 store 读取。
 
 #### `lib/db.ts` ⭐️ **数据库抽象层**
 
@@ -276,15 +345,6 @@ toast({ title: "Success", description: "..." })
 
 ### 📂 `components/` - React 组件
 
-#### `components/rss-reader.tsx` ⭐️ **主组件**
-**作用**：应用根组件，处理初始化逻辑。
-
-**流程**：
-1. 检查 `isDatabaseReady`
-2. 如果 false，显示 `DatabaseSetup`
-3. 如果 true，调用 `loadFromSupabase()`
-4. 加载完成后，渲染主界面（Sidebar + ArticleList + ArticleContent）
-
 #### `components/sidebar.tsx`
 **作用**：左侧边栏，显示文件夹和订阅源。
 
@@ -293,14 +353,35 @@ toast({ title: "Success", description: "..." })
 - 显示订阅源列表（可拖拽到文件夹）
 - 显示未读数量 Badge
 - "All Articles"、"Unread"、"Starred" 视图切换
+- **使用 `<Link>` 组件实现导航**（而不是 onClick 修改 store）
+
+**关键变更**：
+```typescript
+// 旧版本：通过 store 修改状态
+<Button onClick={() => setViewMode('all')}>All Articles</Button>
+
+// 新版本：使用 Link 导航
+<Button asChild>
+  <Link href="/all">All Articles</Link>
+</Button>
+```
 
 #### `components/article-list.tsx`
 **作用**：中间栏，显示文章列表。
 
 **关键**：
-- 调用 `getFilteredArticles()` 获取过滤后的文章
+- 接收 `viewMode` 和 `feedId` props（从路由派生）
+- 调用 `getFilteredArticles({ viewMode, feedId })` 获取过滤后的文章
 - 支持虚拟滚动（长列表性能优化）
 - 点击文章时调用 `setSelectedArticle()`
+
+**接口**：
+```typescript
+interface ArticleListProps {
+  viewMode?: "all" | "unread" | "starred"
+  feedId?: string | null
+}
+```
 
 #### `components/article-content.tsx`
 **作用**：右侧栏，显示文章详情。
@@ -356,10 +437,29 @@ toast({ title: "Success", description: "..." })
 
 **快捷键**：
 - `j/k`：上/下一篇文章
-- `r`：标记已读
+- `m`：标记已读/未读
 - `s`：收藏
 - `Enter`：打开文章
-- 等等...
+- `1`：跳转到 All Articles（`router.push('/all')`）
+- `2`：跳转到 Unread（`router.push('/unread')`）
+- `3`：跳转到 Starred（`router.push('/starred')`）
+
+**关键变更**：
+```typescript
+// 旧版本：修改 store 状态
+case '1':
+  setViewMode('all')
+  break
+
+// 新版本：使用 router.push 导航
+case '1':
+  router.push('/all')
+  break
+```
+
+**实现细节**：
+- 从 `usePathname()` 解析当前 viewMode 和 feedId
+- 调用 `getFilteredArticles({ viewMode, feedId })` 获取当前视图的文章列表
 
 #### `components/ui/*`
 **作用**：shadcn/ui 组件库，无需修改。
