@@ -21,12 +21,15 @@ export function CollapsedView({ onExpand, totalArticles, totalUnread, totalStarr
   const { feeds } = useRSSStore()
 
   return (
-    <div className="flex flex-col h-full bg-sidebar text-sidebar-foreground items-center py-2">
+    <div className="flex flex-col h-full bg-sidebar text-sidebar-foreground items-center py-2 cursor-pointer" onClick={onExpand}>
       <Button
         variant="ghost"
         size="icon"
         className="h-10 w-10 mb-2 flex items-center justify-center"
-        onClick={onExpand}
+        onClick={(e) => {
+          e.stopPropagation()
+          onExpand()
+        }}
         title="Expand sidebar"
       >
         <ChevronRight className="h-4 w-4" />
