@@ -18,3 +18,9 @@ export interface DeleteFolderDialogState {
   folderName: string
   feedCount: number
 }
+
+export interface DeleteFeedDialogState {
+  open: boolean
+  feedId: string
+  feedTitle: string
+}

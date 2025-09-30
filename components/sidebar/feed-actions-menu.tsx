@@ -11,7 +11,7 @@ import {
 } from "@/components/ui/dropdown-menu"
 import { FeedRefresh } from "../feed-refresh"
 import { useRSSStore } from "@/lib/store"
-import type { RenameDialogState, MoveDialogState } from "./types"
+import type { RenameDialogState, MoveDialogState, DeleteFeedDialogState } from "./types"
 
 interface FeedActionsMenuProps {
   feedId: string
@@ -19,10 +19,11 @@ interface FeedActionsMenuProps {
   folderId?: string
   onRename: (state: RenameDialogState) => void
   onMove: (state: MoveDialogState) => void
+  onDelete: (state: DeleteFeedDialogState) => void
 }
 
-export function FeedActionsMenu({ feedId, feedTitle, folderId, onRename, onMove }: FeedActionsMenuProps) {
-  const { removeFeed } = useRSSStore()
+export function FeedActionsMenu({ feedId, feedTitle, folderId, onRename, onMove, onDelete }: FeedActionsMenuProps) {
+  const { } = useRSSStore()
 
   return (
     <DropdownMenu>
@@ -71,7 +72,13 @@ export function FeedActionsMenu({ feedId, feedTitle, folderId, onRename, onMove 
           Rename Feed
         </DropdownMenuItem>
         <DropdownMenuItem
-          onClick={() => removeFeed(feedId)}
+          onClick={() =>
+            onDelete({
+              open: true,
+              feedId,
+              feedTitle,
+            })
+          }
           className="text-destructive focus:text-destructive"
         >
           <Trash2 className="h-4 w-4 mr-2" />

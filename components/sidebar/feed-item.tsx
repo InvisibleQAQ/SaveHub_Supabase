@@ -15,7 +15,7 @@ import { cn } from "@/lib/utils"
 import { FeedActionsMenu } from "./feed-actions-menu"
 import { useRSSStore } from "@/lib/store"
 import type { Feed } from "@/lib/types"
-import type { RenameDialogState, MoveDialogState } from "./types"
+import type { RenameDialogState, MoveDialogState, DeleteFeedDialogState } from "./types"
 
 interface FeedItemProps {
   feed: Feed
@@ -24,10 +24,11 @@ interface FeedItemProps {
   variant: "icon" | "full"
   onRename?: (state: RenameDialogState) => void
   onMove?: (state: MoveDialogState) => void
+  onDelete?: (state: DeleteFeedDialogState) => void
 }
 
-export function FeedItem({ feed, unreadCount, isActive, variant, onRename, onMove }: FeedItemProps) {
-  const { markFeedAsRead, removeFeed } = useRSSStore()
+export function FeedItem({ feed, unreadCount, isActive, variant, onRename, onMove, onDelete }: FeedItemProps) {
+  const { markFeedAsRead } = useRSSStore()
 
   const handleMarkAllAsRead = (e: React.MouseEvent) => {
     e.preventDefault()
@@ -36,7 +37,11 @@ export function FeedItem({ feed, unreadCount, isActive, variant, onRename, onMov
 
   const handleDelete = (e: React.MouseEvent) => {
     e.preventDefault()
-    removeFeed(feed.id)
+    onDelete?.({
+      open: true,
+      feedId: feed.id,
+      feedTitle: feed.title,
+    })
   }
 
   const handleRename = (e: React.MouseEvent) => {
@@ -132,13 +137,14 @@ export function FeedItem({ feed, unreadCount, isActive, variant, onRename, onMov
             </Link>
           </Button>
 
-          {onRename && onMove && (
+          {onRename && onMove && onDelete && (
             <FeedActionsMenu
               feedId={feed.id}
               feedTitle={feed.title}
               folderId={feed.folderId}
               onRename={onRename}
               onMove={onMove}
+              onDelete={onDelete}
             />
           )}
         </div>

@@ -16,7 +16,7 @@ import { FolderActionsMenu } from "./folder-actions-menu"
 import { FeedItem } from "./feed-item"
 import { useRSSStore } from "@/lib/store"
 import type { Folder as FolderType, Feed } from "@/lib/types"
-import type { RenameDialogState, MoveDialogState, DeleteFolderDialogState } from "./types"
+import type { RenameDialogState, MoveDialogState, DeleteFolderDialogState, DeleteFeedDialogState } from "./types"
 
 interface FolderItemProps {
   folder: FolderType
@@ -28,6 +28,7 @@ interface FolderItemProps {
   onRenameChild: (state: RenameDialogState) => void
   onMoveChild: (state: MoveDialogState) => void
   onDelete: (state: DeleteFolderDialogState) => void
+  onDeleteChild: (state: DeleteFeedDialogState) => void
 }
 
 export function FolderItem({
@@ -40,6 +41,7 @@ export function FolderItem({
   onRenameChild,
   onMoveChild,
   onDelete,
+  onDeleteChild,
 }: FolderItemProps) {
   const pathname = usePathname()
   const { getUnreadCount } = useRSSStore()
@@ -91,6 +93,7 @@ export function FolderItem({
                     variant="full"
                     onRename={onRenameChild}
                     onMove={onMoveChild}
+                    onDelete={onDeleteChild}
                   />
                 )
               })}

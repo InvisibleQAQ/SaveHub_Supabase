@@ -1,5 +1,5 @@
 import { useState } from "react"
-import type { RenameDialogState, MoveDialogState, DeleteFolderDialogState } from "./types"
+import type { RenameDialogState, MoveDialogState, DeleteFolderDialogState, DeleteFeedDialogState } from "./types"
 
 export function useSidebarState() {
   const [showAddFeed, setShowAddFeed] = useState(false)
@@ -28,6 +28,12 @@ export function useSidebarState() {
     folderId: "",
     folderName: "",
     feedCount: 0,
+  })
+
+  const [deleteFeedDialog, setDeleteFeedDialog] = useState<DeleteFeedDialogState>({
+    open: false,
+    feedId: "",
+    feedTitle: "",
   })
 
   const toggleFolder = (folderId: string) => {
@@ -59,5 +65,7 @@ export function useSidebarState() {
     setMoveDialog,
     deleteDialog,
     setDeleteDialog,
+    deleteFeedDialog,
+    setDeleteFeedDialog,
   }
 }

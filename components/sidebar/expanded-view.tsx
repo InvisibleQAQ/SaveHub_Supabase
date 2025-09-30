@@ -15,7 +15,7 @@ import { FeedRefresh } from "../feed-refresh"
 import { useRSSStore } from "@/lib/store"
 import { cn } from "@/lib/utils"
 import type { Feed, Folder } from "@/lib/types"
-import type { RenameDialogState, MoveDialogState, DeleteFolderDialogState } from "./types"
+import type { RenameDialogState, MoveDialogState, DeleteFolderDialogState, DeleteFeedDialogState } from "./types"
 
 interface ExpandedViewProps {
   feedSearch: string
@@ -28,6 +28,7 @@ interface ExpandedViewProps {
   onRename: (state: RenameDialogState) => void
   onMove: (state: MoveDialogState) => void
   onDelete: (state: DeleteFolderDialogState) => void
+  onDeleteFeed: (state: DeleteFeedDialogState) => void
   totalArticles: number
   totalUnread: number
   totalStarred: number
@@ -44,6 +45,7 @@ export function ExpandedView({
   onRename,
   onMove,
   onDelete,
+  onDeleteFeed,
   totalArticles,
   totalUnread,
   totalStarred,
@@ -153,6 +155,7 @@ export function ExpandedView({
                   onRenameChild={onRename}
                   onMoveChild={onMove}
                   onDelete={onDelete}
+                  onDeleteChild={onDeleteFeed}
                 />
               )
             })}
@@ -170,6 +173,7 @@ export function ExpandedView({
                   variant="full"
                   onRename={onRename}
                   onMove={onMove}
+                  onDelete={onDeleteFeed}
                 />
               )
             })}

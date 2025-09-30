@@ -7,6 +7,7 @@ import { AddFolderDialog } from "../add-folder-dialog"
 import { RenameDialog } from "../rename-dialog"
 import { MoveToFolderDialog } from "../move-to-folder-dialog"
 import { DeleteFolderDialog } from "./delete-folder-dialog"
+import { DeleteFeedDialog } from "./delete-feed-dialog"
 import { useRSSStore } from "@/lib/store"
 import { useSidebarState } from "./use-sidebar-state"
 
@@ -31,6 +32,8 @@ export function Sidebar() {
     setMoveDialog,
     deleteDialog,
     setDeleteDialog,
+    deleteFeedDialog,
+    setDeleteFeedDialog,
   } = useSidebarState()
 
   const totalArticles = articles.length
@@ -72,6 +75,7 @@ export function Sidebar() {
         onRename={setRenameDialog}
         onMove={setMoveDialog}
         onDelete={setDeleteDialog}
+        onDeleteFeed={setDeleteFeedDialog}
         totalArticles={totalArticles}
         totalUnread={totalUnread}
         totalStarred={totalStarred}
@@ -105,6 +109,10 @@ export function Sidebar() {
       <DeleteFolderDialog
         state={deleteDialog}
         onOpenChange={(open) => setDeleteDialog((prev) => ({ ...prev, open }))}
+      />
+      <DeleteFeedDialog
+        state={deleteFeedDialog}
+        onOpenChange={(open) => setDeleteFeedDialog((prev) => ({ ...prev, open }))}
       />
     </>
   )
