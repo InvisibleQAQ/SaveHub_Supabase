@@ -19,18 +19,53 @@ export interface AppSettings {
  */
 function toISOString(date: Date | string | undefined | null): string | null {
   if (!date) return null
-
-  // If it's already a string, return it as-is (assuming it's already in ISO format)
   if (typeof date === "string") return date
-
-  // If it's a Date object, convert it to ISO string
   if (date instanceof Date) return date.toISOString()
+  return null
+}
 
-  // Fallback: try to create a Date from whatever we got
-  try {
-    return new Date(date).toISOString()
-  } catch {
-    return null
+type DbRow = Record<string, any>
+
+class GenericRepository<TApp, TDb extends DbRow = DbRow> {
+  constructor(
+    private tableName: string,
+    private toDb: (item: TApp) => TDb,
+    private fromDb: (row: TDb) => TApp,
+    private orderBy?: { column: string; ascending: boolean },
+  ) {}
+
+  async save(items: TApp[]): Promise<void> {
+    const supabase = createClient()
+    const dbItems = items.map(this.toDb)
+    const { error } = await supabase.from(this.tableName).upsert(dbItems)
+    if (error) throw error
+  }
+
+  async load(): Promise<TApp[]> {
+    const supabase = createClient()
+    let query = supabase.from(this.tableName).select("*")
+
+    if (this.orderBy) {
+      query = query.order(this.orderBy.column, { ascending: this.orderBy.ascending })
+    }
+
+    const { data, error } = await query
+    if (error) throw error
+    return (data || []).map(this.fromDb)
+  }
+
+  async delete(id: string): Promise<void> {
+    const supabase = createClient()
+    const { error } = await supabase.from(this.tableName).delete().eq("id", id)
+    if (error) throw error
+  }
+}
+
+function folderToDb(folder: Folder): DbRow {
+  return {
+    id: folder.id,
+    name: folder.name,
+    created_at: toISOString(folder.createdAt),
   }
 }
 
@@ -39,6 +74,19 @@ function dbRowToFolder(row: Database["public"]["Tables"]["folders"]["Row"]): Fol
     id: row.id,
     name: row.name,
     createdAt: new Date(row.created_at),
+  }
+}
+
+function feedToDb(feed: Feed): DbRow {
+  return {
+    id: feed.id,
+    title: feed.title,
+    url: feed.url,
+    description: feed.description || null,
+    category: feed.category || null,
+    folder_id: feed.folderId || null,
+    unread_count: feed.unreadCount,
+    last_fetched: toISOString(feed.lastFetched),
   }
 }
 
@@ -53,6 +101,46 @@ function dbRowToFeed(row: Database["public"]["Tables"]["feeds"]["Row"]): Feed {
     unreadCount: row.unread_count,
     lastFetched: row.last_fetched ? new Date(row.last_fetched) : undefined,
   }
+}
+
+function articleToDb(article: Article): DbRow {
+  return {
+    id: article.id,
+    feed_id: article.feedId,
+    title: article.title,
+    content: article.content,
+    summary: article.summary || null,
+    url: article.url,
+    author: article.author || null,
+    published_at: toISOString(article.publishedAt),
+    is_read: article.isRead,
+    is_starred: article.isStarred,
+    thumbnail: article.thumbnail || null,
+  }
+}
+
+function articlePartialToDb(updates: Partial<Article>): DbRow {
+  const dbUpdates: DbRow = {}
+  const fieldMap: Record<string, string> = {
+    isRead: "is_read",
+    isStarred: "is_starred",
+    title: "title",
+    content: "content",
+    summary: "summary",
+    url: "url",
+    author: "author",
+    publishedAt: "published_at",
+    thumbnail: "thumbnail",
+  }
+
+  for (const [appKey, dbKey] of Object.entries(fieldMap)) {
+    const value = updates[appKey as keyof Article]
+    if (value !== undefined) {
+      dbUpdates[dbKey] = value instanceof Date ? toISOString(value) : value
+    }
+  }
+
+  return dbUpdates
 }
 
 function dbRowToArticle(row: Database["public"]["Tables"]["articles"]["Row"]): Article {
@@ -85,97 +173,53 @@ function dbRowToSettings(row: Database["public"]["Tables"]["settings"]["Row"]): 
 }
 
 class SupabaseManager {
-  // Folder operations
+  private foldersRepo = new GenericRepository(
+    "folders",
+    folderToDb,
+    dbRowToFolder,
+    { column: "created_at", ascending: true },
+  )
+
+  private feedsRepo = new GenericRepository(
+    "feeds",
+    feedToDb,
+    dbRowToFeed,
+    { column: "created_at", ascending: true },
+  )
+
+  private articlesRepo = new GenericRepository("articles", articleToDb, dbRowToArticle, {
+    column: "published_at",
+    ascending: false,
+  })
+
   async saveFolders(folders: Folder[]): Promise<void> {
-    const supabase = createClient()
-
-    const dbFolders = folders.map((folder) => ({
-      id: folder.id,
-      name: folder.name,
-      created_at: toISOString(folder.createdAt),
-    }))
-
-    const { error } = await supabase.from("folders").upsert(dbFolders)
-
-    if (error) throw error
+    return this.foldersRepo.save(folders)
   }
 
   async loadFolders(): Promise<Folder[]> {
-    const supabase = createClient()
-
-    const { data, error } = await supabase.from("folders").select("*").order("created_at", { ascending: true })
-
-    if (error) throw error
-    return (data || []).map(dbRowToFolder)
+    return this.foldersRepo.load()
   }
 
   async deleteFolder(folderId: string): Promise<void> {
-    const supabase = createClient()
-
-    const { error } = await supabase.from("folders").delete().eq("id", folderId)
-
-    if (error) throw error
+    return this.foldersRepo.delete(folderId)
   }
 
-  // Feed operations
   async saveFeeds(feeds: Feed[]): Promise<void> {
-    const supabase = createClient()
-
-    const dbFeeds = feeds.map((feed) => ({
-      id: feed.id,
-      title: feed.title,
-      url: feed.url,
-      description: feed.description || null,
-      category: feed.category || null,
-      folder_id: feed.folderId || null,
-      unread_count: feed.unreadCount,
-      last_fetched: toISOString(feed.lastFetched),
-    }))
-
-    const { error } = await supabase.from("feeds").upsert(dbFeeds)
-
-    if (error) throw error
+    return this.feedsRepo.save(feeds)
   }
 
   async loadFeeds(): Promise<Feed[]> {
-    const supabase = createClient()
-
-    const { data, error } = await supabase.from("feeds").select("*").order("created_at", { ascending: true })
-
-    if (error) throw error
-    return (data || []).map(dbRowToFeed)
+    return this.feedsRepo.load()
   }
 
   async deleteFeed(feedId: string): Promise<void> {
     const supabase = createClient()
-
-    // Delete feed (articles will be cascade deleted due to foreign key)
     const { error } = await supabase.from("feeds").delete().eq("id", feedId)
-
     if (error) throw error
   }
 
-  // Article operations
   async saveArticles(articles: Article[]): Promise<void> {
-    const supabase = createClient()
-
-    const dbArticles = articles.map((article) => ({
-      id: article.id,
-      feed_id: article.feedId,
-      title: article.title,
-      content: article.content,
-      summary: article.summary || null,
-      url: article.url,
-      author: article.author || null,
-      published_at: toISOString(article.publishedAt),
-      is_read: article.isRead,
-      is_starred: article.isStarred,
-      thumbnail: article.thumbnail || null,
-    }))
-
-    const { error } = await supabase.from("articles").upsert(dbArticles)
-
-    if (error) throw error
+    return this.articlesRepo.save(articles)
   }
 
   async loadArticles(feedId?: string, limit?: number): Promise<Article[]> {
@@ -199,21 +243,8 @@ class SupabaseManager {
 
   async updateArticle(articleId: string, updates: Partial<Article>): Promise<void> {
     const supabase = createClient()
-
-    const dbUpdates: any = {}
-
-    if (updates.isRead !== undefined) dbUpdates.is_read = updates.isRead
-    if (updates.isStarred !== undefined) dbUpdates.is_starred = updates.isStarred
-    if (updates.title !== undefined) dbUpdates.title = updates.title
-    if (updates.content !== undefined) dbUpdates.content = updates.content
-    if (updates.summary !== undefined) dbUpdates.summary = updates.summary
-    if (updates.url !== undefined) dbUpdates.url = updates.url
-    if (updates.author !== undefined) dbUpdates.author = updates.author
-    if (updates.publishedAt !== undefined) dbUpdates.published_at = toISOString(updates.publishedAt)
-    if (updates.thumbnail !== undefined) dbUpdates.thumbnail = updates.thumbnail
-
+    const dbUpdates = articlePartialToDb(updates)
     const { error } = await supabase.from("articles").update(dbUpdates).eq("id", articleId)
-
     if (error) throw error
   }
 
