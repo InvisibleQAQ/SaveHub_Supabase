@@ -72,6 +72,82 @@ function ArticleList() {
 2. 类型转换（camelCase ↔ snake_case）
 3. 日期格式转换（Date ↔ ISO string）
 
+**架构设计**：采用泛型 Repository 模式消除重复代码。
+
+**核心类**：
+```typescript
+// 泛型仓库 - 统一的 CRUD 操作模板
+class GenericRepository<TApp, TDb> {
+  constructor(
+    private tableName: string,
+    private toDb: (item: TApp) => TDb,        // 应用类型 → 数据库类型
+    private fromDb: (row: TDb) => TApp,       // 数据库类型 → 应用类型
+    private orderBy?: { column: string; ascending: boolean }
+  ) {}
+
+  async save(items: TApp[]): Promise<void>    // 批量保存
+  async load(): Promise<TApp[]>               // 加载所有
+  async delete(id: string): Promise<void>     // 删除单个
+}
+
+// SupabaseManager - 使用泛型仓库
+class SupabaseManager {
+  private foldersRepo = new GenericRepository(
+    "folders", folderToDb, dbRowToFolder,
+    { column: "created_at", ascending: true }
+  )
+
+  private feedsRepo = new GenericRepository(
+    "feeds", feedToDb, dbRowToFeed,
+    { column: "created_at", ascending: true }
+  )
+
+  private articlesRepo = new GenericRepository(
+    "articles", articleToDb, dbRowToArticle,
+    { column: "published_at", ascending: false }
+  )
+
+  // 委托给泛型仓库
+  async saveFolders(folders: Folder[]) {
+    return this.foldersRepo.save(folders)
+  }
+}
+```
+
+**设计优势**：
+1. **消除重复**：save/load/delete 操作只实现一次
+2. **类型安全**：通过转换函数确保类型正确
+3. **可扩展**：添加新实体只需定义转换函数，无需复制 CRUD 代码
+4. **单一职责**：Repository 处理数据库，转换函数处理类型映射
+
+**类型转换函数**：
+```typescript
+// 应用层 → 数据库层
+function feedToDb(feed: Feed): DbRow {
+  return {
+    id: feed.id,
+    title: feed.title,
+    folder_id: feed.folderId || null,  // camelCase → snake_case
+    last_fetched: toISOString(feed.lastFetched),  // Date → ISO string
+  }
+}
+
+// 数据库层 → 应用层
+function dbRowToFeed(row: DbRow): Feed {
+  return {
+    id: row.id,
+    title: row.title,
+    folderId: row.folder_id || undefined,  // snake_case → camelCase
+    lastFetched: row.last_fetched ? new Date(row.last_fetched) : undefined,
+  }
+}
+```
+
+**特殊操作**：
+- `updateArticle()`：使用字段映射表动态构建更新对象，避免 9 个 if 判断
+- `loadArticles(feedId?, limit?)`：支持可选过滤参数的特殊查询
+- `clearOldArticles()`：清理旧文章的批量删除操作
+
 **重要**：只有 store actions 调用 dbManager，组件永远不直接调用。
 
 ## 数据同步机制

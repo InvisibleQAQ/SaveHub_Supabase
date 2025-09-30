@@ -256,31 +256,35 @@ export const FeedSchema = z.object({
 3. **更新数据库映射**（`lib/db.ts`）：
 
 ```typescript
-// 读取时转换
+// 添加应用层 → DB 层的转换
+function feedToDb(feed: Feed): DbRow {
+  return {
+    id: feed.id,
+    title: feed.title,
+    url: feed.url,
+    icon_url: feed.iconUrl || null,  // 新增：camelCase → snake_case
+    folder_id: feed.folderId || null,
+    unread_count: feed.unreadCount,
+    last_fetched: toISOString(feed.lastFetched),
+  }
+}
+
+// 添加 DB 层 → 应用层的转换
 function dbRowToFeed(row: Database["public"]["Tables"]["feeds"]["Row"]): Feed {
   return {
     id: row.id,
     title: row.title,
     url: row.url,
-    iconUrl: row.icon_url || undefined,  // 新增
-    // ... 其他字段
+    iconUrl: row.icon_url || undefined,  // 新增：snake_case → camelCase
+    folderId: row.folder_id || undefined,
+    unreadCount: row.unread_count,
+    lastFetched: row.last_fetched ? new Date(row.last_fetched) : undefined,
   }
 }
-
-// 写入时转换
-async saveFeeds(feeds: Feed[]): Promise<void> {
-  const dbFeeds = feeds.map((feed) => ({
-    id: feed.id,
-    title: feed.title,
-    url: feed.url,
-    icon_url: feed.iconUrl || null,  // 新增
-    // ... 其他字段
-  }))
-
-  const { error } = await supabase.from("feeds").upsert(dbFeeds)
-  if (error) throw error
-}
 ```
+
+**注意**：现在使用泛型 Repository 模式，`feedsRepo.save()` 会自动调用 `feedToDb()` 转换，
+无需修改 `saveFeeds()` 方法。
 
 4. **更新 UI 使用新字段**：
 

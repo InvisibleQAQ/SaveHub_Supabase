@@ -240,25 +240,107 @@ getFilteredArticles: ({ viewMode = "all", feedId = null }) => {
 
 **作用**：封装所有 Supabase 操作，提供类型安全的接口。
 
-**关键类**：`SupabaseManager`
+**架构设计**：采用泛型 Repository 模式消除 CRUD 重复代码。
+
+**核心类**：
+
+1. **GenericRepository<TApp, TDb>** - 通用 CRUD 模板
+   ```typescript
+   class GenericRepository<TApp, TDb> {
+     constructor(
+       tableName: string,
+       toDb: (item: TApp) => TDb,      // 应用类型 → DB 类型
+       fromDb: (row: TDb) => TApp,     // DB 类型 → 应用类型
+       orderBy?: { column, ascending }
+     )
+
+     async save(items: TApp[]): Promise<void>
+     async load(): Promise<TApp[]>
+     async delete(id: string): Promise<void>
+   }
+   ```
+
+2. **SupabaseManager** - 主管理类
+   ```typescript
+   class SupabaseManager {
+     // 使用泛型仓库实例
+     private foldersRepo = new GenericRepository(...)
+     private feedsRepo = new GenericRepository(...)
+     private articlesRepo = new GenericRepository(...)
+
+     // 委托方法（不再有重复的 CRUD 代码）
+     async saveFolders(folders: Folder[]) {
+       return this.foldersRepo.save(folders)
+     }
+
+     async loadFolders(): Promise<Folder[]> {
+       return this.foldersRepo.load()
+     }
+
+     // ...其他委托方法
+   }
+   ```
 
 **主要方法**：
-- `saveFolders(folders)`：批量保存文件夹
-- `saveFeeds(feeds)`：批量保存订阅源
-- `saveArticles(articles)`：批量保存文章
-- `loadFolders()`：加载所有文件夹
-- `updateArticle(id, updates)`：更新单篇文章
+- `saveFolders(folders)` / `saveFeeds(feeds)` / `saveArticles(articles)`：批量保存
+- `loadFolders()` / `loadFeeds()` / `loadArticles()`：加载所有
+- `deleteFolder(id)` / `deleteFeed(id)`：删除单个
+- `updateArticle(id, updates)`：更新单篇文章（使用字段映射表，不再是 9 个 if 判断）
 - `clearOldArticles(daysToKeep)`：清理旧文章
 - `isDatabaseInitialized()`：检查数据库是否初始化
 
 **类型转换**：
-- `dbRowToFeed(row)`：数据库行 → Feed 对象
-- `toISOString(date)`：Date → ISO string
+```typescript
+// 应用层 → DB 层
+function feedToDb(feed: Feed): DbRow {
+  return {
+    id: feed.id,
+    title: feed.title,
+    folder_id: feed.folderId || null,              // camelCase → snake_case
+    last_fetched: toISOString(feed.lastFetched),   // Date → ISO string
+  }
+}
+
+// DB 层 → 应用层
+function dbRowToFeed(row: DbRow): Feed {
+  return {
+    id: row.id,
+    title: row.title,
+    folderId: row.folder_id || undefined,          // snake_case → camelCase
+    lastFetched: row.last_fetched ? new Date(row.last_fetched) : undefined,
+  }
+}
+
+// 部分更新转换（消除 9 个 if 判断）
+function articlePartialToDb(updates: Partial<Article>): DbRow {
+  const fieldMap = {
+    isRead: "is_read",
+    isStarred: "is_starred",
+    publishedAt: "published_at",
+    // ...
+  }
+
+  const dbUpdates: DbRow = {}
+  for (const [appKey, dbKey] of Object.entries(fieldMap)) {
+    const value = updates[appKey]
+    if (value !== undefined) {
+      dbUpdates[dbKey] = value instanceof Date ? toISOString(value) : value
+    }
+  }
+  return dbUpdates
+}
+```
 
 **为什么需要转换**：
 - 数据库字段用 `snake_case`（如 `feed_id`）
 - 应用层用 `camelCase`（如 `feedId`）
 - 日期在数据库存字符串，应用层用 Date 对象
+
+**设计优势**：
+1. **消除重复**：save/load/delete 操作从 ~99行重复代码 → 33行泛型模板
+2. **类型安全**：消除了 `any` 类型，通过转换函数确保类型正确
+3. **可扩展**：添加新实体只需 3 步骤（定义转换函数 → 创建 Repository 实例 → 委托方法）
+4. **单一职责**：Repository 处理数据库，转换函数处理类型映射
 
 #### `lib/types.ts`
 **作用**：定义应用的核心类型。
