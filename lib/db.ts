@@ -65,6 +65,7 @@ function folderToDb(folder: Folder): DbRow {
   return {
     id: folder.id,
     name: folder.name,
+    order: folder.order,
     created_at: toISOString(folder.createdAt),
   }
 }
@@ -73,6 +74,7 @@ function dbRowToFolder(row: Database["public"]["Tables"]["folders"]["Row"]): Fol
   return {
     id: row.id,
     name: row.name,
+    order: row.order,
     createdAt: new Date(row.created_at),
   }
 }
@@ -85,6 +87,7 @@ function feedToDb(feed: Feed): DbRow {
     description: feed.description || null,
     category: feed.category || null,
     folder_id: feed.folderId || null,
+    order: feed.order,
     unread_count: feed.unreadCount,
     last_fetched: toISOString(feed.lastFetched),
   }
@@ -98,6 +101,7 @@ function dbRowToFeed(row: Database["public"]["Tables"]["feeds"]["Row"]): Feed {
     description: row.description || undefined,
     category: row.category || undefined,
     folderId: row.folder_id || undefined,
+    order: row.order,
     unreadCount: row.unread_count,
     lastFetched: row.last_fetched ? new Date(row.last_fetched) : undefined,
   }
@@ -177,14 +181,14 @@ class SupabaseManager {
     "folders",
     folderToDb,
     dbRowToFolder,
-    { column: "created_at", ascending: true },
+    { column: "order", ascending: true },
   )
 
   private feedsRepo = new GenericRepository(
     "feeds",
     feedToDb,
     dbRowToFeed,
-    { column: "created_at", ascending: true },
+    { column: "order", ascending: true },
   )
 
   private articlesRepo = new GenericRepository("articles", articleToDb, dbRowToArticle, {

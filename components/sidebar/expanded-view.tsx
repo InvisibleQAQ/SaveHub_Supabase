@@ -1,5 +1,6 @@
 "use client"
 
+import React from "react"
 import Link from "next/link"
 import { usePathname } from "next/navigation"
 import { Search, BookOpen, Rss, Star, Plus, FolderPlus, ChevronLeft, Settings } from "lucide-react"
@@ -51,7 +52,8 @@ export function ExpandedView({
   totalStarred,
 }: ExpandedViewProps) {
   const pathname = usePathname()
-  const { folders, feeds, getUnreadCount } = useRSSStore()
+  const { folders, feeds, getUnreadCount, moveFeed } = useRSSStore()
+  const [draggedFeedId, setDraggedFeedId] = React.useState<string | null>(null)
 
   const filteredFolders = folders.filter((folder) => folder.name.toLowerCase().includes(feedSearch.toLowerCase()))
 
@@ -70,6 +72,67 @@ export function ExpandedView({
     },
     {} as Record<string, Feed[]>
   )
+
+  const handleFeedDragStart = (feedId: string) => {
+    setDraggedFeedId(feedId)
+  }
+
+  const handleFeedDragOver = (e: React.DragEvent, targetFeedId: string) => {
+    e.preventDefault()
+  }
+
+  const handleFeedDrop = (e: React.DragEvent, targetFeedId: string) => {
+    e.preventDefault()
+    if (!draggedFeedId || draggedFeedId === targetFeedId) return
+
+    const draggedFeed = feeds.find((f) => f.id === draggedFeedId)
+    const targetFeed = feeds.find((f) => f.id === targetFeedId)
+    if (!draggedFeed || !targetFeed) return
+
+    const targetFolderId = targetFeed.folderId
+    const sameFolderFeeds = feeds
+      .filter((f) => (f.folderId || undefined) === (targetFolderId || undefined))
+      .sort((a, b) => a.order - b.order)
+
+    const targetIndex = sameFolderFeeds.findIndex((f) => f.id === targetFeedId)
+
+    moveFeed(draggedFeedId, targetFolderId, targetIndex)
+    setDraggedFeedId(null)
+  }
+
+  const handleDropOnFolder = (e: React.DragEvent, folderId: string) => {
+    e.preventDefault()
+    if (!draggedFeedId) return
+
+    const draggedFeed = feeds.find((f) => f.id === draggedFeedId)
+    if (!draggedFeed) return
+
+    moveFeed(draggedFeedId, folderId, 0)
+    setDraggedFeedId(null)
+  }
+
+  const handleDragOverFolder = (e: React.DragEvent) => {
+    e.preventDefault()
+  }
+
+  const handleDropOnRootLevel = (e: React.DragEvent) => {
+    e.preventDefault()
+    if (!draggedFeedId) return
+
+    const draggedFeed = feeds.find((f) => f.id === draggedFeedId)
+    if (!draggedFeed) return
+
+    const rootLevelFeeds = feeds
+      .filter((f) => !f.folderId)
+      .sort((a, b) => a.order - b.order)
+
+    moveFeed(draggedFeedId, undefined, rootLevelFeeds.length)
+    setDraggedFeedId(null)
+  }
+
+  const handleDragOverRootLevel = (e: React.DragEvent) => {
+    e.preventDefault()
+  }
 
   return (
     <div className="flex flex-col h-full bg-sidebar text-sidebar-foreground">
@@ -156,27 +219,56 @@ export function ExpandedView({
                   onMoveChild={onMove}
                   onDelete={onDelete}
                   onDeleteChild={onDeleteFeed}
+                  onDragOverFolder={handleDragOverFolder}
+                  onDropOnFolder={handleDropOnFolder}
+                  onFeedDragStart={handleFeedDragStart}
+                  onFeedDragOver={handleFeedDragOver}
+                  onFeedDrop={handleFeedDrop}
+                  draggedFeedId={draggedFeedId}
                 />
               )
             })}
 
             {/* Feeds without folders */}
-            {feedsByFolder.none?.map((feed) => {
-              const unreadCount = getUnreadCount(feed.id)
-              const isActive = pathname === `/feed/${feed.id}`
-              return (
-                <FeedItem
-                  key={feed.id}
-                  feed={feed}
-                  unreadCount={unreadCount}
-                  isActive={isActive}
-                  variant="full"
-                  onRename={onRename}
-                  onMove={onMove}
-                  onDelete={onDeleteFeed}
-                />
-              )
-            })}
+            <div
+              onDragOver={handleDragOverRootLevel}
+              onDrop={handleDropOnRootLevel}
+              className={cn(
+                "min-h-[60px] rounded-md transition-colors",
+                draggedFeedId && "bg-sidebar-accent/30 border-2 border-dashed border-sidebar-border"
+              )}
+            >
+              {feedsByFolder.none && feedsByFolder.none.length > 0 && (
+                <div className="mb-2 text-xs font-medium text-sidebar-foreground/60 uppercase tracking-wide">
+                  Root Level
+                </div>
+              )}
+              {feedsByFolder.none?.map((feed) => {
+                const unreadCount = getUnreadCount(feed.id)
+                const isActive = pathname === `/feed/${feed.id}`
+                return (
+                  <FeedItem
+                    key={feed.id}
+                    feed={feed}
+                    unreadCount={unreadCount}
+                    isActive={isActive}
+                    variant="full"
+                    onRename={onRename}
+                    onMove={onMove}
+                    onDelete={onDeleteFeed}
+                    onDragStart={handleFeedDragStart}
+                    onDragOver={handleFeedDragOver}
+                    onDrop={handleFeedDrop}
+                    isDragging={draggedFeedId === feed.id}
+                  />
+                )
+              })}
+              {draggedFeedId && (!feedsByFolder.none || feedsByFolder.none.length === 0) && (
+                <div className="flex items-center justify-center h-[60px] text-xs text-sidebar-foreground/40">
+                  Drop here to move to root level
+                </div>
+              )}
+            </div>
 
             {filteredFeeds.length === 0 && feeds.length > 0 && (
               <div className="text-center py-8 text-sidebar-foreground/60">

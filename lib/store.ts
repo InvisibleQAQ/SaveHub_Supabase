@@ -7,11 +7,13 @@ interface RSSReaderActions {
   addFolder: (folder: Omit<Folder, "id" | "createdAt">) => void
   removeFolder: (folderId: string, deleteFeeds?: boolean) => Promise<void>
   renameFolder: (folderId: string, newName: string) => void
+  moveFolder: (folderId: string, targetOrder: number) => void
 
   // Feed management
   addFeed: (feed: Omit<Feed, "id">) => void
   removeFeed: (feedId: string) => void
   updateFeed: (feedId: string, updates: Partial<Feed>) => void
+  moveFeed: (feedId: string, targetFolderId: string | undefined, targetOrder: number) => void
 
   // Article management
   addArticles: (articles: Article[]) => void
@@ -125,6 +127,23 @@ export const useRSSStore = create<RSSReaderState & RSSReaderActions>()((set, get
         get().syncToSupabase()
       },
 
+      moveFolder: (folderId, targetOrder) => {
+        set((state) => {
+          const folders = [...state.folders]
+          const folderIndex = folders.findIndex((f) => f.id === folderId)
+          if (folderIndex === -1) return state
+
+          const [movedFolder] = folders.splice(folderIndex, 1)
+          folders.splice(targetOrder, 0, movedFolder)
+
+          return {
+            folders: folders.map((folder, index) => ({ ...folder, order: index })),
+          }
+        })
+
+        get().syncToSupabase()
+      },
+
       // Feed actions
       addFeed: (feed) => {
         console.log("[v0] Adding feed to store:", feed)
@@ -169,6 +188,51 @@ export const useRSSStore = create<RSSReaderState & RSSReaderActions>()((set, get
         set((state) => ({
           feeds: state.feeds.map((f) => (f.id === feedId ? { ...f, ...updates } : f)),
         }))
+
+        get().syncToSupabase()
+      },
+
+      moveFeed: (feedId, targetFolderId, targetOrder) => {
+        set((state) => {
+          const feed = state.feeds.find((f) => f.id === feedId)
+          if (!feed) return state
+
+          const oldFolderId = feed.folderId
+
+          let updatedFeeds = state.feeds.map((f) =>
+            f.id === feedId ? { ...f, folderId: targetFolderId } : f
+          )
+
+          const sameFolderFeeds = updatedFeeds.filter(
+            (f) => (f.folderId || undefined) === (targetFolderId || undefined)
+          )
+
+          const otherFeeds = updatedFeeds.filter(
+            (f) => (f.folderId || undefined) !== (targetFolderId || undefined)
+          )
+
+          const movedFeed = sameFolderFeeds.find((f) => f.id === feedId)!
+          const otherSameFolderFeeds = sameFolderFeeds.filter((f) => f.id !== feedId)
+
+          otherSameFolderFeeds.splice(targetOrder, 0, movedFeed)
+
+          const reorderedSameFolderFeeds = otherSameFolderFeeds.map((f, index) => ({
+            ...f,
+            order: index,
+          }))
+
+          if (oldFolderId !== targetFolderId && oldFolderId !== undefined) {
+            const oldFolderFeeds = otherFeeds
+              .filter((f) => f.folderId === oldFolderId)
+              .map((f, index) => ({ ...f, order: index }))
+
+            updatedFeeds = [...reorderedSameFolderFeeds, ...oldFolderFeeds, ...otherFeeds.filter((f) => f.folderId !== oldFolderId)]
+          } else {
+            updatedFeeds = [...reorderedSameFolderFeeds, ...otherFeeds]
+          }
+
+          return { feeds: updatedFeeds }
+        })
 
         get().syncToSupabase()
       },

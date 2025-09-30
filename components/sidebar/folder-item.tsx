@@ -29,6 +29,12 @@ interface FolderItemProps {
   onMoveChild: (state: MoveDialogState) => void
   onDelete: (state: DeleteFolderDialogState) => void
   onDeleteChild: (state: DeleteFeedDialogState) => void
+  onDragOverFolder?: (e: React.DragEvent, folderId: string) => void
+  onDropOnFolder?: (e: React.DragEvent, folderId: string) => void
+  onFeedDragStart?: (feedId: string) => void
+  onFeedDragOver?: (e: React.DragEvent, feedId: string) => void
+  onFeedDrop?: (e: React.DragEvent, feedId: string) => void
+  draggedFeedId?: string | null
 }
 
 export function FolderItem({
@@ -42,16 +48,34 @@ export function FolderItem({
   onMoveChild,
   onDelete,
   onDeleteChild,
+  onDragOverFolder,
+  onDropOnFolder,
+  onFeedDragStart,
+  onFeedDragOver,
+  onFeedDrop,
+  draggedFeedId,
 }: FolderItemProps) {
   const pathname = usePathname()
   const { getUnreadCount } = useRSSStore()
 
   const folderUnreadCount = feeds.reduce((sum, feed) => sum + getUnreadCount(feed.id), 0)
 
+  const handleDragOver = (e: React.DragEvent) => {
+    e.preventDefault()
+    e.stopPropagation()
+    onDragOverFolder?.(e, folder.id)
+  }
+
+  const handleDrop = (e: React.DragEvent) => {
+    e.preventDefault()
+    e.stopPropagation()
+    onDropOnFolder?.(e, folder.id)
+  }
+
   return (
     <ContextMenu>
       <ContextMenuTrigger asChild>
-        <div>
+        <div onDragOver={handleDragOver} onDrop={handleDrop}>
           <Collapsible open={isOpen} onOpenChange={onToggle}>
             <div className="group relative">
               <CollapsibleTrigger asChild>
@@ -94,6 +118,10 @@ export function FolderItem({
                     onRename={onRenameChild}
                     onMove={onMoveChild}
                     onDelete={onDeleteChild}
+                    onDragStart={onFeedDragStart}
+                    onDragOver={onFeedDragOver}
+                    onDrop={onFeedDrop}
+                    isDragging={draggedFeedId === feed.id}
                   />
                 )
               })}

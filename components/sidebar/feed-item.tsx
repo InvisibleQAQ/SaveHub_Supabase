@@ -25,10 +25,31 @@ interface FeedItemProps {
   onRename?: (state: RenameDialogState) => void
   onMove?: (state: MoveDialogState) => void
   onDelete?: (state: DeleteFeedDialogState) => void
+  onDragStart?: (feedId: string) => void
+  onDragOver?: (e: React.DragEvent, feedId: string) => void
+  onDrop?: (e: React.DragEvent, feedId: string) => void
+  isDragging?: boolean
 }
 
-export function FeedItem({ feed, unreadCount, isActive, variant, onRename, onMove, onDelete }: FeedItemProps) {
+export function FeedItem({ feed, unreadCount, isActive, variant, onRename, onMove, onDelete, onDragStart, onDragOver, onDrop, isDragging }: FeedItemProps) {
   const { markFeedAsRead } = useRSSStore()
+
+  const handleDragStart = (e: React.DragEvent) => {
+    e.stopPropagation()
+    onDragStart?.(feed.id)
+  }
+
+  const handleDragOver = (e: React.DragEvent) => {
+    e.preventDefault()
+    e.stopPropagation()
+    onDragOver?.(e, feed.id)
+  }
+
+  const handleDrop = (e: React.DragEvent) => {
+    e.preventDefault()
+    e.stopPropagation()
+    onDrop?.(e, feed.id)
+  }
 
   const handleMarkAllAsRead = (e: React.MouseEvent) => {
     e.preventDefault()
@@ -104,7 +125,16 @@ export function FeedItem({ feed, unreadCount, isActive, variant, onRename, onMov
   return (
     <ContextMenu>
       <ContextMenuTrigger asChild>
-        <div className="group relative">
+        <div
+          className={cn(
+            "group relative transition-opacity",
+            isDragging && "opacity-50 cursor-move"
+          )}
+          draggable
+          onDragStart={handleDragStart}
+          onDragOver={handleDragOver}
+          onDrop={handleDrop}
+        >
           <Button
             variant="ghost"
             className={cn(

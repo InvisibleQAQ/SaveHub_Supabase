@@ -4,6 +4,7 @@ import { z } from "zod"
 export const FolderSchema = z.object({
   id: z.string(),
   name: z.string(),
+  order: z.number().default(0),
   createdAt: z.date().default(() => new Date()),
 })
 
@@ -14,7 +15,8 @@ export const FeedSchema = z.object({
   url: z.string().url(),
   description: z.string().optional(),
   category: z.string().optional(),
-  folderId: z.string().optional(), // Added folderId to organize feeds in folders
+  folderId: z.string().optional(),
+  order: z.number().default(0),
   unreadCount: z.number().default(0),
   lastFetched: z.date().optional(),
 })
