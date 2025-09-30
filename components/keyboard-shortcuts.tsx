@@ -107,6 +107,11 @@ export function KeyboardShortcuts() {
             document.dispatchEvent(new CustomEvent("refresh-feeds"))
           }
           break
+
+        case ",":
+          event.preventDefault()
+          router.push("/settings")
+          break
       }
     }
 

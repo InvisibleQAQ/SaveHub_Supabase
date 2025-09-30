@@ -92,18 +92,21 @@ CREATE TABLE IF NOT EXISTS settings (
 );
 ```
 
-4. **在设置对话框中添加 UI**（`components/settings-dialog.tsx`）：
+4. **在设置页面中添加 UI**（`app/(reader)/settings/appearance/page.tsx`）：
 
 ```typescript
-export function SettingsDialog() {
+export default function AppearanceSettingsPage() {
   const { settings, updateSettings } = useRSSStore()
 
   return (
-    <DialogContent>
+    <div className="space-y-6">
       {/* ... 其他设置 */}
 
       <div className="flex items-center justify-between">
-        <Label htmlFor="reading-progress">显示阅读进度条</Label>
+        <div className="space-y-1">
+          <Label htmlFor="reading-progress">显示阅读进度条</Label>
+          <p className="text-sm text-muted-foreground">在文章顶部显示阅读进度</p>
+        </div>
         <Switch
           id="reading-progress"
           checked={settings.showReadingProgress}
@@ -112,7 +115,7 @@ export function SettingsDialog() {
           }
         />
       </div>
-    </DialogContent>
+    </div>
   )
 }
 ```
@@ -765,27 +768,36 @@ export function ReadingStats() {
 }
 ```
 
-5. **在设置对话框中显示统计**：
+5. **添加新的设置页面以显示统计**：
+
+创建 `app/(reader)/settings/stats/page.tsx`：
 
 ```typescript
-import { ReadingStats } from "./reading-stats"
+import { ReadingStats } from "@/components/reading-stats"
 
-export function SettingsDialog() {
+export default function StatsSettingsPage() {
   return (
-    <DialogContent className="max-w-2xl">
-      <Tabs defaultValue="general">
-        <TabsList>
-          <TabsTrigger value="general">常规</TabsTrigger>
-          <TabsTrigger value="stats">统计</TabsTrigger>
-        </TabsList>
+    <div className="space-y-6">
+      <div>
+        <h1 className="text-3xl font-bold">Statistics</h1>
+        <p className="text-muted-foreground mt-2">View your reading statistics</p>
+      </div>
 
-        <TabsContent value="stats">
-          <ReadingStats />
-        </TabsContent>
-      </Tabs>
-    </DialogContent>
+      <ReadingStats />
+    </div>
   )
 }
+```
+
+然后在 `app/(reader)/settings/layout.tsx` 中添加导航项：
+
+```typescript
+const settingsCategories = [
+  { id: "general", label: "General", href: "/settings/general" },
+  { id: "appearance", label: "Appearance", href: "/settings/appearance" },
+  { id: "storage", label: "Storage", href: "/settings/storage" },
+  { id: "stats", label: "Statistics", href: "/settings/stats" }, // 新增
+]
 ```
 
 ---

@@ -129,10 +129,10 @@ function generateOPML(feeds: Feed[]): string {
 2. **在父组件中使用**：
 
 ```typescript
-// 在 settings-dialog.tsx 或 sidebar.tsx 中
+// 在 sidebar.tsx 或其他组件中
 import { ExportOPMLDialog } from "./export-opml-dialog"
 
-export function SettingsDialog() {
+export function Sidebar() {
   const [showExport, setShowExport] = useState(false)
 
   return (

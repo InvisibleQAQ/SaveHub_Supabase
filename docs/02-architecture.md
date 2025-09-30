@@ -147,7 +147,83 @@ UI 自动更新
 
 **为什么用 API Route？**
 
-因为 `rss-parser` 库依赖 Node.js 模块，不能在浏览器运行。所以抓取逻辑在服务端（API Route）。
+因为 `rss-parser` 库依赖 Node.js 模块,不能在浏览器运行。所以抓取逻辑在服务端（API Route）。
+
+## 路由架构
+
+### URL 作为单一真相来源
+
+本项目采用 **URL-first** 设计理念：视图状态（viewMode、feedId）从 URL 路由派生，而非存储在 Zustand store 中。
+
+**路由列表**：
+
+| 路由 | 功能 | 组件 |
+|------|------|------|
+| `/` | 重定向到 `/all` | `app/page.tsx` |
+| `/all` | 显示所有文章 | `app/(reader)/all/page.tsx` |
+| `/unread` | 显示未读文章 | `app/(reader)/unread/page.tsx` |
+| `/starred` | 显示收藏文章 | `app/(reader)/starred/page.tsx` |
+| `/feed/[feedId]` | 显示特定订阅源文章 | `app/(reader)/feed/[feedId]/page.tsx` |
+| `/settings` | 重定向到 `/settings/general` | `app/(reader)/settings/page.tsx` |
+| `/settings/general` | 通用设置（自动刷新、刷新间隔） | `app/(reader)/settings/general/page.tsx` |
+| `/settings/appearance` | 外观设置（主题、字体、缩略图） | `app/(reader)/settings/appearance/page.tsx` |
+| `/settings/storage` | 存储设置（数据保留、导入导出） | `app/(reader)/settings/storage/page.tsx` |
+
+### 路由组（Route Groups）
+
+**`app/(reader)/`** 路由组：
+
+- 所有内容页面（文章列表、设置）共享此布局
+- `layout.tsx` 处理：
+  - 数据库初始化检查
+  - 数据加载（`loadFromSupabase()`）
+  - 侧边栏渲染
+  - 实时同步启动
+
+### 导航机制
+
+**1. Sidebar 链接导航**：
+```typescript
+<Link href="/all">All Articles</Link>
+<Link href="/settings">Settings</Link>
+```
+
+**2. 键盘快捷键导航**：
+```typescript
+router.push("/all")      // 按 1 键
+router.push("/unread")   // 按 2 键
+router.push("/starred")  // 按 3 键
+router.push("/settings") // 按 , 键
+```
+
+**3. 编程式导航**：
+```typescript
+const router = useRouter()
+router.push(`/feed/${feedId}`)
+```
+
+### Settings 页面架构
+
+Settings 采用 **独立页面** 设计（非弹窗），占据原文章列表+内容区域。
+
+**布局结构**：
+```
+┌─────────────┬──────────────────────────┐
+│  Sidebar    │  Settings Layout         │
+│             ├──────────┬───────────────┤
+│  Feeds      │  左侧导航 │  右侧配置内容  │
+│  ...        │  General │  [配置表单]    │
+│             │  Appearance                │
+│             │  Storage │                │
+└─────────────┴──────────┴───────────────┘
+```
+
+**为什么不用弹窗？**
+
+1. **统一性**：所有功能都是路由页面，没有特殊情况
+2. **可分享**：可以直接分享 `/settings` 链接
+3. **浏览器友好**：支持前进/后退按钮
+4. **更好的UX**：更多空间显示配置项，不受弹窗大小限制
 
 ## 关键设计决策
 

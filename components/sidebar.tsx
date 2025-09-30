@@ -19,6 +19,7 @@ import {
   ArrowRightToLine,
   ChevronLeft,
   ChevronRight,
+  Settings,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -39,7 +40,6 @@ import { AddFolderDialog } from "./add-folder-dialog"
 import { RenameDialog } from "./rename-dialog"
 import { MoveToFolderDialog } from "./move-to-folder-dialog"
 import { FeedRefresh } from "./feed-refresh"
-import { SettingsDialog } from "./settings-dialog"
 import { HelpDialog } from "./help-dialog"
 import { cn } from "@/lib/utils"
 
@@ -206,7 +206,20 @@ export function Sidebar() {
 
         <Separator className="my-2 bg-sidebar-border w-8" />
 
-        <SettingsDialog collapsed />
+        <Button
+          variant={pathname.startsWith("/settings") ? "secondary" : "ghost"}
+          size="icon"
+          className={cn(
+            "h-10 w-10 flex items-center justify-center",
+            pathname.startsWith("/settings") && "bg-sidebar-primary text-sidebar-primary-foreground hover:bg-sidebar-primary hover:text-sidebar-primary-foreground"
+          )}
+          title="Settings"
+          asChild
+        >
+          <Link href="/settings">
+            <Settings className="h-4 w-4" />
+          </Link>
+        </Button>
       </div>
     )
   }
@@ -623,7 +636,22 @@ export function Sidebar() {
 
       {/* Footer */}
       <div className="p-4 border-t border-sidebar-border">
-        <SettingsDialog />
+        <Button
+          variant={pathname.startsWith("/settings") ? "secondary" : "ghost"}
+          size="sm"
+          className={cn(
+            "w-full justify-start gap-2 text-sidebar-foreground",
+            pathname.startsWith("/settings")
+              ? "bg-sidebar-primary text-sidebar-primary-foreground hover:bg-sidebar-primary hover:text-sidebar-primary-foreground"
+              : "hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
+          )}
+          asChild
+        >
+          <Link href="/settings">
+            <Settings className="h-4 w-4" />
+            Settings
+          </Link>
+        </Button>
       </div>
 
       {/* Dialogs */}

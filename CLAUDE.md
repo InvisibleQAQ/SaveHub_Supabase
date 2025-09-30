@@ -73,6 +73,10 @@ NEXT_PUBLIC_SUPABASE_ANON_KEY=your_supabase_anon_key
 - `/unread` → Unread articles
 - `/starred` → Starred articles
 - `/feed/[feedId]` → Specific feed's articles
+- `/settings` → Settings page (redirects to `/settings/general`)
+- `/settings/general` → General settings
+- `/settings/appearance` → Appearance settings
+- `/settings/storage` → Storage settings
 
 **Shared Layout** (`app/(reader)/layout.tsx`):
 - Handles database initialization
@@ -81,7 +85,9 @@ NEXT_PUBLIC_SUPABASE_ANON_KEY=your_supabase_anon_key
 
 **Navigation**:
 - Sidebar uses `<Link href="/all">` (not `onClick` store updates)
+- Settings button uses `<Link href="/settings">` (not dialog)
 - Keyboard shortcuts use `router.push('/all')` (not `setViewMode`)
+- Press `,` key to open settings page
 - Browser back/forward buttons work natively
 - URLs are shareable/bookmarkable
 
