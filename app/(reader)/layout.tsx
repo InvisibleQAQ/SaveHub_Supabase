@@ -1,16 +1,44 @@
 "use client"
 
 import { useEffect, useState } from "react"
+import { useRouter } from "next/navigation"
 import { useRSSStore } from "@/lib/store"
 import { useRealtimeSync } from "@/hooks/use-realtime-sync"
 import { DatabaseSetup } from "@/components/database-setup"
 import { KeyboardShortcuts } from "@/components/keyboard-shortcuts"
 import { Sidebar } from "@/components/sidebar"
 import { Loader2 } from "lucide-react"
+import { createClient } from "@/lib/supabase/client"
 
 export default function ReaderLayout({ children }: { children: React.ReactNode }) {
+  const router = useRouter()
+  const supabase = createClient()
   const { isLoading, error, isDatabaseReady, isSidebarCollapsed, loadFromSupabase, checkDatabaseStatus, setError } = useRSSStore()
   const [isCheckingDatabase, setIsCheckingDatabase] = useState(true)
+  const [isCheckingAuth, setIsCheckingAuth] = useState(true)
+
+  useEffect(() => {
+    const checkAuth = async () => {
+      const { data: { session } } = await supabase.auth.getSession()
+      if (!session) {
+        router.push('/login')
+        return
+      }
+      setIsCheckingAuth(false)
+    }
+
+    checkAuth()
+
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+      if (event === 'SIGNED_OUT' || !session) {
+        router.push('/login')
+      }
+    })
+
+    return () => {
+      subscription.unsubscribe()
+    }
+  }, [router, supabase])
 
   useRealtimeSync()
 
@@ -54,6 +82,17 @@ export default function ReaderLayout({ children }: { children: React.ReactNode }
     document.addEventListener("refresh-feeds", handleRefresh)
     return () => document.removeEventListener("refresh-feeds", handleRefresh)
   }, [])
+
+  if (isCheckingAuth) {
+    return (
+      <div className="flex items-center justify-center h-screen bg-background">
+        <div className="text-center">
+          <Loader2 className="h-8 w-8 animate-spin mx-auto mb-4 text-primary" />
+          <p className="text-muted-foreground">Authenticating...</p>
+        </div>
+      </div>
+    )
+  }
 
   if (isCheckingDatabase) {
     return (

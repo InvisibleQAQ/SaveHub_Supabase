@@ -29,14 +29,17 @@ type DbRow = Record<string, any>
 class GenericRepository<TApp, TDb extends DbRow = DbRow> {
   constructor(
     private tableName: string,
-    private toDb: (item: TApp) => TDb,
+    private toDb: (item: TApp, userId: string) => TDb,
     private fromDb: (row: TDb) => TApp,
     private orderBy?: { column: string; ascending: boolean },
   ) {}
 
   async save(items: TApp[]): Promise<void> {
     const supabase = createClient()
-    const dbItems = items.map(this.toDb)
+    const { data: { user } } = await supabase.auth.getUser()
+    if (!user) throw new Error('Not authenticated')
+
+    const dbItems = items.map(item => this.toDb(item, user.id))
     console.log(`[DB] Saving ${items.length} items to ${this.tableName}`)
     const { data, error } = await supabase.from(this.tableName).upsert(dbItems).select()
     if (error) {
@@ -71,11 +74,12 @@ class GenericRepository<TApp, TDb extends DbRow = DbRow> {
   }
 }
 
-function folderToDb(folder: Folder): DbRow {
+function folderToDb(folder: Folder, userId: string): DbRow {
   return {
     id: folder.id,
     name: folder.name,
     order: folder.order ?? 0,
+    user_id: userId,
     created_at: toISOString(folder.createdAt),
   }
 }
@@ -89,7 +93,7 @@ function dbRowToFolder(row: Database["public"]["Tables"]["folders"]["Row"]): Fol
   }
 }
 
-function feedToDb(feed: Feed): DbRow {
+function feedToDb(feed: Feed, userId: string): DbRow {
   return {
     id: feed.id,
     title: feed.title,
@@ -99,6 +103,7 @@ function feedToDb(feed: Feed): DbRow {
     folder_id: feed.folderId || null,
     order: feed.order ?? 0,
     unread_count: feed.unreadCount ?? 0,
+    user_id: userId,
     last_fetched: toISOString(feed.lastFetched),
   }
 }
@@ -117,7 +122,7 @@ function dbRowToFeed(row: Database["public"]["Tables"]["feeds"]["Row"]): Feed {
   }
 }
 
-function articleToDb(article: Article): DbRow {
+function articleToDb(article: Article, userId: string): DbRow {
   return {
     id: article.id,
     feed_id: article.feedId,
@@ -130,6 +135,7 @@ function articleToDb(article: Article): DbRow {
     is_read: article.isRead,
     is_starred: article.isStarred,
     thumbnail: article.thumbnail || null,
+    user_id: userId,
   }
 }
 
@@ -175,7 +181,7 @@ function dbRowToArticle(row: Database["public"]["Tables"]["articles"]["Row"]): A
 
 function dbRowToSettings(row: Database["public"]["Tables"]["settings"]["Row"]): AppSettings {
   return {
-    id: row.id,
+    id: row.user_id,
     theme: row.theme as "light" | "dark" | "system",
     fontSize: row.font_size,
     autoRefresh: row.auto_refresh,
@@ -325,9 +331,11 @@ class SupabaseManager {
   // Settings operations
   async saveSettings(settings: AppSettings): Promise<void> {
     const supabase = createClient()
+    const { data: { user } } = await supabase.auth.getUser()
+    if (!user) throw new Error('Not authenticated')
 
     const dbSettings = {
-      id: settings.id,
+      user_id: user.id,
       theme: settings.theme,
       font_size: settings.fontSize,
       auto_refresh: settings.autoRefresh,
@@ -345,12 +353,13 @@ class SupabaseManager {
 
   async loadSettings(): Promise<AppSettings | null> {
     const supabase = createClient()
+    const { data: { user } } = await supabase.auth.getUser()
+    if (!user) throw new Error('Not authenticated')
 
-    const { data, error } = await supabase.from("settings").select("*").eq("id", "app-settings").single()
+    const { data, error } = await supabase.from("settings").select("*").eq("user_id", user.id).single()
 
     if (error) {
       if (error.code === "PGRST116") {
-        // No settings found, return null
         return null
       }
       throw error
@@ -417,17 +426,28 @@ class SupabaseManager {
     try {
       const supabase = createClient()
 
-      // Try to query the settings table - if it exists, database is initialized
-      const { error } = await supabase.from("settings").select("id").limit(1)
+      // Check if folders table exists with user_id column
+      // This bypasses RLS by just checking table structure
+      const { error } = await supabase.from("folders").select("user_id").limit(0)
 
-      // If there's no error, or if the error is just "no rows", the table exists
-      if (!error || error.code === "PGRST116") {
+      // If there's no error, the table exists with user_id column (migration done)
+      if (!error) {
         return true
       }
 
-      // Check for specific "table does not exist" errors
-      if (error.message?.includes("does not exist") || error.message?.includes("schema cache")) {
+      // Check for specific "table does not exist" or "column does not exist" errors
+      if (
+        error.message?.includes("does not exist") ||
+        error.message?.includes("schema cache") ||
+        error.code === "42703" || // Column does not exist
+        error.code === "42P01"    // Table does not exist
+      ) {
         return false
+      }
+
+      // For RLS errors (user not authenticated), table exists
+      if (error.code === "PGRST301" || error.message?.includes("row-level security")) {
+        return true
       }
 
       // For other errors, assume not initialized

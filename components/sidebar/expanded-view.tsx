@@ -2,8 +2,8 @@
 
 import React from "react"
 import Link from "next/link"
-import { usePathname } from "next/navigation"
-import { Search, BookOpen, Rss, Star, Plus, FolderPlus, ChevronLeft, Settings } from "lucide-react"
+import { usePathname, useRouter } from "next/navigation"
+import { Search, BookOpen, Rss, Star, Plus, FolderPlus, ChevronLeft, Settings, LogOut } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { ScrollArea } from "@/components/ui/scroll-area"
@@ -14,6 +14,7 @@ import { FeedItem } from "./feed-item"
 import { HelpDialog } from "../help-dialog"
 import { FeedRefresh } from "../feed-refresh"
 import { useRSSStore } from "@/lib/store"
+import { createClient } from "@/lib/supabase/client"
 import { cn } from "@/lib/utils"
 import type { Feed, Folder } from "@/lib/types"
 import type { RenameDialogState, MoveDialogState, DeleteFolderDialogState, DeleteFeedDialogState } from "./types"
@@ -52,8 +53,15 @@ export function ExpandedView({
   totalStarred,
 }: ExpandedViewProps) {
   const pathname = usePathname()
+  const router = useRouter()
+  const supabase = createClient()
   const { folders, feeds, getUnreadCount, moveFeed } = useRSSStore()
   const [draggedFeedId, setDraggedFeedId] = React.useState<string | null>(null)
+
+  const handleLogout = async () => {
+    await supabase.auth.signOut()
+    router.push('/login')
+  }
 
   const filteredFolders = folders.filter((folder) => folder.name.toLowerCase().includes(feedSearch.toLowerCase()))
 
@@ -296,7 +304,7 @@ export function ExpandedView({
       </div>
 
       {/* Footer */}
-      <div className="p-4 border-t border-sidebar-border">
+      <div className="p-4 border-t border-sidebar-border space-y-2">
         <Button
           variant={pathname.startsWith("/settings") ? "secondary" : "ghost"}
           size="sm"
@@ -312,6 +320,15 @@ export function ExpandedView({
             <Settings className="h-4 w-4" />
             Settings
           </Link>
+        </Button>
+        <Button
+          variant="ghost"
+          size="sm"
+          className="w-full justify-start gap-2 text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
+          onClick={handleLogout}
+        >
+          <LogOut className="h-4 w-4" />
+          Logout
         </Button>
       </div>
     </div>
