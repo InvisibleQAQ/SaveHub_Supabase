@@ -29,7 +29,8 @@ MultiEdit(file_path: "D:\repos\project\file.tsx", ...)
 - **[File Structure](./docs/03-file-structure.md)** - What each file does, when to modify them
 - **[Data Flow](./docs/04-data-flow.md)** - How data moves through the system (7 scenarios)
 - **[Development Guide](./docs/05-development-guide.md)** - Development patterns, debugging tips
-- **[Common Tasks](./docs/06-common-tasks.md)** - Code examples for typical features
+- **[Common Tasks](./docs/06-common-tasks.md)** - Code examples for basic features
+- **[Advanced Tasks](./docs/06-advanced-tasks.md)** - OPML导入导出、阅读统计、拖拽排序等高级特性
 - **[Troubleshooting](./docs/07-troubleshooting.md)** - Solutions to common problems
 
 **This file contains quick reference for development. Refer to detailed docs for in-depth explanations.**
@@ -206,7 +207,7 @@ addArticles(articles)  // Zustand action deduplicates by article.id
 - `dbManager.clearOldArticles(days)`: Deletes read, non-starred articles older than N days
 - Runs on app load after data loaded
 
-> **📖 For implementation examples and code patterns, see [Common Tasks](./docs/06-common-tasks.md)**
+> **📖 For implementation examples and code patterns, see [Common Tasks](./docs/06-common-tasks.md) for basic features and [Advanced Tasks](./docs/06-advanced-tasks.md) for complex functionality**
 
 ## Path Aliases
 
@@ -251,7 +252,7 @@ addArticles(articles)  // Zustand action deduplicates by article.id
 ## 🔗 Quick Links to Detailed Docs
 
 - **Need to understand data flow?** → [Data Flow Guide](./docs/04-data-flow.md)
-- **Adding a new feature?** → [Development Guide](./docs/05-development-guide.md) + [Common Tasks](./docs/06-common-tasks.md)
+- **Adding a new feature?** → [Development Guide](./docs/05-development-guide.md) + [Common Tasks](./docs/06-common-tasks.md) + [Advanced Tasks](./docs/06-advanced-tasks.md)
 - **Encountering an error?** → [Troubleshooting](./docs/07-troubleshooting.md)
 - **Looking for a specific file?** → [File Structure](./docs/03-file-structure.md)
 - **Setting up for first time?** → [Getting Started](./docs/01-getting-started.md)
