@@ -23,6 +23,8 @@
        └─→ 返回 { feed: {...}, articles: [...] }
    ↓
 5. 调用 useRSSStore.addFeed(feed)
+   └─→ 计算 order 值（同 folder 内最大 order + 1）
+   └─→ 设置默认值：unreadCount = 0
    └─→ store.feeds.push(newFeed)
    └─→ 调用 syncToSupabase()
        └─→ dbManager.saveFeeds([...feeds])
@@ -42,6 +44,36 @@
 **关键点**：
 - `addFeed` 调用 `syncToSupabase()`（同步整个 feeds 数组）
 - `addArticles` 直接调用 `dbManager.saveArticles()`（性能优化，只保存新文章）
+- `order` 字段自动计算：找到同 folder 内最大 order，然后 +1
+- `unreadCount` 默认为 0
+- 使用 `??` 运算符在 `feedToDb()` 中作为最后防线，确保 NOT NULL 字段有值
+
+**order 计算逻辑**：
+
+```typescript
+// 找到同一个 folder 内的所有 feeds
+const sameFolderFeeds = state.feeds.filter(
+  f => (f.folderId || undefined) === (feed.folderId || undefined)
+)
+
+// 找到最大 order，如果没有 feed，默认为 -1
+const maxOrder = sameFolderFeeds.reduce(
+  (max, f) => Math.max(max, f.order ?? -1),
+  -1
+)
+
+// 新 feed 的 order = maxOrder + 1
+const newFeed: Feed = {
+  order: maxOrder + 1,  // 0, 1, 2, 3, ...
+  unreadCount: 0,
+  ...feed
+}
+```
+
+这保证了：
+1. 每个 folder 内的 feeds 按添加顺序排列（order: 0, 1, 2, ...）
+2. 即使 feed.order 是 undefined，也不会违反数据库 NOT NULL 约束
+3. 移动 feed 到其他 folder 时，会重新计算 order
 
 ---
 

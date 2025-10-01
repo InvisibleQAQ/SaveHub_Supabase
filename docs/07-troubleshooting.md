@@ -80,6 +80,57 @@ pnpm dev  # 重新启动
 
 打开浏览器控制台（F12），执行操作，看是否有报错。
 
+**常见错误：NOT NULL 约束违规**
+
+如果看到类似错误：
+
+```
+code: "23502"
+message: "null value in column \"order\" of relation \"feeds\" violates not-null constraint"
+```
+
+**原因**：数据库要求某些字段必须有值（如 `order`、`unreadCount`），但代码传了 `null` 或 `undefined`。
+
+**解决**：确保 `addFeed()` 和 `addFolder()` 自动设置这些字段：
+
+```typescript
+// lib/store.ts
+addFeed: (feed) => {
+  const state = get()
+  const sameFolderFeeds = state.feeds.filter(f => (f.folderId || undefined) === (feed.folderId || undefined))
+  const maxOrder = sameFolderFeeds.reduce((max, f) => Math.max(max, f.order ?? -1), -1)
+
+  const newFeed: Feed = {
+    id: feed.id || crypto.randomUUID(),
+    order: maxOrder + 1,        // 自动计算 order
+    unreadCount: 0,             // 默认值 0
+    ...feed,
+  }
+  // ...
+}
+```
+
+并在 `lib/db.ts` 中使用 `??` 运算符作为最后防线：
+
+```typescript
+function feedToDb(feed: Feed): DbRow {
+  return {
+    id: feed.id,
+    title: feed.title,
+    url: feed.url,
+    order: feed.order ?? 0,              // 确保非空
+    unread_count: feed.unreadCount ?? 0, // 确保非空
+    // ...
+  }
+}
+```
+
+**如果仍有类似错误**：
+
+1. 检查错误消息中的字段名（`column "xxx"`）
+2. 在 Supabase Dashboard → Table Editor 查看该字段是否有 NOT NULL 约束
+3. 在代码中搜索创建该类型对象的位置，确保该字段有值
+
 2. **手动测试数据库连接**：
 
 在浏览器控制台运行：
@@ -644,6 +695,56 @@ export default function Page() {
 ---
 
 ## 调试工具
+
+### 使用数据库操作日志
+
+项目已内置详细的数据库操作日志，帮助快速定位问题：
+
+**启用日志**：代码已默认启用，打开浏览器控制台（F12）即可查看。
+
+**日志格式**：
+
+```
+[Supabase Client] Initializing with URL: https://xxxx.supabase.co
+[DB] Saving 1 items to feeds
+[DB] Successfully saved 1 items to feeds
+[DB] Updating article abc123 with: { is_read: true }
+[DB] Successfully updated article
+[DB] Deleting item xyz789 from feeds
+[DB] Successfully deleted from feeds
+```
+
+**查错示例**：
+
+如果添加 Feed 失败，你会看到：
+
+```
+[DB] Saving 1 items to feeds
+[DB] Failed to save to feeds: {
+  code: "23502",
+  message: "null value in column \"order\" violates not-null constraint"
+}
+```
+
+**环境变量检测**：
+
+如果 Supabase 环境变量缺失，你会立即看到：
+
+```
+[Supabase Client] Missing environment variables: {
+  url: 'MISSING',
+  key: 'SET'
+}
+Error: Missing Supabase environment variables. Check .env file.
+```
+
+**临时禁用日志**（生产环境）：
+
+搜索并注释掉 `console.log` 和 `console.error`：
+
+```typescript
+// console.log(`[DB] Saving ${items.length} items to ${this.tableName}`)
+```
 
 ### 浏览器 DevTools 技巧
 

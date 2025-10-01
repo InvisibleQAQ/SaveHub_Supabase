@@ -264,7 +264,8 @@ function feedToDb(feed: Feed): DbRow {
     url: feed.url,
     icon_url: feed.iconUrl || null,  // 新增：camelCase → snake_case
     folder_id: feed.folderId || null,
-    unread_count: feed.unreadCount,
+    order: feed.order ?? 0,           // 使用 ?? 处理 NOT NULL 字段
+    unread_count: feed.unreadCount ?? 0,
     last_fetched: toISOString(feed.lastFetched),
   }
 }
@@ -277,6 +278,7 @@ function dbRowToFeed(row: Database["public"]["Tables"]["feeds"]["Row"]): Feed {
     url: row.url,
     iconUrl: row.icon_url || undefined,  // 新增：snake_case → camelCase
     folderId: row.folder_id || undefined,
+    order: row.order,
     unreadCount: row.unread_count,
     lastFetched: row.last_fetched ? new Date(row.last_fetched) : undefined,
   }
@@ -285,6 +287,41 @@ function dbRowToFeed(row: Database["public"]["Tables"]["feeds"]["Row"]): Feed {
 
 **注意**：现在使用泛型 Repository 模式，`feedsRepo.save()` 会自动调用 `feedToDb()` 转换，
 无需修改 `saveFeeds()` 方法。
+
+**处理 NOT NULL 约束的最佳实践**：
+
+如果新字段有 NOT NULL 约束，必须在两个地方保证非空：
+
+1. **Store Actions**：创建对象时提供默认值
+
+```typescript
+addFeed: (feed) => {
+  const state = get()
+  const maxOrder = state.feeds.reduce((max, f) => Math.max(max, f.order ?? -1), -1)
+
+  const newFeed: Feed = {
+    id: crypto.randomUUID(),
+    order: maxOrder + 1,      // 自动计算，保证有值
+    unreadCount: 0,           // 默认值
+    iconUrl: undefined,       // 可选字段可以是 undefined
+    ...feed,                  // 用户传入的值覆盖默认值
+  }
+  // ...
+}
+```
+
+2. **转换函数**：使用 `??` 运算符作为最后防线
+
+```typescript
+function feedToDb(feed: Feed): DbRow {
+  return {
+    order: feed.order ?? 0,              // 如果仍是 undefined，用 0
+    unread_count: feed.unreadCount ?? 0,
+    icon_url: feed.iconUrl || null,      // 可选字段可以是 null
+    // ...
+  }
+}
+```
 
 4. **更新 UI 使用新字段**：
 
