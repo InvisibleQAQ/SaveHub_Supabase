@@ -68,9 +68,13 @@ export const useRSSStore = create<RSSReaderState & RSSReaderActions>()((set, get
 
       // Folder management actions
       addFolder: (folder) => {
+        const state = get()
+        const maxOrder = state.folders.reduce((max, f) => Math.max(max, f.order ?? -1), -1)
+
         const newFolder: Folder = {
           id: crypto.randomUUID(),
           createdAt: new Date(),
+          order: maxOrder + 1,
           ...folder,
         }
 
@@ -148,15 +152,20 @@ export const useRSSStore = create<RSSReaderState & RSSReaderActions>()((set, get
       addFeed: (feed) => {
         console.log("[v0] Adding feed to store:", feed)
 
+        const state = get()
+        const sameFolderFeeds = state.feeds.filter(f => (f.folderId || undefined) === (feed.folderId || undefined))
+        const maxOrder = sameFolderFeeds.reduce((max, f) => Math.max(max, f.order ?? -1), -1)
+
         const newFeed: Feed = {
           id: feed.id || crypto.randomUUID(),
+          order: maxOrder + 1,
+          unreadCount: 0,
           ...feed,
         }
 
         console.log("[v0] Created feed with ID:", newFeed.id)
 
         set((state) => {
-          // Check if feed already exists
           const existingFeed = state.feeds.find((f) => f.id === newFeed.id || f.url === newFeed.url)
           if (existingFeed) {
             console.log("[v0] Feed already exists, updating instead")

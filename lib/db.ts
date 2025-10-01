@@ -37,8 +37,13 @@ class GenericRepository<TApp, TDb extends DbRow = DbRow> {
   async save(items: TApp[]): Promise<void> {
     const supabase = createClient()
     const dbItems = items.map(this.toDb)
-    const { error } = await supabase.from(this.tableName).upsert(dbItems)
-    if (error) throw error
+    console.log(`[DB] Saving ${items.length} items to ${this.tableName}`)
+    const { data, error } = await supabase.from(this.tableName).upsert(dbItems).select()
+    if (error) {
+      console.error(`[DB] Failed to save to ${this.tableName}:`, error)
+      throw error
+    }
+    console.log(`[DB] Successfully saved ${data?.length || 0} items to ${this.tableName}`)
   }
 
   async load(): Promise<TApp[]> {
@@ -56,8 +61,13 @@ class GenericRepository<TApp, TDb extends DbRow = DbRow> {
 
   async delete(id: string): Promise<void> {
     const supabase = createClient()
+    console.log(`[DB] Deleting item ${id} from ${this.tableName}`)
     const { error } = await supabase.from(this.tableName).delete().eq("id", id)
-    if (error) throw error
+    if (error) {
+      console.error(`[DB] Failed to delete from ${this.tableName}:`, error)
+      throw error
+    }
+    console.log(`[DB] Successfully deleted from ${this.tableName}`)
   }
 }
 
@@ -65,7 +75,7 @@ function folderToDb(folder: Folder): DbRow {
   return {
     id: folder.id,
     name: folder.name,
-    order: folder.order,
+    order: folder.order ?? 0,
     created_at: toISOString(folder.createdAt),
   }
 }
@@ -87,8 +97,8 @@ function feedToDb(feed: Feed): DbRow {
     description: feed.description || null,
     category: feed.category || null,
     folder_id: feed.folderId || null,
-    order: feed.order,
-    unread_count: feed.unreadCount,
+    order: feed.order ?? 0,
+    unread_count: feed.unreadCount ?? 0,
     last_fetched: toISOString(feed.lastFetched),
   }
 }
@@ -248,8 +258,13 @@ class SupabaseManager {
   async updateArticle(articleId: string, updates: Partial<Article>): Promise<void> {
     const supabase = createClient()
     const dbUpdates = articlePartialToDb(updates)
+    console.log(`[DB] Updating article ${articleId} with:`, dbUpdates)
     const { error } = await supabase.from("articles").update(dbUpdates).eq("id", articleId)
-    if (error) throw error
+    if (error) {
+      console.error('[DB] Failed to update article:', error)
+      throw error
+    }
+    console.log('[DB] Successfully updated article')
   }
 
   async clearOldArticles(daysToKeep = 30): Promise<number> {
