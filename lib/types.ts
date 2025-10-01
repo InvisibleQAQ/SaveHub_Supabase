@@ -43,10 +43,21 @@ export interface RSSReaderState {
   folders: Folder[]
   feeds: Feed[]
   articles: Article[]
+  selectedFeedId: string | null
   selectedArticleId: string | null
+  viewMode: "all" | "unread" | "starred"
   isLoading: boolean
   error: string | null
   searchQuery: string
   isDatabaseReady: boolean
   isSidebarCollapsed: boolean
+  settings: {
+    theme: string
+    fontSize: number
+    autoRefresh: boolean
+    refreshInterval: number
+    articlesRetentionDays: number
+    markAsReadOnScroll: boolean
+    showThumbnails: boolean
+  }
 }
