@@ -3,7 +3,7 @@ import type { Feed } from "../types"
 import { dbManager } from "../db"
 
 export interface FeedsSlice {
-  addFeed: (feed: Partial<Feed>) => void
+  addFeed: (feed: Partial<Feed>) => { success: boolean; reason: 'created' | 'duplicate' }
   removeFeed: (feedId: string) => void
   updateFeed: (feedId: string, updates: Partial<Feed>) => void
   moveFeed: (feedId: string, targetFolderId: string | undefined, targetOrder: number) => void
@@ -17,6 +17,12 @@ export const createFeedsSlice: StateCreator<
 > = (set, get) => ({
   addFeed: (feed) => {
     const state = get() as any
+
+    const existingFeed = state.feeds.find((f: any) => f.url === feed.url)
+    if (existingFeed) {
+      return { success: false, reason: 'duplicate' as const }
+    }
+
     const sameFolderFeeds = state.feeds.filter((f: any) => (f.folderId || undefined) === (feed.folderId || undefined))
     const maxOrder = sameFolderFeeds.reduce((max: number, f: any) => Math.max(max, f.order ?? -1), -1)
 
@@ -29,20 +35,12 @@ export const createFeedsSlice: StateCreator<
       unreadCount: 0,
     }
 
-    set((state: any) => {
-      const existingFeed = state.feeds.find((f: any) => f.id === newFeed.id || f.url === newFeed.url)
-      if (existingFeed) {
-        return {
-          feeds: state.feeds.map((f: any) => (f.id === existingFeed.id ? { ...f, ...newFeed } : f)),
-        }
-      }
-
-      return {
-        feeds: [...state.feeds, newFeed],
-      }
-    })
+    set((state: any) => ({
+      feeds: [...state.feeds, newFeed],
+    }))
 
     ;(get() as any).syncToSupabase?.()
+    return { success: true, reason: 'created' as const }
   },
 
   removeFeed: (feedId) => {

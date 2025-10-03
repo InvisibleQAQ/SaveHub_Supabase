@@ -78,7 +78,18 @@ export function AddFeedDialog({ open, onOpenChange, defaultFolderId, lockFolder 
 
       // Add feed and articles to store
       console.log("[v0] Adding feed to store:", feed)
-      addFeed(feed)
+      const result = addFeed(feed)
+
+      if (!result.success) {
+        toast({
+          title: "Feed Already Exists",
+          description: `"${parsedFeed.title}" is already in your feed list`,
+          variant: "destructive",
+        })
+        setIsLoading(false)
+        return
+      }
+
       console.log("[v0] Adding articles to store:", articles.length)
       addArticles(articles)
 

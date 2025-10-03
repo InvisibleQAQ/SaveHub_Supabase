@@ -24,7 +24,10 @@ export function useRealtimeSync() {
           unreadCount: feedRow.unread_count,
           lastFetched: feedRow.last_fetched ? new Date(feedRow.last_fetched) : undefined,
         }
-        store.addFeed(feed)
+        const result = store.addFeed(feed)
+        if (!result.success) {
+          console.log("[v0] Realtime: Feed already exists, skipping:", feed.url)
+        }
       },
       (feedRow) => {
         const feed: Partial<Feed> = {
