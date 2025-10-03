@@ -15,7 +15,7 @@ export interface UISlice {
 }
 
 export const createUISlice: StateCreator<
-  UISlice,
+  any,
   [],
   [],
   UISlice

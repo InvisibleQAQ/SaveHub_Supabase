@@ -11,7 +11,7 @@ export interface ArticlesSlice {
 }
 
 export const createArticlesSlice: StateCreator<
-  ArticlesSlice,
+  any,
   [],
   [],
   ArticlesSlice

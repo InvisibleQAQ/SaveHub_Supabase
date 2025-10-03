@@ -10,7 +10,7 @@ export interface DatabaseSlice {
 }
 
 export const createDatabaseSlice: StateCreator<
-  DatabaseSlice,
+  any,
   [],
   [],
   DatabaseSlice

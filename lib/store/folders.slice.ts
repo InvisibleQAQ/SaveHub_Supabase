@@ -10,14 +10,14 @@ export interface FoldersSlice {
 }
 
 export const createFoldersSlice: StateCreator<
-  FoldersSlice,
+  any,
   [],
   [],
   FoldersSlice
 > = (set, get) => ({
   addFolder: (folder) => {
-    const state = get()
-    const maxOrder = state.folders.reduce((max, f) => Math.max(max, f.order ?? -1), -1)
+    const state = get() as any
+    const maxOrder = state.folders.reduce((max: number, f: any) => Math.max(max, f.order ?? -1), -1)
 
     const newFolder: Folder = {
       ...folder,
@@ -26,7 +26,7 @@ export const createFoldersSlice: StateCreator<
       order: maxOrder + 1,
     }
 
-    set((state) => ({
+    set((state: any) => ({
       folders: [...state.folders, newFolder],
     }))
 
@@ -36,7 +36,7 @@ export const createFoldersSlice: StateCreator<
   removeFolder: async (folderId, deleteFeeds = false) => {
     const state = get() as any
     const folderFeeds = state.feeds.filter((f: any) => f.folderId === folderId)
-    const feedIds = folderFeeds.map((f) => f.id)
+    const feedIds = folderFeeds.map((f: any) => f.id)
 
     if (deleteFeeds) {
       set((state: any) => ({
@@ -46,7 +46,7 @@ export const createFoldersSlice: StateCreator<
       }))
 
       try {
-        await Promise.all(feedIds.map((id) => dbManager.deleteFeed(id)))
+        await Promise.all(feedIds.map((id: any) => dbManager.deleteFeed(id)))
         await dbManager.deleteFolder(folderId)
       } catch (error) {
         console.error("Failed to delete folder and feeds:", error)

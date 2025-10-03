@@ -10,7 +10,7 @@ export interface FeedsSlice {
 }
 
 export const createFeedsSlice: StateCreator<
-  FeedsSlice,
+  any,
   [],
   [],
   FeedsSlice

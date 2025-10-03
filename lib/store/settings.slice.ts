@@ -6,7 +6,7 @@ export interface SettingsSlice {
 }
 
 export const createSettingsSlice: StateCreator<
-  SettingsSlice,
+  any,
   [],
   [],
   SettingsSlice
