@@ -21,13 +21,11 @@ export function FeedRefresh({ feedId, className }: FeedRefreshProps) {
     try {
       const { articles } = await parseRSSFeed(feed.url, feed.id)
 
-      // Add new articles (duplicates will be filtered by the store)
-      addArticles(articles)
+      const newArticlesCount = addArticles(articles)
 
-      // Update feed's last fetched time
       updateFeed(feed.id, { lastFetched: new Date() })
 
-      return articles.length
+      return newArticlesCount
     } catch (error) {
       console.error(`Error refreshing feed ${feed.title}:`, error)
       throw error
@@ -49,7 +47,9 @@ export function FeedRefresh({ feedId, className }: FeedRefreshProps) {
 
         toast({
           title: "Feed refreshed",
-          description: `Found ${newArticlesCount} new articles in "${feed.title}"`,
+          description: newArticlesCount === 0
+            ? `"${feed.title}" has no new articles`
+            : `Found ${newArticlesCount} new article${newArticlesCount > 1 ? 's' : ''} in "${feed.title}"`,
         })
       } else {
         // Refresh all feeds
@@ -71,12 +71,16 @@ export function FeedRefresh({ feedId, className }: FeedRefreshProps) {
         if (errorCount === 0) {
           toast({
             title: "All feeds refreshed",
-            description: `Found ${totalNewArticles} new articles across ${successCount} feeds`,
+            description: totalNewArticles === 0
+              ? `No new articles found across ${successCount} feed${successCount > 1 ? 's' : ''}`
+              : `Found ${totalNewArticles} new article${totalNewArticles > 1 ? 's' : ''} across ${successCount} feed${successCount > 1 ? 's' : ''}`,
           })
         } else {
           toast({
             title: "Feeds refreshed with errors",
-            description: `${successCount} feeds updated, ${errorCount} failed. Found ${totalNewArticles} new articles.`,
+            description: totalNewArticles === 0
+              ? `${successCount} feed${successCount > 1 ? 's' : ''} updated, ${errorCount} failed. No new articles found.`
+              : `${successCount} feed${successCount > 1 ? 's' : ''} updated, ${errorCount} failed. Found ${totalNewArticles} new article${totalNewArticles > 1 ? 's' : ''}.`,
             variant: errorCount > successCount ? "destructive" : "default",
           })
         }

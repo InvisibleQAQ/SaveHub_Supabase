@@ -3,7 +3,7 @@ import type { Article } from "../types"
 import { dbManager } from "../db"
 
 export interface ArticlesSlice {
-  addArticles: (articles: Article[]) => void
+  addArticles: (articles: Article[]) => number
   markAsRead: (articleId: string) => void
   markAsUnread: (articleId: string) => void
   toggleStar: (articleId: string) => void
@@ -18,11 +18,11 @@ export const createArticlesSlice: StateCreator<
 > = (set, get) => ({
   addArticles: (articles) => {
     const currentState = get() as any
-    const existingIds = new Set(currentState.articles.map((a: any) => a.id))
-    const newArticles = articles.filter((a) => !existingIds.has(a.id))
+    const existingUrls = new Set(currentState.articles.map((a: any) => a.url))
+    const newArticles = articles.filter((a) => !existingUrls.has(a.url))
 
     if (newArticles.length === 0) {
-      return
+      return 0
     }
 
     set((state: any) => ({
@@ -32,6 +32,8 @@ export const createArticlesSlice: StateCreator<
     dbManager.saveArticles(newArticles).catch((error) => {
       console.error("Failed to save articles to Supabase:", error)
     })
+
+    return newArticles.length
   },
 
   markAsRead: (articleId) => {
