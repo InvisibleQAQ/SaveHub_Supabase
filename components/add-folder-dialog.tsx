@@ -15,6 +15,7 @@ import {
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { useRSSStore } from "@/lib/store"
+import { useToast } from "@/hooks/use-toast"
 
 interface AddFolderDialogProps {
   open: boolean
@@ -25,6 +26,7 @@ export function AddFolderDialog({ open, onOpenChange }: AddFolderDialogProps) {
   const [folderName, setFolderName] = useState("")
   const [isLoading, setIsLoading] = useState(false)
   const { addFolder } = useRSSStore()
+  const { toast } = useToast()
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -32,13 +34,39 @@ export function AddFolderDialog({ open, onOpenChange }: AddFolderDialogProps) {
 
     setIsLoading(true)
     try {
-      addFolder({
+      const result = await addFolder({
         name: folderName.trim(),
       })
-      setFolderName("")
-      onOpenChange(false)
+
+      if (result.success) {
+        toast({
+          title: "Success",
+          description: `Folder "${folderName.trim()}" created successfully.`,
+        })
+        setFolderName("")
+        onOpenChange(false)
+      } else {
+        if (result.error === 'duplicate') {
+          toast({
+            title: "Error",
+            description: `Folder "${folderName.trim()}" already exists.`,
+            variant: "destructive",
+          })
+        } else {
+          toast({
+            title: "Error",
+            description: "Failed to create folder. Please try again.",
+            variant: "destructive",
+          })
+        }
+      }
     } catch (error) {
       console.error("Failed to add folder:", error)
+      toast({
+        title: "Error",
+        description: "Failed to create folder. Please try again.",
+        variant: "destructive",
+      })
     } finally {
       setIsLoading(false)
     }

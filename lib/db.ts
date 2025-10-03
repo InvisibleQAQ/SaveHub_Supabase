@@ -34,7 +34,7 @@ class GenericRepository<TApp, TDb extends DbRow = DbRow> {
     private orderBy?: { column: string; ascending: boolean },
   ) {}
 
-  async save(items: TApp[]): Promise<void> {
+  async save(items: TApp[]): Promise<{ success: boolean; error?: string }> {
     const supabase = createClient()
     const { data: { user } } = await supabase.auth.getUser()
     if (!user) throw new Error('Not authenticated')
@@ -44,9 +44,13 @@ class GenericRepository<TApp, TDb extends DbRow = DbRow> {
     const { data, error } = await supabase.from(this.tableName).upsert(dbItems).select()
     if (error) {
       console.error(`[DB] Failed to save to ${this.tableName}:`, error)
+      if (error.code === '23505') {
+        return { success: false, error: 'duplicate' }
+      }
       throw error
     }
     console.log(`[DB] Successfully saved ${data?.length || 0} items to ${this.tableName}`)
+    return { success: true }
   }
 
   async load(): Promise<TApp[]> {
@@ -212,7 +216,7 @@ class SupabaseManager {
     ascending: false,
   })
 
-  async saveFolders(folders: Folder[]): Promise<void> {
+  async saveFolders(folders: Folder[]): Promise<{ success: boolean; error?: string }> {
     return this.foldersRepo.save(folders)
   }
 

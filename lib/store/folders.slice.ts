@@ -3,7 +3,7 @@ import type { Folder } from "../types"
 import { dbManager } from "../db"
 
 export interface FoldersSlice {
-  addFolder: (folder: Omit<Folder, "id" | "createdAt" | "order">) => void
+  addFolder: (folder: Omit<Folder, "id" | "createdAt" | "order">) => Promise<{ success: boolean; error?: string }>
   removeFolder: (folderId: string, deleteFeeds?: boolean) => Promise<void>
   renameFolder: (folderId: string, newName: string) => void
   moveFolder: (folderId: string, targetOrder: number) => void
@@ -15,7 +15,7 @@ export const createFoldersSlice: StateCreator<
   [],
   FoldersSlice
 > = (set, get) => ({
-  addFolder: (folder) => {
+  addFolder: async (folder) => {
     const state = get() as any
     const maxOrder = state.folders.reduce((max: number, f: any) => Math.max(max, f.order ?? -1), -1)
 
@@ -26,11 +26,25 @@ export const createFoldersSlice: StateCreator<
       order: maxOrder + 1,
     }
 
-    set((state: any) => ({
-      folders: [...state.folders, newFolder],
-    }))
+    try {
+      const result = await dbManager.saveFolders([...state.folders, newFolder])
 
-    get().syncToSupabase?.()
+      if (!result.success) {
+        if (result.error === 'duplicate') {
+          return { success: false, error: 'duplicate' }
+        }
+        return { success: false, error: 'unknown' }
+      }
+
+      set((state: any) => ({
+        folders: [...state.folders, newFolder],
+      }))
+
+      return { success: true }
+    } catch (error) {
+      console.error('Failed to add folder:', error)
+      return { success: false, error: 'unknown' }
+    }
   },
 
   removeFolder: async (folderId, deleteFeeds = false) => {
