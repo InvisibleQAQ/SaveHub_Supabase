@@ -105,7 +105,7 @@ useEffect(() => {
 
 ---
 
-### 2.2 Database Layer: `lib/db.ts`
+### 2.2 Database Layer: `lib/db/`
 
 **Pattern**: All insert/upsert operations now inject `user_id` automatically.
 
@@ -277,7 +277,7 @@ Run these tests to verify the implementation:
 
 ### Modified Files
 - `app/(reader)/layout.tsx` - Auth guard
-- `lib/db.ts` - User ID injection in all operations
+- `lib/db/` - User ID injection in all operations
 - `components/sidebar/expanded-view.tsx` - Logout button
 - `components/sidebar/collapsed-view.tsx` - Logout icon
 - `package.json` - Added `@supabase/auth-ui-react`, `@supabase/auth-ui-shared`

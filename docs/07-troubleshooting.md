@@ -110,7 +110,7 @@ addFeed: (feed) => {
 }
 ```
 
-并在 `lib/db.ts` 中使用 `??` 运算符作为最后防线：
+并在 `lib/db/feeds.ts` 中使用 `??` 运算符作为最后防线：
 
 ```typescript
 function feedToDb(feed: Feed): DbRow {

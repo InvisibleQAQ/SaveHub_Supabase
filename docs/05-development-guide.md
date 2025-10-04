@@ -253,7 +253,7 @@ export const FeedSchema = z.object({
 })
 ```
 
-3. **更新数据库映射**（`lib/db.ts`）：
+3. **更新数据库映射**（`lib/db/settings.ts`）：
 
 ```typescript
 // 添加应用层 → DB 层的转换

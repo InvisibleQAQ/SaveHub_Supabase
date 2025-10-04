@@ -65,10 +65,19 @@ function ArticleList() {
 
 ### 3. 持久化层（Supabase Manager）
 
-**文件**：`lib/db.ts`
+**文件结构**：
+```
+lib/db/
+├── index.ts      # 统一导出 + 向后兼容的 SupabaseManager 类
+├── core.ts       # 核心功能（数据库初始化检查）
+├── feeds.ts      # Feed 相关数据库操作
+├── articles.ts   # Article 相关数据库操作
+├── folders.ts    # Folder 相关数据库操作
+└── settings.ts   # Settings 相关数据库操作
+```
 
 **职责**：
-1. 封装所有数据库操作
+1. 封装所有数据库操作（模块化拆分）
 2. 类型转换（camelCase ↔ snake_case）
 3. 日期格式转换（Date ↔ ISO string）
 
@@ -348,7 +357,7 @@ partialize: (state) => ({
 **解决**：
 - **App 层**：统一用 `Date` 对象
 - **DB 层**：存储用 ISO string（`TIMESTAMPTZ`）
-- **转换函数**：`toISOString()` 和 `new Date()` 在 `lib/db.ts` 中处理
+- **转换函数**：`toISOString()` 和 `new Date()` 在各个模块（`lib/db/*.ts`）中处理
 
 ### Feed/Folder 排序机制
 

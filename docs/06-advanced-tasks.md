@@ -357,7 +357,7 @@ export const FolderSchema = z.object({
 })
 ```
 
-**数据库映射**(`lib/db.ts`):
+**数据库映射**(`lib/db/feeds.ts`):
 
 ```typescript
 function feedToDb(feed: Feed): DbRow {

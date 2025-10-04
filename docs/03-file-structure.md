@@ -236,9 +236,20 @@ getFilteredArticles: ({ viewMode = "all", feedId = null }) => {
 
 **重要变更**：`getFilteredArticles` 现在接收 `{ viewMode, feedId }` 参数，而不是从 store 读取。
 
-#### `lib/db.ts` ⭐️ **数据库抽象层**
+#### `lib/db/` ⭐️ **数据库抽象层**
 
-**作用**：封装所有 Supabase 操作，提供类型安全的接口。
+**作用**：模块化封装所有 Supabase 操作，提供类型安全的接口。
+
+**文件结构**：
+```
+lib/db/
+├── index.ts      # 统一导出 + 向后兼容的 SupabaseManager 类
+├── core.ts       # 核心功能（数据库初始化检查）
+├── feeds.ts      # Feed 相关数据库操作
+├── articles.ts   # Article 相关数据库操作
+├── folders.ts    # Folder 相关数据库操作
+└── settings.ts   # Settings 相关数据库操作
+```
 
 **架构设计**：采用泛型 Repository 模式消除 CRUD 重复代码。
 
@@ -672,7 +683,7 @@ rss-reader.tsx (主组件)
    ↓
 useRSSStore (lib/store.ts)
    ↓
-dbManager (lib/db.ts)
+dbManager (lib/db/index.ts)
    ↓
 Supabase Client (lib/supabase/client.ts)
    ↓
@@ -691,8 +702,8 @@ UI 自动更新
 
 | 需求 | 修改文件 |
 |-----|---------|
-| 添加新的应用设置 | `lib/types.ts` (AppSettings), `lib/db.ts` (settings 转换), `app/(reader)/settings/*/page.tsx` (UI) |
-| 新增 Feed 属性 | `lib/types.ts` (FeedSchema), `scripts/001_create_tables.sql` (迁移), `lib/db.ts` (转换函数), Supabase 执行 ALTER TABLE |
+| 添加新的应用设置 | `lib/types.ts` (AppSettings), `lib/db/settings.ts` (settings 转换), `app/(reader)/settings/*/page.tsx` (UI) |
+| 新增 Feed 属性 | `lib/types.ts` (FeedSchema), `scripts/001_create_tables.sql` (迁移), `lib/db/feeds.ts` (转换函数), Supabase 执行 ALTER TABLE |
 | 添加新的 UI 组件 | `components/` 目录，遵循 shadcn/ui 模式 |
 | 修改 RSS 解析逻辑 | `app/api/rss/parse/route.ts` |
 | 添加新的 Zustand action | `lib/store.ts` (RSSReaderActions 接口 + 实现) |

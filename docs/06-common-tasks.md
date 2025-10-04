@@ -10,7 +10,7 @@
 
 ### 步骤
 
-1. **更新设置类型**(`lib/db.ts`):
+1. **更新设置类型**(`lib/db/settings.ts`):
 
 ```typescript
 export interface AppSettings {
@@ -38,7 +38,7 @@ export const defaultSettings: AppSettings = {
 }
 ```
 
-2. **更新数据库映射**(`lib/db.ts`):
+2. **更新数据库映射**(`lib/db/settings.ts`):
 
 ```typescript
 function dbRowToSettings(row: Database["public"]["Tables"]["settings"]["Row"]): AppSettings {
@@ -196,7 +196,7 @@ export const ArticleSchema = z.object({
 ALTER TABLE articles ADD COLUMN tags TEXT[] DEFAULT '{}';
 ```
 
-3. **更新数据库映射**(`lib/db.ts`):
+3. **更新数据库映射**(`lib/db/articles.ts`):
 
 ```typescript
 function dbRowToArticle(row: Database["public"]["Tables"]["articles"]["Row"]): Article {
