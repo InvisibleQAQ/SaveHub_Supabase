@@ -10,6 +10,7 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Switch } from "@/components/ui/switch"
 import { Badge } from "@/components/ui/badge"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { Combobox } from "@/components/ui/combobox"
 import { Trash2, Edit, Plus, Key, Eye, EyeOff, CheckCircle, XCircle, Loader2 } from "lucide-react"
 import { setMasterPassword, hasMasterPassword } from "@/lib/db/api-configs"
 import { validateApiCredentials, validateApiBaseUrl } from "@/lib/api-validation"
@@ -408,21 +409,22 @@ export default function ApiConfigPage() {
             <div className="space-y-2">
               <Label htmlFor="add-model">模型 <span className="text-red-500">*</span></Label>
               {validationResult.models && validationResult.models.length > 0 ? (
-                <Select
-                  value={formData.model}
-                  onValueChange={(value) => setFormData(prev => ({ ...prev, model: value }))}
-                >
-                  <SelectTrigger>
-                    <SelectValue placeholder="选择模型" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {validationResult.models.map((model) => (
-                      <SelectItem key={model} value={model}>
-                        {model}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                <>
+                  <Combobox
+                    options={validationResult.models.map(model => ({
+                      value: model,
+                      label: model,
+                    }))}
+                    value={formData.model}
+                    onValueChange={(value) => setFormData(prev => ({ ...prev, model: value }))}
+                    placeholder="输入或选择模型"
+                    searchPlaceholder="搜索或输入模型名称..."
+                    emptyText="未找到匹配的模型，直接输入即可"
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    从验证的API中找到 {validationResult.models.length} 个可用模型，您也可以输入自定义模型名称
+                  </p>
+                </>
               ) : (
                 <Input
                   id="add-model"
@@ -430,11 +432,6 @@ export default function ApiConfigPage() {
                   onChange={(e) => setFormData(prev => ({ ...prev, model: e.target.value }))}
                   placeholder="gpt-3.5-turbo"
                 />
-              )}
-              {validationResult.models && validationResult.models.length > 0 && (
-                <p className="text-xs text-muted-foreground">
-                  从验证的API中找到 {validationResult.models.length} 个可用模型
-                </p>
               )}
             </div>
           )}
@@ -644,21 +641,22 @@ export default function ApiConfigPage() {
               <div className="space-y-2">
                 <Label htmlFor="edit-model">模型 <span className="text-red-500">*</span></Label>
                 {validationResult.models && validationResult.models.length > 0 ? (
-                  <Select
-                    value={formData.model}
-                    onValueChange={(value) => setFormData(prev => ({ ...prev, model: value }))}
-                  >
-                    <SelectTrigger>
-                      <SelectValue placeholder="选择模型" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {validationResult.models.map((model) => (
-                        <SelectItem key={model} value={model}>
-                          {model}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
+                  <>
+                    <Combobox
+                      options={validationResult.models.map(model => ({
+                        value: model,
+                        label: model,
+                      }))}
+                      value={formData.model}
+                      onValueChange={(value) => setFormData(prev => ({ ...prev, model: value }))}
+                      placeholder="输入或选择模型"
+                      searchPlaceholder="搜索或输入模型名称..."
+                      emptyText="未找到匹配的模型，直接输入即可"
+                    />
+                    <p className="text-xs text-muted-foreground">
+                      从验证的API中找到 {validationResult.models.length} 个可用模型，您也可以输入自定义模型名称
+                    </p>
+                  </>
                 ) : (
                   <Input
                     id="edit-model"
@@ -666,11 +664,6 @@ export default function ApiConfigPage() {
                     onChange={(e) => setFormData(prev => ({ ...prev, model: e.target.value }))}
                     placeholder="gpt-3.5-turbo"
                   />
-                )}
-                {validationResult.models && validationResult.models.length > 0 && (
-                  <p className="text-xs text-muted-foreground">
-                    从验证的API中找到 {validationResult.models.length} 个可用模型
-                  </p>
                 )}
               </div>
             )}
