@@ -32,32 +32,45 @@ export async function isDatabaseInitialized(): Promise<boolean> {
   try {
     const supabase = createClient()
 
-    // Check if folders table exists with user_id column
+    // Check if all tables exist with user_id columns
     // This bypasses RLS by just checking table structure
-    const { error } = await supabase.from("folders").select("user_id").limit(0)
+    const tables = ['folders', 'feeds', 'articles', 'api_configs']
 
-    // If there's no error, the table exists with user_id column (migration done)
-    if (!error) {
-      return true
+    for (const table of tables) {
+      const { error } = await supabase.from(table).select("user_id").limit(0)
+
+      if (error) {
+        // Check for specific "table does not exist" or "column does not exist" errors
+        if (
+          error.message?.includes("does not exist") ||
+          error.message?.includes("schema cache") ||
+          error.code === "42703" || // Column does not exist
+          error.code === "42P01"    // Table does not exist
+        ) {
+          return false
+        }
+
+        // For RLS errors (user not authenticated), table exists but continue checking others
+        if (!(error.code === "PGRST301" || error.message?.includes("row-level security"))) {
+          return false
+        }
+      }
     }
 
-    // Check for specific "table does not exist" or "column does not exist" errors
-    if (
-      error.message?.includes("does not exist") ||
-      error.message?.includes("schema cache") ||
-      error.code === "42703" || // Column does not exist
-      error.code === "42P01"    // Table does not exist
-    ) {
-      return false
+    // Check settings table (has different structure)
+    const { error: settingsError } = await supabase.from("settings").select("user_id").limit(0)
+    if (settingsError) {
+      if (
+        settingsError.message?.includes("does not exist") ||
+        settingsError.message?.includes("schema cache") ||
+        settingsError.code === "42703" || // Column does not exist
+        settingsError.code === "42P01"    // Table does not exist
+      ) {
+        return false
+      }
     }
 
-    // For RLS errors (user not authenticated), table exists
-    if (error.code === "PGRST301" || error.message?.includes("row-level security")) {
-      return true
-    }
-
-    // For other errors, assume not initialized
-    return false
+    return true
   } catch (error) {
     console.error("Error checking database initialization:", error)
     return false

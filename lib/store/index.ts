@@ -7,6 +7,7 @@ import { createArticlesSlice, type ArticlesSlice } from "./articles.slice"
 import { createUISlice, type UISlice } from "./ui.slice"
 import { createSettingsSlice, type SettingsSlice } from "./settings.slice"
 import { createDatabaseSlice, type DatabaseSlice } from "./database.slice"
+import { createApiConfigsSlice, type ApiConfigsSlice } from "./api-configs.slice"
 
 export type RSSReaderStore = RSSReaderState &
   FoldersSlice &
@@ -14,7 +15,8 @@ export type RSSReaderStore = RSSReaderState &
   ArticlesSlice &
   UISlice &
   SettingsSlice &
-  DatabaseSlice
+  DatabaseSlice &
+  ApiConfigsSlice
 
 export const useRSSStore = create<RSSReaderStore>()((...a) => ({
   ...createDatabaseSlice(...a),
@@ -23,10 +25,12 @@ export const useRSSStore = create<RSSReaderStore>()((...a) => ({
   ...createArticlesSlice(...a),
   ...createUISlice(...a),
   ...createSettingsSlice(...a),
+  ...createApiConfigsSlice(...a),
 
   folders: [],
   feeds: [],
   articles: [],
+  apiConfigs: [],
   selectedFeedId: null,
   selectedArticleId: null,
   isLoading: false,

@@ -35,14 +35,28 @@ export const ArticleSchema = z.object({
   thumbnail: z.string().optional(),
 })
 
+// API Configuration schema
+export const ApiConfigSchema = z.object({
+  id: z.string(),
+  name: z.string(),
+  apiKey: z.string(), // Will be encrypted in database
+  apiBase: z.string(), // Will be encrypted in database
+  model: z.string(),
+  isDefault: z.boolean().default(false),
+  isActive: z.boolean().default(true),
+  createdAt: z.date().default(() => new Date()),
+})
+
 export type Feed = z.infer<typeof FeedSchema>
 export type Article = z.infer<typeof ArticleSchema>
 export type Folder = z.infer<typeof FolderSchema>
+export type ApiConfig = z.infer<typeof ApiConfigSchema>
 
 export interface RSSReaderState {
   folders: Folder[]
   feeds: Feed[]
   articles: Article[]
+  apiConfigs: ApiConfig[]
   selectedFeedId: string | null
   selectedArticleId: string | null
   viewMode: "all" | "unread" | "starred"

@@ -45,6 +45,7 @@ export const createDatabaseSlice: StateCreator<
         dbManager.saveFeeds(state.feeds),
         dbManager.saveArticles(state.articles),
         dbManager.saveSettings(state.settings),
+        dbManager.saveApiConfigs(state.apiConfigs),
       ])
     } catch (error) {
       console.error("Failed to sync to Supabase:", error)
@@ -65,11 +66,12 @@ export const createDatabaseSlice: StateCreator<
     try {
       set({ isLoading: true } as any)
 
-      const [folders, feeds, articles, settings] = await Promise.all([
+      const [folders, feeds, articles, settings, apiConfigs] = await Promise.all([
         dbManager.loadFolders(),
         dbManager.loadFeeds(),
         dbManager.loadArticles(),
         dbManager.loadSettings(),
+        dbManager.loadApiConfigs(),
       ])
 
       set({
@@ -77,6 +79,7 @@ export const createDatabaseSlice: StateCreator<
         feeds: feeds || [],
         articles: articles || [],
         settings: settings || defaultSettings,
+        apiConfigs: apiConfigs || [],
         isLoading: false,
       } as any)
 

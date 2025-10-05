@@ -4,15 +4,17 @@ export * from "./feeds"
 export * from "./articles"
 export * from "./folders"
 export * from "./settings"
+export * from "./api-configs"
 
 // Import all functions for the manager class
-import type { Feed, Article, Folder } from "../types"
+import type { Feed, Article, Folder, ApiConfig } from "../types"
 import { createClient } from "../supabase/client"
 import { isDatabaseInitialized } from "./core"
 import { saveFeeds, loadFeeds, deleteFeed } from "./feeds"
 import { saveArticles, loadArticles, updateArticle, clearOldArticles, getArticleStats } from "./articles"
 import { saveFolders, loadFolders, deleteFolder } from "./folders"
 import { saveSettings, loadSettings, defaultSettings, type AppSettings } from "./settings"
+import { saveApiConfigs, loadApiConfigs, deleteApiConfig } from "./api-configs"
 
 /**
  * Backward-compatible SupabaseManager class
@@ -83,21 +85,39 @@ class SupabaseManager {
     return loadSettings()
   }
 
+  // API Config operations
+  async saveApiConfigs(configs: ApiConfig[]): Promise<void> {
+    const result = await saveApiConfigs(configs)
+    if (!result.success) {
+      throw new Error(result.error || 'Failed to save API configs')
+    }
+  }
+
+  async loadApiConfigs(): Promise<ApiConfig[]> {
+    return loadApiConfigs()
+  }
+
+  async deleteApiConfig(configId: string): Promise<void> {
+    return deleteApiConfig(configId)
+  }
+
   // Database maintenance
   async exportData(): Promise<{
     folders: Folder[]
     feeds: Feed[]
     articles: Article[]
     settings: AppSettings | null
+    apiConfigs: ApiConfig[]
   }> {
-    const [folders, feeds, articles, settings] = await Promise.all([
+    const [folders, feeds, articles, settings, apiConfigs] = await Promise.all([
       this.loadFolders(),
       this.loadFeeds(),
       this.loadArticles(),
       this.loadSettings(),
+      this.loadApiConfigs(),
     ])
 
-    return { folders, feeds, articles, settings }
+    return { folders, feeds, articles, settings, apiConfigs }
   }
 
   async importData(data: {
@@ -105,6 +125,7 @@ class SupabaseManager {
     feeds?: Feed[]
     articles?: Article[]
     settings?: AppSettings
+    apiConfigs?: ApiConfig[]
   }): Promise<void> {
     const promises: Promise<void>[] = []
 
@@ -124,6 +145,10 @@ class SupabaseManager {
       promises.push(this.saveSettings(data.settings))
     }
 
+    if (data.apiConfigs) {
+      promises.push(this.saveApiConfigs(data.apiConfigs))
+    }
+
     await Promise.all(promises)
   }
 
@@ -134,6 +159,7 @@ class SupabaseManager {
     await supabase.from("articles").delete().neq("id", "00000000-0000-0000-0000-000000000000")
     await supabase.from("feeds").delete().neq("id", "00000000-0000-0000-0000-000000000000")
     await supabase.from("folders").delete().neq("id", "00000000-0000-0000-0000-000000000000")
+    await supabase.from("api_configs").delete().neq("id", "00000000-0000-0000-0000-000000000000")
     await supabase.from("settings").delete().neq("id", "never-match")
   }
 

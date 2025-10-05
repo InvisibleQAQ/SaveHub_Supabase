@@ -8,6 +8,7 @@ import { cn } from "@/lib/utils"
 const settingsCategories = [
   { id: "general", label: "General", href: "/settings/general" },
   { id: "appearance", label: "Appearance", href: "/settings/appearance" },
+  { id: "api", label: "API Configuration", href: "/settings/api" },
   { id: "storage", label: "Storage", href: "/settings/storage" },
 ]
 
