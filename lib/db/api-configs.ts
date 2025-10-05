@@ -1,28 +1,31 @@
 import type { ApiConfig } from "../types"
 import { createClient } from "../supabase/client"
 import { getCurrentUserId, toISOString } from "./core"
+import { encrypt, decrypt, isEncrypted } from "../encryption"
 
 /**
  * Save multiple API configs to database
+ * Encrypts apiKey and apiBase before storage
  */
 export async function saveApiConfigs(configs: ApiConfig[]): Promise<{ success: boolean; error?: string }> {
   const supabase = createClient()
   const userId = await getCurrentUserId()
 
   try {
-    const dbRows = configs.map((config) => ({
+    // Encrypt sensitive fields before saving
+    const dbRows = await Promise.all(configs.map(async (config) => ({
       id: config.id,
       name: config.name,
-      api_key: config.apiKey,
-      api_base: config.apiBase,
+      api_key: await encrypt(config.apiKey),
+      api_base: await encrypt(config.apiBase),
       model: config.model,
       is_default: config.isDefault,
       is_active: config.isActive,
       user_id: userId,
       created_at: toISOString(config.createdAt),
-    }))
+    })))
 
-    console.log(`[DB] Saving ${configs.length} API configs`)
+    console.log(`[DB] Saving ${configs.length} API configs (encrypted)`)
     const { data, error } = await supabase.from("api_configs").upsert(dbRows).select()
 
     if (error) {
@@ -43,6 +46,8 @@ export async function saveApiConfigs(configs: ApiConfig[]): Promise<{ success: b
 
 /**
  * Load all API configs for current user
+ * Decrypts apiKey and apiBase after retrieval
+ * Handles legacy plaintext data by auto-encrypting on first load
  */
 export async function loadApiConfigs(): Promise<ApiConfig[]> {
   const supabase = createClient()
@@ -59,15 +64,58 @@ export async function loadApiConfigs(): Promise<ApiConfig[]> {
       return []
     }
 
-    const configs = data.map((row) => ({
-      id: row.id,
-      name: row.name,
-      apiKey: row.api_key,
-      apiBase: row.api_base,
-      model: row.model,
-      isDefault: row.is_default,
-      isActive: row.is_active,
-      createdAt: new Date(row.created_at),
+    // Decrypt configs and handle legacy plaintext data
+    const configs = await Promise.all(data.map(async (row) => {
+      let apiKey = row.api_key
+      let apiBase = row.api_base
+      let needsMigration = false
+
+      // Check if data is already encrypted
+      if (!isEncrypted(row.api_key)) {
+        console.warn(`[DB] Migrating plaintext API key for config ${row.id}`)
+        apiKey = row.api_key // Keep plaintext for now, will encrypt on next save
+        needsMigration = true
+      } else {
+        apiKey = await decrypt(row.api_key)
+      }
+
+      if (!isEncrypted(row.api_base)) {
+        console.warn(`[DB] Migrating plaintext API base for config ${row.id}`)
+        apiBase = row.api_base // Keep plaintext for now, will encrypt on next save
+        needsMigration = true
+      } else {
+        apiBase = await decrypt(row.api_base)
+      }
+
+      // Auto-migrate: re-save with encryption if legacy plaintext detected
+      if (needsMigration) {
+        console.log(`[DB] Auto-encrypting legacy config ${row.id}`)
+        // We'll trigger a re-save by returning the config,
+        // and the calling code should save it back
+        setTimeout(async () => {
+          await saveApiConfigs([{
+            id: row.id,
+            name: row.name,
+            apiKey,
+            apiBase,
+            model: row.model,
+            isDefault: row.is_default,
+            isActive: row.is_active,
+            createdAt: new Date(row.created_at),
+          }])
+        }, 0)
+      }
+
+      return {
+        id: row.id,
+        name: row.name,
+        apiKey,
+        apiBase,
+        model: row.model,
+        isDefault: row.is_default,
+        isActive: row.is_active,
+        createdAt: new Date(row.created_at),
+      }
     }))
 
     return configs
