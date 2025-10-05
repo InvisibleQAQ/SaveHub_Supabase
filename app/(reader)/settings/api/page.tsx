@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState } from "react"
 import { useRSSStore } from "@/lib/store"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -9,21 +9,15 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Switch } from "@/components/ui/switch"
 import { Badge } from "@/components/ui/badge"
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Combobox } from "@/components/ui/combobox"
-import { Trash2, Edit, Plus, Key, Eye, EyeOff, CheckCircle, XCircle, Loader2 } from "lucide-react"
-import { setMasterPassword, hasMasterPassword } from "@/lib/db/api-configs"
+import { Trash2, Edit, Plus, CheckCircle, XCircle, Loader2 } from "lucide-react"
 import { validateApiCredentials, validateApiBaseUrl } from "@/lib/api-validation"
 import { useToast } from "@/hooks/use-toast"
 
 export default function ApiConfigPage() {
   const { apiConfigs, addApiConfig, updateApiConfig, deleteApiConfig, setDefaultApiConfig } = useRSSStore()
   const [isEditDialogOpen, setIsEditDialogOpen] = useState(false)
-  const [isPasswordDialogOpen, setIsPasswordDialogOpen] = useState(false)
   const [editingConfig, setEditingConfig] = useState<any>(null)
-  const [showPassword, setShowPassword] = useState(false)
-  const [masterPasswordInput, setMasterPasswordInput] = useState("")
-  const [passwordSet, setPasswordSet] = useState(false)
 
   // API validation states
   const [isValidating, setIsValidating] = useState(false)
@@ -44,10 +38,6 @@ export default function ApiConfigPage() {
     isDefault: false,
     isActive: true,
   })
-
-  useEffect(() => {
-    setPasswordSet(hasMasterPassword())
-  }, [])
 
   const resetForm = () => {
     setFormData({
@@ -129,40 +119,7 @@ export default function ApiConfigPage() {
     }
   }
 
-  const handleSetMasterPassword = () => {
-    if (!masterPasswordInput.trim()) {
-      toast({
-        title: "错误",
-        description: "请输入主密码",
-        variant: "destructive",
-      })
-      return
-    }
-
-    try {
-      setMasterPassword(masterPasswordInput)
-      setPasswordSet(true)
-      setIsPasswordDialogOpen(false)
-      setMasterPasswordInput("")
-      toast({
-        title: "成功",
-        description: "主密码已设置",
-      })
-    } catch (error) {
-      toast({
-        title: "错误",
-        description: "设置主密码失败",
-        variant: "destructive",
-      })
-    }
-  }
-
   const handleAddConfig = () => {
-    if (!passwordSet) {
-      setIsPasswordDialogOpen(true)
-      return
-    }
-
     if (!formData.name || !formData.apiKey || !formData.apiBase || !formData.model) {
       toast({
         title: "错误",
@@ -246,53 +203,6 @@ export default function ApiConfigPage() {
     })
     setValidationResult(null)
     setIsEditDialogOpen(true)
-  }
-
-  if (!passwordSet) {
-    return (
-      <div className="space-y-6">
-        <div>
-          <h1 className="text-2xl font-bold">API配置</h1>
-          <p className="text-muted-foreground">管理您的AI API配置</p>
-        </div>
-
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <Key className="h-5 w-5" />
-              设置主密码
-            </CardTitle>
-            <CardDescription>
-              为了保护您的API密钥安全，请设置一个主密码。这个密码将用于加密您的API配置。
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="space-y-2">
-              <Label htmlFor="master-password">主密码</Label>
-              <div className="relative">
-                <Input
-                  id="master-password"
-                  type={showPassword ? "text" : "password"}
-                  value={masterPasswordInput}
-                  onChange={(e) => setMasterPasswordInput(e.target.value)}
-                  placeholder="输入主密码"
-                />
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="sm"
-                  className="absolute right-0 top-0 h-full px-3"
-                  onClick={() => setShowPassword(!showPassword)}
-                >
-                  {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-                </Button>
-              </div>
-            </div>
-            <Button onClick={handleSetMasterPassword}>设置密码</Button>
-          </CardContent>
-        </Card>
-      </div>
-    )
   }
 
   return (
@@ -692,47 +602,6 @@ export default function ApiConfigPage() {
             >
               保存
             </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      {/* Password Dialog */}
-      <Dialog open={isPasswordDialogOpen} onOpenChange={setIsPasswordDialogOpen}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>设置主密码</DialogTitle>
-            <DialogDescription>
-              为了保护您的API密钥安全，请先设置一个主密码。
-            </DialogDescription>
-          </DialogHeader>
-          <div className="space-y-4">
-            <div className="space-y-2">
-              <Label htmlFor="password-input">主密码</Label>
-              <div className="relative">
-                <Input
-                  id="password-input"
-                  type={showPassword ? "text" : "password"}
-                  value={masterPasswordInput}
-                  onChange={(e) => setMasterPasswordInput(e.target.value)}
-                  placeholder="输入主密码"
-                />
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="sm"
-                  className="absolute right-0 top-0 h-full px-3"
-                  onClick={() => setShowPassword(!showPassword)}
-                >
-                  {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-                </Button>
-              </div>
-            </div>
-          </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setIsPasswordDialogOpen(false)}>
-              取消
-            </Button>
-            <Button onClick={handleSetMasterPassword}>设置</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
