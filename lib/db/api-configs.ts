@@ -51,72 +51,103 @@ export async function saveApiConfigs(configs: ApiConfig[]): Promise<{ success: b
  */
 export async function loadApiConfigs(): Promise<ApiConfig[]> {
   const supabase = createClient()
+  const userId = await getCurrentUserId()
+
+  console.log('[DB] Loading API configs for user:', userId)
 
   try {
     const { data, error } = await supabase
       .from("api_configs")
       .select("*")
+      .eq("user_id", userId)
       .order("created_at", { ascending: false })
 
-    if (error) throw error
+    if (error) {
+      console.error('[DB] Error loading API configs:', error)
+      throw error
+    }
+
+    console.log('[DB] Loaded API configs:', data?.length || 0, 'configs')
 
     if (!data || data.length === 0) {
       return []
     }
 
     // Decrypt configs and handle legacy plaintext data
-    const configs = await Promise.all(data.map(async (row) => {
-      let apiKey = row.api_key
-      let apiBase = row.api_base
-      let needsMigration = false
+    const configs: ApiConfig[] = []
 
-      // Check if data is already encrypted
-      if (!isEncrypted(row.api_key)) {
-        console.warn(`[DB] Migrating plaintext API key for config ${row.id}`)
-        apiKey = row.api_key // Keep plaintext for now, will encrypt on next save
-        needsMigration = true
-      } else {
-        apiKey = await decrypt(row.api_key)
-      }
+    for (const row of data) {
+      try {
+        let apiKey = row.api_key
+        let apiBase = row.api_base
+        let needsMigration = false
 
-      if (!isEncrypted(row.api_base)) {
-        console.warn(`[DB] Migrating plaintext API base for config ${row.id}`)
-        apiBase = row.api_base // Keep plaintext for now, will encrypt on next save
-        needsMigration = true
-      } else {
-        apiBase = await decrypt(row.api_base)
-      }
+        // Check if data is already encrypted
+        if (!isEncrypted(row.api_key)) {
+          console.warn(`[DB] Migrating plaintext API key for config ${row.id}`)
+          apiKey = row.api_key // Keep plaintext for now, will encrypt on next save
+          needsMigration = true
+        } else {
+          try {
+            apiKey = await decrypt(row.api_key)
+          } catch (decryptError) {
+            console.error(`[DB] Failed to decrypt API key for config ${row.id}, deleting corrupted data`)
+            // Delete corrupted config from database
+            await supabase.from("api_configs").delete().eq("id", row.id)
+            continue // Skip this config
+          }
+        }
 
-      // Auto-migrate: re-save with encryption if legacy plaintext detected
-      if (needsMigration) {
-        console.log(`[DB] Auto-encrypting legacy config ${row.id}`)
-        // We'll trigger a re-save by returning the config,
-        // and the calling code should save it back
-        setTimeout(async () => {
-          await saveApiConfigs([{
-            id: row.id,
-            name: row.name,
-            apiKey,
-            apiBase,
-            model: row.model,
-            isDefault: row.is_default,
-            isActive: row.is_active,
-            createdAt: new Date(row.created_at),
-          }])
-        }, 0)
-      }
+        if (!isEncrypted(row.api_base)) {
+          console.warn(`[DB] Migrating plaintext API base for config ${row.id}`)
+          apiBase = row.api_base // Keep plaintext for now, will encrypt on next save
+          needsMigration = true
+        } else {
+          try {
+            apiBase = await decrypt(row.api_base)
+          } catch (decryptError) {
+            console.error(`[DB] Failed to decrypt API base for config ${row.id}, deleting corrupted data`)
+            // Delete corrupted config from database
+            await supabase.from("api_configs").delete().eq("id", row.id)
+            continue // Skip this config
+          }
+        }
 
-      return {
-        id: row.id,
-        name: row.name,
-        apiKey,
-        apiBase,
-        model: row.model,
-        isDefault: row.is_default,
-        isActive: row.is_active,
-        createdAt: new Date(row.created_at),
+        // Auto-migrate: re-save with encryption if legacy plaintext detected
+        if (needsMigration) {
+          console.log(`[DB] Auto-encrypting legacy config ${row.id}`)
+          // We'll trigger a re-save by returning the config,
+          // and the calling code should save it back
+          setTimeout(async () => {
+            await saveApiConfigs([{
+              id: row.id,
+              name: row.name,
+              apiKey,
+              apiBase,
+              model: row.model,
+              isDefault: row.is_default,
+              isActive: row.is_active,
+              createdAt: new Date(row.created_at),
+            }])
+          }, 0)
+        }
+
+        configs.push({
+          id: row.id,
+          name: row.name,
+          apiKey,
+          apiBase,
+          model: row.model,
+          isDefault: row.is_default,
+          isActive: row.is_active,
+          createdAt: new Date(row.created_at),
+        })
+      } catch (error) {
+        console.error(`[DB] Error processing config ${row.id}:`, error)
+        // Skip corrupted configs
+        continue
       }
-    }))
+    }
 
     return configs
   } catch (error) {

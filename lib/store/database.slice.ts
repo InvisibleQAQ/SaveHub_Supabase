@@ -74,6 +74,8 @@ export const createDatabaseSlice: StateCreator<
         dbManager.loadApiConfigs(),
       ])
 
+      console.log('[Store] Loaded data - apiConfigs:', apiConfigs?.length || 0)
+
       set({
         folders: folders || [],
         feeds: feeds || [],
