@@ -49,8 +49,17 @@ export const createApiConfigsSlice: StateCreator<
       apiConfigs: state.apiConfigs.filter((config) => config.id !== id),
     }))
 
-    // Auto-sync to database
-    get().syncApiConfigsToSupabase()
+    // Delete from database directly
+    const deleteFromDB = async () => {
+      try {
+        const { deleteApiConfig: dbDeleteApiConfig } = await import("../db")
+        await dbDeleteApiConfig(id)
+      } catch (error) {
+        console.error("Failed to delete API config from database:", error)
+        set({ error: error instanceof Error ? error.message : "Unknown error" })
+      }
+    }
+    deleteFromDB()
   },
 
   setDefaultApiConfig: (id) => {
