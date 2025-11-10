@@ -1,11 +1,10 @@
-import { createClient } from "../supabase/client"
+import { supabase } from "../supabase/client"
 
 /**
  * Get current authenticated user ID
  * Throws if not authenticated
  */
 export async function getCurrentUserId(): Promise<string> {
-  const supabase = createClient()
   const { data: { user }, error } = await supabase.auth.getUser()
   if (error || !user) {
     throw new Error('Not authenticated')
@@ -30,8 +29,6 @@ export function toISOString(date: Date | string | undefined | null): string | nu
  */
 export async function isDatabaseInitialized(): Promise<boolean> {
   try {
-    const supabase = createClient()
-
     // Check if all tables exist with user_id columns
     // This bypasses RLS by just checking table structure
     const tables = ['folders', 'feeds', 'articles', 'api_configs']

@@ -1,5 +1,5 @@
 import type { Feed } from "../types"
-import { createClient } from "../supabase/client"
+import { supabase } from "../supabase/client"
 import { getCurrentUserId, toISOString } from "./core"
 
 /**
@@ -7,7 +7,6 @@ import { getCurrentUserId, toISOString } from "./core"
  * Upserts feeds with current user ownership
  */
 export async function saveFeeds(feeds: Feed[]): Promise<{ success: boolean; error?: string }> {
-  const supabase = createClient()
   const userId = await getCurrentUserId()
 
   const dbRows = feeds.map(feed => ({
@@ -43,8 +42,6 @@ export async function saveFeeds(feeds: Feed[]): Promise<{ success: boolean; erro
  * Returns feeds ordered by order field
  */
 export async function loadFeeds(): Promise<Feed[]> {
-  const supabase = createClient()
-
   const { data, error } = await supabase
     .from("feeds")
     .select("*")
@@ -70,7 +67,6 @@ export async function loadFeeds(): Promise<Feed[]> {
  * Allows partial updates of feed properties
  */
 export async function updateFeed(feedId: string, updates: Partial<Feed>): Promise<{ success: boolean; error?: string }> {
-  const supabase = createClient()
   const userId = await getCurrentUserId()
 
   const updateData: any = {}
@@ -109,7 +105,6 @@ export async function updateFeed(feedId: string, updates: Partial<Feed>): Promis
  * This will cascade delete due to foreign key constraints
  */
 export async function deleteFeed(feedId: string): Promise<void> {
-  const supabase = createClient()
   console.log(`[DB] Deleting feed ${feedId}`)
 
   const { error } = await supabase.from("feeds").delete().eq("id", feedId)

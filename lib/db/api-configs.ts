@@ -1,5 +1,5 @@
 import type { ApiConfig } from "../types"
-import { createClient } from "../supabase/client"
+import { supabase } from "../supabase/client"
 import { getCurrentUserId, toISOString } from "./core"
 import { encrypt, decrypt, isEncrypted } from "../encryption"
 
@@ -8,7 +8,6 @@ import { encrypt, decrypt, isEncrypted } from "../encryption"
  * Encrypts apiKey and apiBase before storage
  */
 export async function saveApiConfigs(configs: ApiConfig[]): Promise<{ success: boolean; error?: string }> {
-  const supabase = createClient()
   const userId = await getCurrentUserId()
 
   try {
@@ -50,7 +49,6 @@ export async function saveApiConfigs(configs: ApiConfig[]): Promise<{ success: b
  * Handles legacy plaintext data by auto-encrypting on first load
  */
 export async function loadApiConfigs(): Promise<ApiConfig[]> {
-  const supabase = createClient()
   const userId = await getCurrentUserId()
 
   console.log('[DB] Loading API configs for user:', userId)
@@ -160,7 +158,6 @@ export async function loadApiConfigs(): Promise<ApiConfig[]> {
  * Delete an API config
  */
 export async function deleteApiConfig(configId: string): Promise<void> {
-  const supabase = createClient()
   console.log(`[DB] Deleting API config ${configId}`)
 
   const { error } = await supabase.from("api_configs").delete().eq("id", configId)

@@ -8,11 +8,10 @@ import { DatabaseSetup } from "@/components/database-setup"
 import { KeyboardShortcuts } from "@/components/keyboard-shortcuts"
 import { Sidebar } from "@/components/sidebar"
 import { Loader2 } from "lucide-react"
-import { createClient } from "@/lib/supabase/client"
+import { supabase } from "@/lib/supabase/client"
 
 export default function ReaderLayout({ children }: { children: React.ReactNode }) {
   const router = useRouter()
-  const supabase = createClient()
   const { isLoading, error, isDatabaseReady, isSidebarCollapsed, loadFromSupabase, checkDatabaseStatus, setError } = useRSSStore()
   const [isCheckingDatabase, setIsCheckingDatabase] = useState(true)
   const [isCheckingAuth, setIsCheckingAuth] = useState(true)
@@ -38,7 +37,7 @@ export default function ReaderLayout({ children }: { children: React.ReactNode }
     return () => {
       subscription.unsubscribe()
     }
-  }, [router, supabase])
+  }, [router])
 
   useRealtimeSync()
 

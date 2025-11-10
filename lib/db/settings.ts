@@ -1,4 +1,4 @@
-import { createClient } from "../supabase/client"
+import { supabase } from "../supabase/client"
 import { getCurrentUserId } from "./core"
 
 export interface AppSettings {
@@ -28,7 +28,6 @@ export const defaultSettings: AppSettings = {
  * Upserts settings for current user
  */
 export async function saveSettings(settings: AppSettings): Promise<void> {
-  const supabase = createClient()
   const userId = await getCurrentUserId()
 
   const dbSettings = {
@@ -59,7 +58,6 @@ export async function saveSettings(settings: AppSettings): Promise<void> {
  * Returns null if no settings found for user
  */
 export async function loadSettings(): Promise<AppSettings | null> {
-  const supabase = createClient()
   const userId = await getCurrentUserId()
 
   const { data, error } = await supabase

@@ -1,5 +1,5 @@
 import type { Folder } from "../types"
-import { createClient } from "../supabase/client"
+import { supabase } from "../supabase/client"
 import { getCurrentUserId, toISOString } from "./core"
 
 /**
@@ -7,7 +7,6 @@ import { getCurrentUserId, toISOString } from "./core"
  * Upserts folders with current user ownership
  */
 export async function saveFolders(folders: Folder[]): Promise<{ success: boolean; error?: string }> {
-  const supabase = createClient()
   const userId = await getCurrentUserId()
 
   const dbRows = folders.map(folder => ({
@@ -38,8 +37,6 @@ export async function saveFolders(folders: Folder[]): Promise<{ success: boolean
  * Returns folders ordered by order field
  */
 export async function loadFolders(): Promise<Folder[]> {
-  const supabase = createClient()
-
   const { data, error } = await supabase
     .from("folders")
     .select("*")
@@ -60,7 +57,6 @@ export async function loadFolders(): Promise<Folder[]> {
  * Note: Feeds in this folder will have their folderId set to null
  */
 export async function deleteFolder(folderId: string): Promise<void> {
-  const supabase = createClient()
   console.log(`[DB] Deleting folder ${folderId}`)
 
   const { error } = await supabase.from("folders").delete().eq("id", folderId)

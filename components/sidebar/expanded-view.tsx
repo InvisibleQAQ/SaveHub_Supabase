@@ -14,7 +14,7 @@ import { FeedItem } from "./feed-item"
 import { HelpDialog } from "../help-dialog"
 import { FeedRefresh } from "../feed-refresh"
 import { useRSSStore } from "@/lib/store"
-import { createClient } from "@/lib/supabase/client"
+import { supabase } from "@/lib/supabase/client"
 import { cn } from "@/lib/utils"
 import type { Feed, Folder } from "@/lib/types"
 import type { RenameDialogState, MoveDialogState, DeleteFolderDialogState, DeleteFeedDialogState } from "./types"
@@ -54,7 +54,6 @@ export function ExpandedView({
 }: ExpandedViewProps) {
   const pathname = usePathname()
   const router = useRouter()
-  const supabase = createClient()
   const { folders, feeds, getUnreadCount, moveFeed } = useRSSStore()
   const [draggedFeedId, setDraggedFeedId] = React.useState<string | null>(null)
 

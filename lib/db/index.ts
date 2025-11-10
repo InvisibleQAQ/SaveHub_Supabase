@@ -8,7 +8,7 @@ export * from "./api-configs"
 
 // Import all functions for the manager class
 import type { Feed, Article, Folder, ApiConfig } from "../types"
-import { createClient } from "../supabase/client"
+import { supabase } from "../supabase/client"
 import { isDatabaseInitialized } from "./core"
 import { saveFeeds, loadFeeds, deleteFeed, updateFeed } from "./feeds"
 import { saveArticles, loadArticles, updateArticle, clearOldArticles, getArticleStats } from "./articles"
@@ -157,8 +157,6 @@ class SupabaseManager {
   }
 
   async clearAllData(): Promise<void> {
-    const supabase = createClient()
-
     // Delete in order to respect foreign key constraints
     await supabase.from("articles").delete().neq("id", "00000000-0000-0000-0000-000000000000")
     await supabase.from("feeds").delete().neq("id", "00000000-0000-0000-0000-000000000000")

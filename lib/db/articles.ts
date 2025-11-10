@@ -1,5 +1,5 @@
 import type { Article } from "../types"
-import { createClient } from "../supabase/client"
+import { supabase } from "../supabase/client"
 import { getCurrentUserId, toISOString } from "./core"
 
 /**
@@ -7,7 +7,6 @@ import { getCurrentUserId, toISOString } from "./core"
  * Upserts articles with current user ownership
  */
 export async function saveArticles(articles: Article[]): Promise<void> {
-  const supabase = createClient()
   const userId = await getCurrentUserId()
 
   const dbRows = articles.map(article => ({
@@ -41,8 +40,6 @@ export async function saveArticles(articles: Article[]): Promise<void> {
  * Can filter by feedId and limit results
  */
 export async function loadArticles(feedId?: string, limit?: number): Promise<Article[]> {
-  const supabase = createClient()
-
   let query = supabase
     .from("articles")
     .select("*")
@@ -80,8 +77,6 @@ export async function loadArticles(feedId?: string, limit?: number): Promise<Art
  * Only updates provided fields, leaves others unchanged
  */
 export async function updateArticle(articleId: string, updates: Partial<Article>): Promise<void> {
-  const supabase = createClient()
-
   // Map app field names to database field names
   const dbUpdates: Record<string, any> = {}
 
@@ -114,8 +109,6 @@ export async function updateArticle(articleId: string, updates: Partial<Article>
  * Returns number of articles deleted
  */
 export async function clearOldArticles(daysToKeep = 30): Promise<number> {
-  const supabase = createClient()
-
   const cutoffDate = new Date()
   cutoffDate.setDate(cutoffDate.getDate() - daysToKeep)
 
@@ -141,8 +134,6 @@ export async function getArticleStats(): Promise<{
   starred: number
   byFeed: Record<string, { total: number; unread: number }>
 }> {
-  const supabase = createClient()
-
   const { data: articles, error } = await supabase
     .from("articles")
     .select("id, feed_id, is_read, is_starred")

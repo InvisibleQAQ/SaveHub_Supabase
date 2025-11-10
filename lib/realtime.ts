@@ -1,4 +1,4 @@
-import { createClient } from "./supabase/client"
+import { supabase } from "./supabase/client"
 import type { Database } from "./supabase/types"
 import type { RealtimeChannel } from "@supabase/supabase-js"
 
@@ -8,14 +8,13 @@ type FolderRow = Database["public"]["Tables"]["folders"]["Row"]
 
 export class RealtimeManager {
   private channels: RealtimeChannel[] = []
-  private supabase = createClient()
 
   subscribeToFeeds(
     onInsert?: (feed: FeedRow) => void,
     onUpdate?: (feed: FeedRow) => void,
     onDelete?: (id: string) => void,
   ) {
-    const channel = this.supabase
+    const channel = supabase
       .channel("feeds-changes")
       .on("postgres_changes", { event: "INSERT", schema: "public", table: "feeds" }, (payload) => {
         console.log("[v0] Real-time feed inserted:", payload.new)
@@ -40,7 +39,7 @@ export class RealtimeManager {
     onUpdate?: (article: ArticleRow) => void,
     onDelete?: (id: string) => void,
   ) {
-    const channel = this.supabase
+    const channel = supabase
       .channel("articles-changes")
       .on("postgres_changes", { event: "INSERT", schema: "public", table: "articles" }, (payload) => {
         console.log("[v0] Real-time article inserted:", payload.new)
@@ -65,7 +64,7 @@ export class RealtimeManager {
     onUpdate?: (folder: FolderRow) => void,
     onDelete?: (id: string) => void,
   ) {
-    const channel = this.supabase
+    const channel = supabase
       .channel("folders-changes")
       .on("postgres_changes", { event: "INSERT", schema: "public", table: "folders" }, (payload) => {
         console.log("[v0] Real-time folder inserted:", payload.new)
@@ -88,7 +87,7 @@ export class RealtimeManager {
   unsubscribeAll() {
     console.log("[v0] Unsubscribing from all real-time channels")
     this.channels.forEach((channel) => {
-      this.supabase.removeChannel(channel)
+      supabase.removeChannel(channel)
     })
     this.channels = []
   }

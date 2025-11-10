@@ -8,7 +8,7 @@ import { ScrollArea } from "@/components/ui/scroll-area"
 import { ViewButton } from "./view-button"
 import { FeedItem } from "./feed-item"
 import { useRSSStore } from "@/lib/store"
-import { createClient } from "@/lib/supabase/client"
+import { supabase } from "@/lib/supabase/client"
 
 interface CollapsedViewProps {
   onExpand: () => void
@@ -20,7 +20,6 @@ interface CollapsedViewProps {
 export function CollapsedView({ onExpand, totalArticles, totalUnread, totalStarred }: CollapsedViewProps) {
   const pathname = usePathname()
   const router = useRouter()
-  const supabase = createClient()
   const { feeds } = useRSSStore()
 
   const handleLogout = async (e: React.MouseEvent) => {
