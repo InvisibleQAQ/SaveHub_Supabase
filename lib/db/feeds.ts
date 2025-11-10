@@ -66,6 +66,45 @@ export async function loadFeeds(): Promise<Feed[]> {
 }
 
 /**
+ * Update a single feed
+ * Allows partial updates of feed properties
+ */
+export async function updateFeed(feedId: string, updates: Partial<Feed>): Promise<{ success: boolean; error?: string }> {
+  const supabase = createClient()
+  const userId = await getCurrentUserId()
+
+  const updateData: any = {}
+
+  if (updates.title !== undefined) updateData.title = updates.title
+  if (updates.url !== undefined) updateData.url = updates.url
+  if (updates.description !== undefined) updateData.description = updates.description || null
+  if (updates.category !== undefined) updateData.category = updates.category || null
+  if (updates.folderId !== undefined) updateData.folder_id = updates.folderId || null
+  if (updates.order !== undefined) updateData.order = updates.order
+  if (updates.unreadCount !== undefined) updateData.unread_count = updates.unreadCount
+  if (updates.lastFetched !== undefined) updateData.last_fetched = toISOString(updates.lastFetched)
+
+  console.log(`[DB] Updating feed ${feedId}`, updateData)
+
+  const { error } = await supabase
+    .from("feeds")
+    .update(updateData)
+    .eq("id", feedId)
+    .eq("user_id", userId)
+
+  if (error) {
+    console.error('[DB] Failed to update feed:', error)
+    if (error.code === '23505') {
+      return { success: false, error: 'duplicate' }
+    }
+    throw error
+  }
+
+  console.log('[DB] Successfully updated feed')
+  return { success: true }
+}
+
+/**
  * Delete a feed and all its articles
  * This will cascade delete due to foreign key constraints
  */

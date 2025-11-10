@@ -10,7 +10,7 @@ export * from "./api-configs"
 import type { Feed, Article, Folder, ApiConfig } from "../types"
 import { createClient } from "../supabase/client"
 import { isDatabaseInitialized } from "./core"
-import { saveFeeds, loadFeeds, deleteFeed } from "./feeds"
+import { saveFeeds, loadFeeds, deleteFeed, updateFeed } from "./feeds"
 import { saveArticles, loadArticles, updateArticle, clearOldArticles, getArticleStats } from "./articles"
 import { saveFolders, loadFolders, deleteFolder } from "./folders"
 import { saveSettings, loadSettings, defaultSettings, type AppSettings } from "./settings"
@@ -48,6 +48,10 @@ class SupabaseManager {
 
   async deleteFeed(feedId: string): Promise<void> {
     return deleteFeed(feedId)
+  }
+
+  async updateFeed(feedId: string, updates: Partial<Feed>): Promise<{ success: boolean; error?: string }> {
+    return updateFeed(feedId, updates)
   }
 
   // Article operations

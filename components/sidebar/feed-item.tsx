@@ -1,7 +1,8 @@
 "use client"
 
 import Link from "next/link"
-import { Rss, Edit, Trash2, Check, ExternalLink } from "lucide-react"
+import { Rss, Edit, Trash2, Check, ExternalLink, Settings } from "lucide-react"
+import { useRouter } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import {
@@ -33,6 +34,7 @@ interface FeedItemProps {
 
 export function FeedItem({ feed, unreadCount, isActive, variant, onRename, onMove, onDelete, onDragStart, onDragOver, onDrop, isDragging }: FeedItemProps) {
   const { markFeedAsRead } = useRSSStore()
+  const router = useRouter()
 
   const handleDragStart = (e: React.DragEvent) => {
     e.stopPropagation()
@@ -80,6 +82,11 @@ export function FeedItem({ feed, unreadCount, isActive, variant, onRename, onMov
     window.open(feed.url, "_blank", "noopener,noreferrer")
   }
 
+  const handleEditProperties = (e: React.MouseEvent) => {
+    e.preventDefault()
+    router.push(`/feed/${feed.id}/properties`)
+  }
+
   if (variant === "icon") {
     return (
       <ContextMenu>
@@ -100,6 +107,10 @@ export function FeedItem({ feed, unreadCount, isActive, variant, onRename, onMov
           </Button>
         </ContextMenuTrigger>
         <ContextMenuContent>
+          <ContextMenuItem onClick={handleEditProperties}>
+            <Settings className="h-4 w-4 mr-2" />
+            Edit Feed Properties
+          </ContextMenuItem>
           <ContextMenuItem onClick={handleRename}>
             <Edit className="h-4 w-4 mr-2" />
             Rename
@@ -180,6 +191,10 @@ export function FeedItem({ feed, unreadCount, isActive, variant, onRename, onMov
         </div>
       </ContextMenuTrigger>
       <ContextMenuContent>
+        <ContextMenuItem onClick={handleEditProperties}>
+          <Settings className="h-4 w-4 mr-2" />
+          Edit Feed Properties
+        </ContextMenuItem>
         <ContextMenuItem onClick={handleRename}>
           <Edit className="h-4 w-4 mr-2" />
           Rename
