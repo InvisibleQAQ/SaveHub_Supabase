@@ -20,7 +20,7 @@ interface EditFeedFormProps {
 export function EditFeedForm({ feedId }: EditFeedFormProps) {
   const router = useRouter()
   const { toast } = useToast()
-  const { feeds, folders, updateFeed } = useRSSStore()
+  const { feeds, folders, settings, updateFeed } = useRSSStore()
 
   const feed = feeds.find(f => f.id === feedId)
 
@@ -31,6 +31,7 @@ export function EditFeedForm({ feedId }: EditFeedFormProps) {
     description: "",
     category: "",
     folderId: "none" as string,
+    refreshInterval: 60,
   })
 
   useEffect(() => {
@@ -41,6 +42,7 @@ export function EditFeedForm({ feedId }: EditFeedFormProps) {
         description: feed.description || "",
         category: feed.category || "",
         folderId: feed.folderId || "none",
+        refreshInterval: feed.refreshInterval,
       })
     }
   }, [feed])
@@ -105,6 +107,7 @@ export function EditFeedForm({ feedId }: EditFeedFormProps) {
         description: formData.description.trim() || undefined,
         category: formData.category.trim() || undefined,
         folderId: formData.folderId === "none" ? undefined : formData.folderId,
+        refreshInterval: formData.refreshInterval,
       }
 
       // Update in store
@@ -245,6 +248,25 @@ export function EditFeedForm({ feedId }: EditFeedFormProps) {
                 ))}
               </SelectContent>
             </Select>
+          </div>
+
+          <div className="space-y-2">
+            <Label htmlFor="refreshInterval">
+              Refresh Interval (minutes) <span className="text-destructive">*</span>
+            </Label>
+            <Input
+              id="refreshInterval"
+              type="number"
+              min="1"
+              max="10080"
+              value={formData.refreshInterval}
+              onChange={(e) => setFormData({ ...formData, refreshInterval: parseInt(e.target.value) || 60 })}
+              disabled={isLoading}
+              placeholder={`Default: ${settings.refreshInterval} minutes`}
+            />
+            <p className="text-xs text-muted-foreground">
+              How often to check for new articles (1 minute to 1 week). Default: {settings.refreshInterval} minutes
+            </p>
           </div>
 
           <div className="flex gap-3 pt-4">

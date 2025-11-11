@@ -32,10 +32,11 @@ export function AddFeedDialog({ open, onOpenChange, defaultFolderId, lockFolder 
   const [url, setUrl] = useState("")
   const [searchQuery, setSearchQuery] = useState("")
   const [selectedFolderId, setSelectedFolderId] = useState<string>(defaultFolderId || "none")
+  const [refreshInterval, setRefreshInterval] = useState<number | undefined>(undefined)
   const [isLoading, setIsLoading] = useState(false)
   const [discoveredFeeds, setDiscoveredFeeds] = useState<string[]>([])
   const [isDiscovering, setIsDiscovering] = useState(false)
-  const { folders, addFeed, addArticles } = useRSSStore()
+  const { folders, settings, addFeed, addArticles } = useRSSStore()
   const { toast } = useToast()
 
   useEffect(() => {
@@ -73,6 +74,7 @@ export function AddFeedDialog({ open, onOpenChange, defaultFolderId, lockFolder 
         category: "General",
         folderId: selectedFolderId === "none" ? undefined : selectedFolderId,
         unreadCount: articles.filter((a) => !a.isRead).length,
+        refreshInterval: refreshInterval, // undefined will use default from settings
         lastFetched: new Date(),
       }
 
@@ -102,6 +104,7 @@ export function AddFeedDialog({ open, onOpenChange, defaultFolderId, lockFolder 
       setUrl("")
       setSearchQuery("")
       setSelectedFolderId(defaultFolderId || "none")
+      setRefreshInterval(undefined)
       setDiscoveredFeeds([])
       onOpenChange(false)
     } catch (error) {
@@ -235,6 +238,23 @@ export function AddFeedDialog({ open, onOpenChange, defaultFolderId, lockFolder 
                     </SelectContent>
                   </Select>
                 </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="refresh-interval">Refresh Interval (minutes)</Label>
+                  <Input
+                    id="refresh-interval"
+                    type="number"
+                    min="1"
+                    max="10080"
+                    placeholder={`Default: ${settings.refreshInterval} minutes`}
+                    value={refreshInterval ?? ""}
+                    onChange={(e) => setRefreshInterval(e.target.value ? parseInt(e.target.value) : undefined)}
+                    disabled={isLoading}
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    Leave empty to use default ({settings.refreshInterval} minutes)
+                  </p>
+                </div>
               </div>
 
               <DialogFooter className="mt-6">
@@ -301,6 +321,23 @@ export function AddFeedDialog({ open, onOpenChange, defaultFolderId, lockFolder 
                     ))}
                   </SelectContent>
                 </Select>
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="refresh-interval-discover">Refresh Interval (minutes)</Label>
+                <Input
+                  id="refresh-interval-discover"
+                  type="number"
+                  min="1"
+                  max="10080"
+                  placeholder={`Default: ${settings.refreshInterval} minutes`}
+                  value={refreshInterval ?? ""}
+                  onChange={(e) => setRefreshInterval(e.target.value ? parseInt(e.target.value) : undefined)}
+                  disabled={isDiscovering || isLoading}
+                />
+                <p className="text-xs text-muted-foreground">
+                  Leave empty to use default ({settings.refreshInterval} minutes)
+                </p>
               </div>
 
               {discoveredFeeds.length > 0 && (

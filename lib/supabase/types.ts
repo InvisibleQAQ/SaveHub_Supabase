@@ -28,6 +28,7 @@ export interface Database {
           category: string | null
           folder_id: string | null
           unread_count: number
+          refresh_interval: number
           last_fetched: string | null
           created_at: string
         }
@@ -39,6 +40,7 @@ export interface Database {
           category?: string | null
           folder_id?: string | null
           unread_count?: number
+          refresh_interval?: number
           last_fetched?: string | null
           created_at?: string
         }
@@ -50,6 +52,7 @@ export interface Database {
           category?: string | null
           folder_id?: string | null
           unread_count?: number
+          refresh_interval?: number
           last_fetched?: string | null
           created_at?: string
         }

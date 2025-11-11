@@ -60,7 +60,10 @@ Required in `.env`:
 ```
 NEXT_PUBLIC_SUPABASE_URL=your_supabase_project_url
 NEXT_PUBLIC_SUPABASE_ANON_KEY=your_supabase_anon_key
+ENCRYPTION_SECRET=your_secret_for_api_key_encryption  # For encrypting API configs
 ```
+
+**Note on ENCRYPTION_SECRET**: Used by `lib/encryption.ts` to encrypt API keys/bases before storing in database. Currently uses fixed salt (security improvement needed - see Known Issues).
 
 ## Architecture
 
@@ -74,10 +77,12 @@ NEXT_PUBLIC_SUPABASE_ANON_KEY=your_supabase_anon_key
 - `/unread` → Unread articles
 - `/starred` → Starred articles
 - `/feed/[feedId]` → Specific feed's articles
+- `/feed/[feedId]/properties` → **NEW**: Edit feed properties (title, URL, description, category, folder)
 - `/settings` → Settings page (redirects to `/settings/general`)
 - `/settings/general` → General settings
 - `/settings/appearance` → Appearance settings
 - `/settings/storage` → Storage settings
+- `/settings/api` → **NEW**: API configuration management (OpenAI-compatible APIs, encrypted storage)
 
 **Shared Layout** (`app/(reader)/layout.tsx`):
 - Handles database initialization
@@ -96,15 +101,23 @@ NEXT_PUBLIC_SUPABASE_ANON_KEY=your_supabase_anon_key
 
 **Critical Pattern**: Two-layer persistence architecture
 
-1. **Zustand Store** (`lib/store.ts`): Single source of truth for data
-   - Holds: folders, feeds, articles
+1. **Zustand Store** (`lib/store/index.ts`): Modular slice-based architecture
+   - **7 Slices**: DatabaseSlice, FoldersSlice, FeedsSlice, ArticlesSlice, UISlice, SettingsSlice, ApiConfigsSlice
+   - Holds: folders, feeds, articles, **apiConfigs** (NEW)
    - **Does NOT hold**: viewMode, selectedFeedId (moved to URL)
-   - No localStorage persistence (URL is the persistence)
+   - No localStorage persistence (URL is the persistence for view state)
    - All data mutations go through store actions
 
-2. **Supabase Manager** (`lib/db.ts`): Database persistence layer
+2. **Supabase Client** (`lib/supabase/client.ts`): **Singleton pattern** (refactored from factory function)
+   - **NEW usage**: `import { supabase } from '@/lib/supabase/client'`
+   - **DEPRECATED**: `const supabase = createClient()` (still works but logs warning in dev)
+   - Maintains connection pooling efficiency
+
+3. **Database Manager** (`lib/db/*.ts`): Modular persistence layer
+   - Split into: `feeds.ts`, `articles.ts`, `folders.ts`, `api-configs.ts`
    - Handles CRUD operations for Postgres
    - Transforms between app types (Date objects) and DB types (ISO strings)
+   - **Encryption**: API keys/bases encrypted via `lib/encryption.ts` before storage
    - Called by store actions via `syncToSupabase()` and `loadFromSupabase()`
 
 **Data Flow**:
@@ -141,14 +154,29 @@ NEXT_PUBLIC_SUPABASE_ANON_KEY=your_supabase_anon_key
 ### Type System
 
 **Types** (`lib/types.ts`):
-- Zod schemas: `FeedSchema`, `ArticleSchema`, `FolderSchema`
+- Zod schemas: `FeedSchema`, `ArticleSchema`, `FolderSchema`, **`ApiConfigSchema`** (NEW)
 - Exported TypeScript types inferred from schemas
 - `RSSReaderState`: Complete store state interface
 
+**ApiConfig Type** (NEW):
+```typescript
+{
+  id: string
+  name: string
+  apiKey: string      // Encrypted in DB
+  apiBase: string     // Encrypted in DB
+  model: string
+  isDefault: boolean
+  isActive: boolean
+  createdAt: Date
+}
+```
+
 **Database Types** (`lib/supabase/types.ts`):
 - Auto-generated from Supabase schema
-- Snake_case DB columns (e.g., `feed_id`, `is_read`)
-- Transformation functions in `lib/db.ts` convert between camelCase app types and snake_case DB types
+- Snake_case DB columns (e.g., `feed_id`, `is_read`, `api_key`, `api_base`)
+- Transformation functions in `lib/db/*.ts` convert between camelCase app types and snake_case DB types
+- Encryption/decryption handled transparently in `lib/db/api-configs.ts`
 
 ### Component Structure
 
@@ -157,6 +185,13 @@ NEXT_PUBLIC_SUPABASE_ANON_KEY=your_supabase_anon_key
 - `unread/page.tsx`: Renders `<ArticleList viewMode="unread" />`
 - `starred/page.tsx`: Renders `<ArticleList viewMode="starred" />`
 - `feed/[feedId]/page.tsx`: Renders `<ArticleList feedId={params.feedId} />`
+- **`feed/[feedId]/properties/page.tsx`** (NEW): Renders `<EditFeedForm feedId={params.feedId} />`
+
+**Settings Pages** (`app/(reader)/settings/*/page.tsx`):
+- `general/page.tsx`: General settings
+- `appearance/page.tsx`: Appearance settings
+- `storage/page.tsx`: Storage settings
+- **`api/page.tsx`** (NEW): API configuration management with encryption support
 
 **Main Components**:
 - `(reader)/layout.tsx`: Root layout with database init + `<Sidebar />`
@@ -167,6 +202,7 @@ NEXT_PUBLIC_SUPABASE_ANON_KEY=your_supabase_anon_key
   - `*-actions-menu.tsx`: Extracted duplicate dropdown menus
 - `article-list.tsx`: Article list with `viewMode?` and `feedId?` props
 - `article-content.tsx`: Article reader with read/star actions
+- **`edit-feed-form.tsx`** (NEW): Feed properties editor with URL validation and duplicate detection
 - `keyboard-shortcuts.tsx`: Global keyboard navigation with `router.push()`
 
 **UI Components** (`components/ui/`):
@@ -207,6 +243,38 @@ addArticles(articles)  // Zustand action deduplicates by article.id
 - `dbManager.clearOldArticles(days)`: Deletes read, non-starred articles older than N days
 - Runs on app load after data loaded
 
+### Feed Update Pattern (NEW)
+```typescript
+// Update feed properties
+updateFeed(feedId, { title, url, description, category, folderId })
+// → Validates URL if changed
+// → Detects duplicate URLs (returns error: 'duplicate')
+// → Partial update (only provided fields updated)
+// → User-scoped (eq("user_id", userId) ensures security)
+```
+
+**Implementation**: `lib/db/feeds.ts:updateFeed()` + `lib/store/feeds.slice.ts:updateFeed()`
+
+### API Configuration Management (NEW)
+**Data Flow**:
+1. User adds API config (name, apiKey, apiBase)
+2. Validates config by calling `{apiBase}/models` endpoint
+3. Fetches available models → user selects model
+4. Encrypts apiKey + apiBase via AES-GCM (`lib/encryption.ts`)
+5. Stores encrypted data in `api_configs` table
+
+**Key Features**:
+- Encryption: PBKDF2 (100k iterations) + AES-256-GCM
+- Auto-migration: Legacy unencrypted configs auto-upgraded on load
+- Default config: Mark one config as default for AI features
+- Validation: Real-time API validation with model discovery
+
+**Files**:
+- `lib/encryption.ts`: AES-GCM encryption/decryption
+- `lib/api-validation.ts`: OpenAI-compatible API validation
+- `lib/db/api-configs.ts`: Encrypted persistence
+- `lib/store/api-configs.slice.ts`: Store actions
+
 > **📖 For implementation examples and code patterns, see [Common Tasks](./docs/06-common-tasks.md) for basic features and [Advanced Tasks](./docs/06-advanced-tasks.md) for complex functionality**
 
 ## Path Aliases
@@ -229,10 +297,12 @@ addArticles(articles)  // Zustand action deduplicates by article.id
 ## Common Patterns
 
 ### Adding a New Zustand Action
-1. Add action signature to `RSSReaderActions` interface in `lib/store.ts`
-2. Implement action in store definition
-3. Call `syncToSupabase()` if data should persist
-4. Add corresponding `dbManager` method if new DB operation needed
+1. Identify the relevant slice in `lib/store/` (e.g., `feeds.slice.ts`, `api-configs.slice.ts`)
+2. Add action signature to the slice's interface (e.g., `FeedsSlice`)
+3. Implement action in the slice definition
+4. Call appropriate `sync*ToSupabase()` method if data should persist
+5. Add corresponding method in `lib/db/*.ts` if new DB operation needed
+6. Update `lib/store/index.ts` to export new action if needed
 
 ### Adding Database Column
 1. Update Supabase schema via SQL editor
@@ -246,6 +316,80 @@ addArticles(articles)  // Zustand action deduplicates by article.id
 - Control open state with local `useState` or store
 - Use `react-hook-form` + Zod for form validation (see `add-feed-dialog.tsx`)
 - Call Zustand actions to persist changes
+
+---
+
+## ⚠️ Known Issues & Technical Debt
+
+**These are NOT bugs - they're design decisions that need improvement. Knowing them helps you avoid making them worse.**
+
+### High Priority
+
+1. **API Config Deletion Race Condition** (`lib/store/api-configs.slice.ts:47-62`)
+   ```typescript
+   deleteApiConfig: (id) => {
+     set({ apiConfigs: state.apiConfigs.filter(...) })
+     const deleteFromDB = async () => { ... }
+     deleteFromDB()  // ❌ No await - returns before DB delete completes
+   }
+   ```
+   **Impact**: UI shows config deleted but DB operation might fail silently.
+   **Fix**: Make `deleteApiConfig` async and await DB operation, or use proper error handling.
+
+2. **Feed Edit Optimistic Update Has No Rollback** (`components/edit-feed-form.tsx`)
+   - Store updates immediately via `updateFeed()`
+   - If DB operation fails, store and DB are inconsistent
+   - **Fix**: Implement rollback on error or use pessimistic updates.
+
+3. **Encryption Uses Fixed Salt** (`lib/encryption.ts:61`)
+   ```typescript
+   const salt = new TextEncoder().encode("rssreader-salt")  // ❌ Hardcoded
+   ```
+   **Impact**: Weakens PBKDF2 protection against rainbow table attacks.
+   **Fix**: Generate random salt per user, store in `user_metadata` table.
+
+### Medium Priority
+
+4. **Concurrent Feed Edits Cause Overwrites** (`components/edit-feed-form.tsx`)
+   - No version/ETag checking
+   - If User A and User B edit same feed, last write wins
+   - **Fix**: Add `updated_at` column, check version before update.
+
+5. **API Validation Doesn't Distinguish Error Types** (`lib/api-validation.ts`)
+   - `getAvailableModels()` returns empty array for both "invalid API" and "network error"
+   - Users can't tell if they should retry or fix config
+   - **Fix**: Return `{ success: boolean; models?: string[]; error?: 'network' | 'invalid_api' }`.
+
+6. **Legacy API Config Migration is Fire-and-Forget** (`lib/db/api-configs.ts:119-130`)
+   ```typescript
+   setTimeout(async () => {
+     // ❌ No error handling, no retry, no logging
+     await saveApiConfigs(...)
+   }, 0)
+   ```
+   **Impact**: If migration fails, legacy data stays unencrypted forever.
+   **Fix**: Use proper task queue or at minimum add error logging.
+
+### Low Priority
+
+7. **`any` Types in Store Actions** (`lib/store/feeds.slice.ts`)
+   ```typescript
+   set((state: any) => ({ ... }))  // ❌ Defeats TypeScript
+   ```
+   **Impact**: No type safety in store mutations.
+   **Fix**: Define proper `WritableDraft<RSSReaderState>` type.
+
+### Design Patterns to Follow
+
+**Good Taste** (keep doing this):
+- User-scoped queries: `eq("user_id", userId)` on all DB operations
+- Partial updates: Only defined fields updated in `updateFeed()`
+- Singleton pattern: Supabase client as module-level export
+
+**Bad Patterns** (avoid these):
+- Fire-and-forget async operations without error handling
+- Optimistic updates without rollback mechanisms
+- Fixed salts or secrets in encryption
 
 ---
 

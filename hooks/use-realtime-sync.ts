@@ -21,7 +21,9 @@ export function useRealtimeSync() {
           description: feedRow.description || undefined,
           category: feedRow.category || undefined,
           folderId: feedRow.folder_id || undefined,
+          order: feedRow.order ?? 0,
           unreadCount: feedRow.unread_count,
+          refreshInterval: feedRow.refresh_interval,
           lastFetched: feedRow.last_fetched ? new Date(feedRow.last_fetched) : undefined,
         }
         const result = store.addFeed(feed)
@@ -36,7 +38,9 @@ export function useRealtimeSync() {
           description: feedRow.description || undefined,
           category: feedRow.category || undefined,
           folderId: feedRow.folder_id || undefined,
+          order: feedRow.order,
           unreadCount: feedRow.unread_count,
+          refreshInterval: feedRow.refresh_interval,
           lastFetched: feedRow.last_fetched ? new Date(feedRow.last_fetched) : undefined,
         }
         store.updateFeed(feedRow.id, feed)

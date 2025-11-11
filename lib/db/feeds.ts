@@ -18,6 +18,7 @@ export async function saveFeeds(feeds: Feed[]): Promise<{ success: boolean; erro
     folder_id: feed.folderId || null,
     order: feed.order ?? 0,
     unread_count: feed.unreadCount ?? 0,
+    refresh_interval: feed.refreshInterval ?? 60,
     user_id: userId,
     last_fetched: toISOString(feed.lastFetched),
   }))
@@ -58,6 +59,7 @@ export async function loadFeeds(): Promise<Feed[]> {
     folderId: row.folder_id || undefined,
     order: row.order,
     unreadCount: row.unread_count,
+    refreshInterval: row.refresh_interval,
     lastFetched: row.last_fetched ? new Date(row.last_fetched) : undefined,
   }))
 }
@@ -78,6 +80,7 @@ export async function updateFeed(feedId: string, updates: Partial<Feed>): Promis
   if (updates.folderId !== undefined) updateData.folder_id = updates.folderId || null
   if (updates.order !== undefined) updateData.order = updates.order
   if (updates.unreadCount !== undefined) updateData.unread_count = updates.unreadCount
+  if (updates.refreshInterval !== undefined) updateData.refresh_interval = updates.refreshInterval
   if (updates.lastFetched !== undefined) updateData.last_fetched = toISOString(updates.lastFetched)
 
   console.log(`[DB] Updating feed ${feedId}`, updateData)

@@ -26,6 +26,9 @@ export const createFeedsSlice: StateCreator<
     const sameFolderFeeds = state.feeds.filter((f: any) => (f.folderId || undefined) === (feed.folderId || undefined))
     const maxOrder = sameFolderFeeds.reduce((max: number, f: any) => Math.max(max, f.order ?? -1), -1)
 
+    // Use provided refreshInterval, or fallback to global settings, or default to 60
+    const defaultRefreshInterval = state.settings?.refreshInterval ?? 60
+
     const newFeed: Feed = {
       ...feed,
       id: feed.id || crypto.randomUUID(),
@@ -33,6 +36,7 @@ export const createFeedsSlice: StateCreator<
       title: feed.title || "",
       order: maxOrder + 1,
       unreadCount: 0,
+      refreshInterval: feed.refreshInterval ?? defaultRefreshInterval,
     }
 
     set((state: any) => ({

@@ -8,7 +8,7 @@ export const FolderSchema = z.object({
   createdAt: z.date().default(() => new Date()),
 })
 
-// Updated feed schema to include folderId
+// Updated feed schema to include folderId and refreshInterval
 export const FeedSchema = z.object({
   id: z.string(),
   title: z.string(),
@@ -19,6 +19,12 @@ export const FeedSchema = z.object({
   order: z.number().default(0),
   unreadCount: z.number().default(0),
   lastFetched: z.date().optional(),
+  refreshInterval: z
+    .number()
+    .int()
+    .min(1, "Refresh interval must be at least 1 minute")
+    .max(10080, "Refresh interval cannot exceed 1 week (10080 minutes)")
+    .default(60),
 })
 
 export const ArticleSchema = z.object({
