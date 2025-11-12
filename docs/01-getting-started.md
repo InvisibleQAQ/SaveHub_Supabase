@@ -20,6 +20,7 @@ pnpm install
 你的 `.env` 已经配置好了，但还需要初始化数据库。
 
 **步骤**：
+
 1. 打开 https://supabase.com/dashboard
 2. 找到你的项目 `xxhlzzntzrdktyzkjpxu`
 3. 点击左侧 **SQL Editor**
@@ -27,6 +28,7 @@ pnpm install
 5. 粘贴到 SQL Editor，点击 **Run**
 
 **这个 SQL 文件做了什么？**
+
 - 创建 4 张表：folders（文件夹）、feeds（订阅源）、articles（文章）、settings（设置）
 - 创建索引加速查询
 - 插入默认设置
@@ -64,27 +66,12 @@ pnpm lint
 
 ## 常见首次启动问题
 
-### 问题 1：页面显示 "Database not initialized"
-
-**原因**：你没有运行 SQL 初始化脚本。
-
-**解决**：回到步骤 2，在 Supabase SQL Editor 运行 `scripts/001_create_tables.sql`。
-
-### 问题 2：环境变量错误
-
-**症状**：控制台报错 `Invalid Supabase URL` 或 `Invalid API key`。
-
-**解决**：
-1. 检查 `.env` 文件是否存在且有内容
-2. 确认 URL 格式是 `https://xxx.supabase.co`
-3. 确认 anon key 是完整的 JWT token（很长的字符串）
-4. **重启开发服务器**（Next.js 不会热重载 env 文件）
-
 ### 问题 3：RSS 源添加失败
 
 **原因**：可能是跨域问题或 RSS 源不可用。
 
 **调试方法**：
+
 1. 打开浏览器控制台查看错误
 2. 尝试换一个 RSS 源测试
 3. 检查 `app/api/rss/parse/route.ts` 的服务器日志

@@ -1,6 +1,7 @@
 import type { StateCreator } from "zustand"
 import type { Feed } from "../types"
 import { dbManager } from "../db"
+import { scheduleFeedRefresh, cancelFeedRefresh } from "../scheduler"
 
 export interface FeedsSlice {
   addFeed: (feed: Partial<Feed>) => { success: boolean; reason: 'created' | 'duplicate' }
@@ -44,6 +45,10 @@ export const createFeedsSlice: StateCreator<
     }))
 
     ;(get() as any).syncToSupabase?.()
+
+    // Schedule automatic refresh for new feed
+    scheduleFeedRefresh(newFeed)
+
     return { success: true, reason: 'created' as const }
   },
 
@@ -54,6 +59,9 @@ export const createFeedsSlice: StateCreator<
       selectedFeedId: state.selectedFeedId === feedId ? null : state.selectedFeedId,
     }))
 
+    // Cancel scheduler before deleting (prevents memory leak)
+    cancelFeedRefresh(feedId)
+
     dbManager.deleteFeed(feedId).catch(console.error)
   },
 
@@ -63,6 +71,15 @@ export const createFeedsSlice: StateCreator<
     }))
 
     ;(get() as any).syncToSupabase?.()
+
+    // Reschedule if refresh_interval or last_fetched changed
+    if (updates.refreshInterval !== undefined || updates.lastFetched !== undefined) {
+      const updatedFeed = get().feeds.find((f: any) => f.id === feedId)
+      if (updatedFeed) {
+        // This will cancel old schedule and create new one with updated timing
+        scheduleFeedRefresh(updatedFeed)
+      }
+    }
   },
 
   moveFeed: (feedId, targetFolderId, targetOrder) => {
