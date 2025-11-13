@@ -506,6 +506,249 @@ function ArticleItem({ article }: { article: Article }) {
 
 ---
 
+## 任务 8:添加结构化日志 ⚠️ **新增**
+
+**需求**:为新功能添加可观测性(日志记录)。
+
+### 场景 1:为 API Route 添加日志
+
+**文件**:`app/api/custom-endpoint/route.ts`
+
+```typescript
+import { NextRequest, NextResponse } from "next/server"
+import { logger } from "@/lib/logger"
+
+export async function POST(request: NextRequest) {
+  const startTime = Date.now()  // ✅ 记录开始时间
+
+  try {
+    const { param1, param2 } = await request.json()
+
+    // ✅ 记录输入参数(无敏感信息)
+    logger.info({ param1, operation: 'custom_operation' }, 'Processing request')
+
+    // ... 业务逻辑 ...
+    const result = await processData(param1, param2)
+
+    // ✅ 记录成功 + 性能指标
+    const duration = Date.now() - startTime
+    logger.info({
+      param1,
+      resultCount: result.length,
+      duration,
+      operation: 'custom_operation'
+    }, 'Request processed successfully')
+
+    return NextResponse.json({ result })
+  } catch (error) {
+    // ✅ 记录错误 + 上下文 + 性能指标
+    const duration = Date.now() - startTime
+    logger.error({
+      error,
+      url: request.url,
+      duration,
+      operation: 'custom_operation'
+    }, 'Request failed')
+
+    return NextResponse.json(
+      { error: 'Processing failed' },
+      { status: 500 }
+    )
+  }
+}
+```
+
+### 场景 2:为数据库操作添加日志
+
+**文件**:`lib/db/custom-table.ts`
+
+```typescript
+import { supabase } from "@/lib/supabase/client"
+import { getCurrentUserId } from "./core"
+import { logger } from "@/lib/logger"
+
+export async function saveCustomData(items: CustomItem[]): Promise<void> {
+  const userId = await getCurrentUserId()
+
+  // ✅ 调试日志 - 记录操作开始
+  logger.debug({ userId, itemCount: items.length }, 'Saving custom data')
+
+  const dbRows = items.map(item => ({
+    id: item.id,
+    name: item.name,
+    user_id: userId,
+  }))
+
+  const { data, error } = await supabase.from("custom_table").upsert(dbRows).select()
+
+  if (error) {
+    // ✅ 错误日志 - 包含完整上下文
+    logger.error({ error, userId, itemCount: items.length }, 'Failed to save custom data')
+    throw error
+  }
+
+  // ✅ 信息日志 - 记录成功统计
+  logger.info({ userId, savedCount: data?.length || 0 }, 'Custom data saved successfully')
+}
+
+export async function deleteCustomData(itemId: string): Promise<void> {
+  const userId = await getCurrentUserId()
+
+  // ✅ 调试日志 - 记录操作意图
+  logger.debug({ userId, itemId }, 'Deleting custom data')
+
+  const { error } = await supabase
+    .from("custom_table")
+    .delete()
+    .eq("id", itemId)
+    .eq("user_id", userId)
+
+  if (error) {
+    // ✅ 错误日志
+    logger.error({ error, userId, itemId }, 'Failed to delete custom data')
+    throw error
+  }
+
+  // ✅ 信息日志
+  logger.info({ userId, itemId }, 'Custom data deleted successfully')
+}
+```
+
+### 场景 3:为 Store Actions 添加日志
+
+**文件**:`lib/store/custom.slice.ts`
+
+```typescript
+import type { StateCreator } from "zustand"
+import { logger } from "@/lib/logger"
+
+export interface CustomSlice {
+  customItems: CustomItem[]
+  addCustomItem: (item: CustomItem) => void
+  deleteCustomItem: (id: string) => void
+}
+
+export const createCustomSlice: StateCreator<CustomSlice> = (set, get) => ({
+  customItems: [],
+
+  addCustomItem: (item) => {
+    // ✅ 调试日志 - 记录状态变更
+    logger.debug({ itemId: item.id, itemName: item.name }, 'Adding custom item to store')
+
+    set({ customItems: [...get().customItems, item] })
+
+    // 异步保存到数据库
+    const saveToDb = async () => {
+      try {
+        const { saveCustomData } = await import("../db")
+        await saveCustomData([item])
+        logger.info({ itemId: item.id }, 'Custom item synced to database')
+      } catch (error) {
+        // ✅ 错误日志 - 记录同步失败
+        logger.error({ error, itemId: item.id }, 'Failed to sync custom item to database')
+        // 可选:回滚本地状态或通知用户
+      }
+    }
+
+    saveToDb()
+  },
+
+  deleteCustomItem: (id) => {
+    // ⚠️ 悲观删除模式(先删除 DB,再更新 store)
+    const deleteFromDb = async () => {
+      try {
+        logger.debug({ itemId: id }, 'Deleting custom item from database')
+
+        const { deleteCustomData } = await import("../db")
+        await deleteCustomData(id)
+
+        // 仅在 DB 删除成功后更新 store
+        set({ customItems: get().customItems.filter(item => item.id !== id) })
+
+        logger.info({ itemId: id }, 'Custom item deleted from store')
+      } catch (error) {
+        // ✅ 错误日志 - DB 删除失败,store 不变
+        logger.error({ error, itemId: id }, 'Failed to delete custom item from database')
+        throw error
+      }
+    }
+
+    deleteFromDb()
+  },
+})
+```
+
+### 场景 4:为加密操作添加日志
+
+**文件**:`lib/custom-encryption.ts`
+
+```typescript
+import { logger } from "@/lib/logger"
+
+export async function encryptSensitiveData(plaintext: string): Promise<string> {
+  try {
+    // ✅ 调试日志 - 不记录明文,只记录长度
+    logger.debug({ plaintextLength: plaintext.length }, 'Encrypting sensitive data')
+
+    // ... 加密逻辑 ...
+    const encrypted = await performEncryption(plaintext)
+
+    // ✅ 信息日志 - 记录加密成功 + 密文长度
+    logger.debug({
+      plaintextLength: plaintext.length,
+      encryptedLength: encrypted.length
+    }, 'Data encrypted successfully')
+
+    return encrypted
+  } catch (error) {
+    // ✅ 错误日志 - 不泄露明文
+    logger.error({
+      error,
+      plaintextLength: plaintext.length
+    }, 'Encryption failed')
+    throw new Error('Encryption failed')
+  }
+}
+
+export async function decryptSensitiveData(encryptedData: string): Promise<string> {
+  try {
+    logger.debug({ encryptedLength: encryptedData.length }, 'Decrypting sensitive data')
+
+    const plaintext = await performDecryption(encryptedData)
+
+    logger.debug({
+      encryptedLength: encryptedData.length,
+      decryptedLength: plaintext.length
+    }, 'Data decrypted successfully')
+
+    return plaintext
+  } catch (error) {
+    logger.error({
+      error,
+      encryptedLength: encryptedData.length
+    }, 'Decryption failed')
+    throw new Error('Decryption failed')
+  }
+}
+```
+
+### 日志最佳实践总结
+
+**✅ 要做**:
+- 记录关键操作的开始和结束
+- 附带上下文信息 (userId, itemId, 操作类型)
+- 性能监控:记录 duration
+- 错误日志:包含完整 error 对象
+- 敏感数据:只记录长度,不记录内容
+
+**❌ 不要做**:
+- 在日志中记录 `password`, `apiKey`, `token` 等敏感信息 (会被自动脱敏)
+- 使用 `console.log` 替代 `logger.*`
+- 忘记记录性能指标 (duration)
+- 忘记记录错误上下文
+
+---
+
 ## 下一步
 
 - 查看 [高级任务](./06-advanced-tasks.md) 了解 OPML导入导出、阅读统计、拖拽排序等高级特性

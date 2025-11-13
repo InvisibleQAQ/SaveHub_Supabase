@@ -293,6 +293,7 @@ updateFeed(feedId, { title, url, description, category, folderId })
 - **rss-parser**: RSS/Atom feed parsing
 - **date-fns**: Date formatting utilities
 - **Immer**: Used internally by Zustand for immutable updates
+- **Pino**: Structured JSON logging (no pino-pretty transport to avoid Next.js hot reload conflicts)
 
 ## Common Patterns
 
@@ -317,6 +318,32 @@ updateFeed(feedId, { title, url, description, category, folderId })
 - Use `react-hook-form` + Zod for form validation (see `add-feed-dialog.tsx`)
 - Call Zustand actions to persist changes
 
+### Logging Pattern
+```typescript
+import { logger } from "@/lib/logger"
+
+// Info logging with context
+logger.info({ userId, feedId, articleCount }, 'Feed refreshed successfully')
+
+// Error logging with stack traces
+logger.error({ error, userId, feedId }, 'Feed refresh failed')
+
+// Debug logging (only in development)
+logger.debug({ queryParams }, 'Processing request')
+
+// Performance tracking
+const startTime = Date.now()
+// ... operation ...
+const duration = Date.now() - startTime
+logger.info({ duration, operationType: 'rss_parse' }, 'Operation completed')
+```
+
+**Automatic Features**:
+- Sensitive fields auto-redacted (`apiKey`, `password`, `token`)
+- Timestamps included in ISO format
+- JSON output (works with log aggregators)
+- No pino-pretty transport (avoids Next.js hot reload issues)
+
 ---
 
 ## ⚠️ Known Issues & Technical Debt
@@ -325,16 +352,10 @@ updateFeed(feedId, { title, url, description, category, folderId })
 
 ### High Priority
 
-1. **API Config Deletion Race Condition** (`lib/store/api-configs.slice.ts:47-62`)
-   ```typescript
-   deleteApiConfig: (id) => {
-     set({ apiConfigs: state.apiConfigs.filter(...) })
-     const deleteFromDB = async () => { ... }
-     deleteFromDB()  // ❌ No await - returns before DB delete completes
-   }
-   ```
-   **Impact**: UI shows config deleted but DB operation might fail silently.
-   **Fix**: Make `deleteApiConfig` async and await DB operation, or use proper error handling.
+1. **~~API Config Deletion Race Condition~~** ✅ **FIXED** (commit 80d9a8f)
+   - Changed from optimistic to pessimistic delete pattern
+   - Now deletes from DB first, then updates store only if successful
+   - Error handling added with structured logging
 
 2. **Feed Edit Optimistic Update Has No Rollback** (`components/edit-feed-form.tsx`)
    - Store updates immediately via `updateFeed()`
@@ -360,15 +381,11 @@ updateFeed(feedId, { title, url, description, category, folderId })
    - Users can't tell if they should retry or fix config
    - **Fix**: Return `{ success: boolean; models?: string[]; error?: 'network' | 'invalid_api' }`.
 
-6. **Legacy API Config Migration is Fire-and-Forget** (`lib/db/api-configs.ts:119-130`)
-   ```typescript
-   setTimeout(async () => {
-     // ❌ No error handling, no retry, no logging
-     await saveApiConfigs(...)
-   }, 0)
-   ```
-   **Impact**: If migration fails, legacy data stays unencrypted forever.
-   **Fix**: Use proper task queue or at minimum add error logging.
+6. **~~Legacy API Config Migration is Fire-and-Forget~~** ✅ **IMPROVED** (commit 80d9a8f)
+   - Now has error logging via Pino structured logger
+   - Migration failures are logged with context (configId, userId, error details)
+   - Still uses `setTimeout(0)` pattern but no longer silent on failures
+   - **Remaining issue**: No retry mechanism for failed migrations
 
 ### Low Priority
 

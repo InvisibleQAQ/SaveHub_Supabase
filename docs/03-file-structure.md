@@ -50,6 +50,7 @@ rssreader3/
 │   └── [其他对话框组件]
 ├── lib/                     # 核心逻辑
 │   ├── store.ts             # Zustand 状态管理（移除了 viewMode/selectedFeedId）
+│   ├── logger.ts            # **NEW**: Pino 结构化日志 (JSON 输出, 自动脱敏)
 │   ├── db.ts                # Supabase 数据库操作
 │   ├── types.ts             # 类型定义（移除了 viewMode/selectedFeedId）
 │   ├── rss-parser.ts        # RSS 解析客户端
@@ -380,6 +381,34 @@ const { feed, articles } = await parseRSSFeed(url, feedId)
 addFeed(feed)
 addArticles(articles)
 ```
+
+#### `lib/logger.ts` ⚠️ **新增**
+**作用**：Pino 结构化日志单例。
+
+**核心特性**：
+1. **NO pino-pretty transport** - 避免 Next.js 热重载 Worker Threads 冲突
+2. **JSON 输出** - 开发和生产环境统一格式
+3. **自动脱敏** - `apiKey`, `password`, `token` 等敏感字段自动隐藏
+4. **结构化上下文** - 所有日志附带 userId, feedId, duration 等元数据
+
+**日志等级**：
+- Production: `info` 及以上
+- Development: `debug` 及以上
+
+**使用示例**：
+```typescript
+import { logger } from "@/lib/logger"
+
+logger.info({ userId, feedId, duration: 123 }, 'Operation completed')
+logger.error({ error, context }, 'Operation failed')
+logger.debug({ params }, 'Debug info')
+```
+
+**集成位置**：
+- `app/api/rss/*.ts` - RSS 解析性能监控
+- `lib/db/*.ts` - 数据库操作日志
+- `lib/encryption.ts` - 加密操作日志
+- `lib/store/api-configs.slice.ts` - Store action 日志
 
 #### `lib/realtime.ts`
 **作用**：管理 Supabase Realtime 订阅。

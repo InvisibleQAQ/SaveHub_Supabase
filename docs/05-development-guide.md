@@ -521,9 +521,178 @@ async loadUnreadArticles(feedId?: string): Promise<Article[]> {
 
 ---
 
+## 日志系统使用指南 ⚠️ **新增**
+
+### 核心原则
+
+**❌ 不要使用 `console.log`/`console.error`**
+**✅ 始终使用 `logger.*` 进行结构化日志**
+
+### 基础用法
+
+```typescript
+import { logger } from "@/lib/logger"
+
+// ✅ 信息日志 - 记录关键操作
+logger.info({ userId: 'abc', feedId: 'xyz', duration: 123 }, 'Feed refreshed successfully')
+
+// ❌ 错误日志 - 附带完整 error 对象
+logger.error({ error, userId, feedId, operation: 'feed_refresh' }, 'Feed refresh failed')
+
+// 🐛 调试日志 - 仅开发环境显示
+logger.debug({ queryParams, filters }, 'Processing request')
+
+// ⚠️ 警告日志 - 非致命问题
+logger.warn({ configId, reason: 'legacy_format' }, 'Migrating plaintext API key')
+```
+
+### 性能监控模式
+
+**API Routes** 性能追踪:
+
+```typescript
+export async function POST(request: NextRequest) {
+  const startTime = Date.now()  // 1️⃣ 记录开始时间
+
+  try {
+    const { url, feedId } = await request.json()
+    logger.info({ url, feedId }, 'Parsing RSS feed')  // 2️⃣ 记录输入参数
+
+    const feed = await parser.parseURL(url)
+
+    const duration = Date.now() - startTime  // 3️⃣ 计算耗时
+    logger.info({ url, feedId, articleCount: feed.items.length, duration }, 'RSS feed parsed successfully')
+
+    return NextResponse.json({ feed })
+  } catch (error) {
+    const duration = Date.now() - startTime
+    logger.error({ error, url: request.url, duration }, 'Failed to parse RSS feed')  // 4️⃣ 记录错误 + 耗时
+    return NextResponse.json({ error: 'Failed' }, { status: 500 })
+  }
+}
+```
+
+### 数据库操作日志模式
+
+**标准 CRUD 日志**:
+
+```typescript
+export async function saveFeeds(feeds: Feed[]): Promise<void> {
+  const userId = await getCurrentUserId()
+  logger.debug({ userId, feedCount: feeds.length }, 'Saving feeds')  // 开始操作
+
+  const { data, error } = await supabase.from("feeds").upsert(dbRows).select()
+
+  if (error) {
+    logger.error({ error, userId, feedCount: feeds.length }, 'Failed to save feeds')  // 错误详情
+    throw error
+  }
+
+  logger.info({ userId, savedCount: data?.length || 0 }, 'Feeds saved successfully')  // 成功统计
+}
+```
+
+### 敏感数据自动脱敏
+
+**Pino 自动隐藏这些字段**:
+- `apiKey`, `api_key`
+- `password`
+- `token`, `secret`
+- `ENCRYPTION_SECRET`
+- 嵌套对象中的同名字段 (`*.apiKey`, `*.password`)
+
+```typescript
+// ✅ 安全 - apiKey 会被自动脱敏
+logger.info({ apiKey: 'sk-xxx', userId: 'abc' }, 'API config saved')
+// 输出: {"apiKey":"***REDACTED***","userId":"abc","msg":"API config saved"}
+
+// ✅ 安全 - 嵌套对象也会脱敏
+logger.debug({ config: { name: 'OpenAI', apiKey: 'sk-xxx' } }, 'Config details')
+// 输出: {"config":{"name":"OpenAI","apiKey":"***REDACTED***"},"msg":"Config details"}
+```
+
+### 日志等级控制
+
+**环境配置**:
+- **Development** (`NODE_ENV=development`): `debug` 及以上
+- **Production** (`NODE_ENV=production`): `info` 及以上
+
+**等级层级** (从低到高):
+```
+debug → info → warn → error
+```
+
+### 查看日志输出
+
+**开发环境 (终端 JSON 格式)**:
+```bash
+pnpm dev
+# 输出: {"level":"INFO","time":"2025-01-13T00:08:54.123Z","userId":"abc","msg":"Feed refreshed"}
+```
+
+**生产环境 (日志聚合服务)**:
+- JSON 格式兼容 Datadog, Sentry, Cloudwatch
+- 可通过 `userId`, `feedId`, `duration` 等字段过滤查询
+
+### 实际案例对比
+
+**❌ 旧代码 (使用 console.log)**:
+```typescript
+console.log(`[DB] Saving ${feeds.length} feeds`)
+const { error } = await supabase.from("feeds").upsert(dbRows)
+if (error) console.error('[DB] Failed:', error)
+```
+
+**问题**:
+- 无法按 userId 过滤日志
+- 无法统计成功率
+- 无法查询性能指标
+- 生产环境不应该有 console.log
+
+**✅ 新代码 (使用 logger)**:
+```typescript
+logger.debug({ userId, feedCount: feeds.length }, 'Saving feeds')
+const { data, error } = await supabase.from("feeds").upsert(dbRows).select()
+if (error) {
+  logger.error({ error, userId, feedCount: feeds.length }, 'Failed to save feeds')
+  throw error
+}
+logger.info({ userId, savedCount: data?.length || 0 }, 'Feeds saved successfully')
+```
+
+**优势**:
+- 可查询: `jq 'select(.userId=="abc")' logs.json`
+- 可统计: `jq 'select(.savedCount) | .savedCount' logs.json | sum`
+- 可监控: 通过 `duration` 字段设置性能告警
+- 安全: 敏感字段自动脱敏
+
+---
+
 ## 调试技巧
 
-### 1. 调试 Zustand Store
+### 1. 调试结构化日志 ⚠️ **新增**
+
+**查看实时日志**:
+```bash
+pnpm dev | grep "ERROR"   # 只看错误日志
+pnpm dev | grep "userId.*abc"  # 查看特定用户的操作
+```
+
+**解析 JSON 日志** (使用 jq):
+```bash
+# 安装 jq: brew install jq (macOS) 或 apt install jq (Linux)
+
+# 查看所有错误日志
+pnpm dev 2>&1 | grep "level.*ERROR" | jq .
+
+# 统计各操作耗时
+pnpm dev 2>&1 | grep "duration" | jq '.duration' | awk '{sum+=$1;count++} END {print sum/count}'
+
+# 查找慢查询 (duration > 1000ms)
+pnpm dev 2>&1 | jq 'select(.duration > 1000)'
+```
+
+### 2. 调试 Zustand Store
 
 **查看当前状态**：
 
@@ -536,43 +705,48 @@ console.log(window.useRSSStore.getState())
 
 ```typescript
 useRSSStore.subscribe((state) => {
-  console.log('Store updated:', state)
+  logger.debug({ stateKeys: Object.keys(state) }, 'Store updated')  // ✅ 使用 logger
 })
 ```
 
-### 2. 调试 Supabase 查询
+### 3. 调试 Supabase 查询
 
 **启用详细日志**：
 
 ```typescript
 import { createClient } from "@/lib/supabase/client"
+import { logger } from "@/lib/logger"
 
 const supabase = createClient()
 
-// 在查询前添加日志
-console.log('Querying articles...')
+logger.debug({ table: 'articles', filters }, 'Querying database')  // ✅ 使用 logger
 const { data, error } = await supabase.from("articles").select("*")
-console.log('Result:', { data, error })
+
+if (error) {
+  logger.error({ error, table: 'articles' }, 'Query failed')
+} else {
+  logger.debug({ resultCount: data.length }, 'Query succeeded')
+}
 ```
 
 **在 Supabase Dashboard 查看日志**：
 
 Dashboard → Logs → Postgres Logs
 
-### 3. 调试实时同步
+### 4. 调试实时同步
 
 **检查连接状态**：
 
 ```typescript
 const channel = realtimeManager.subscribeToFeeds(...)
-console.log('Channel state:', channel.state)  // 应该是 "joined"
+logger.debug({ channelState: channel.state }, 'Realtime channel status')  // ✅ 使用 logger
 ```
 
 **查看事件日志**：
 
-在 `lib/realtime.ts` 的回调中已经有 `console.log`，检查浏览器控制台。
+在 `lib/realtime.ts` 中所有回调应使用 `logger.*` 而非 `console.log`。
 
-### 4. 调试 RSS 解析
+### 5. 调试 RSS 解析
 
 **查看服务端日志**：
 

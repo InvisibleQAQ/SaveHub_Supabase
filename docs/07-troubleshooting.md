@@ -783,9 +783,153 @@ React DevTools → Profiler → 录制，查看组件渲染性能。
 
 ---
 
+## 已修复的已知问题 ⚠️ **更新**
+
+### 问题 1: API Config 删除 Race Condition ✅ **已修复** (commit 80d9a8f)
+
+**症状**: 删除 API 配置后,UI 显示已删除,但数据库中仍然存在。
+
+**原因**: 使用了乐观更新模式 (先更新 store,再删除 DB),如果 DB 删除失败,store 和 DB 不一致。
+
+**修复**: 改为悲观删除模式:
+1. 先从数据库删除
+2. 如果删除成功,再更新 store
+3. 如果删除失败,抛出错误,store 不变
+
+**代码位置**: `lib/store/api-configs.slice.ts:deleteApiConfig()`
+
+**相关日志**:
+```typescript
+// 现在可以在日志中看到删除操作的完整追踪
+logger.debug({ configId, userId }, 'Deleting API config from database')
+// ... DB 操作 ...
+logger.info({ configId, userId }, 'API config deleted from store')
+// 或
+logger.error({ error, configId, userId }, 'Failed to delete API config from database')
+```
+
+### 问题 2: Legacy API Config 迁移失败无感知 ⚠️ **部分修复** (commit 80d9a8f)
+
+**症状**: 旧版未加密的 API 配置迁移失败时无任何提示。
+
+**修复**: 现在迁移失败会记录到结构化日志中:
+```typescript
+logger.error({ error: migrationError, configId, userId }, 'Legacy config auto-migration failed')
+```
+
+**仍存在的问题**: 没有重试机制,迁移失败后不会再次尝试。
+
+**查看迁移日志**:
+```bash
+pnpm dev 2>&1 | grep "migration"
+# 或查看特定配置的迁移状态
+pnpm dev 2>&1 | jq 'select(.configId=="abc123") | select(.msg | contains("migration"))'
+```
+
+---
+
+## 日志相关问题 ⚠️ **新增**
+
+### 问题 3: 看不到日志输出
+
+**症状**: 终端运行 `pnpm dev` 后,看不到任何 Pino 日志输出。
+
+**可能原因**:
+1. **日志等级过高**: 生产环境只显示 `info` 及以上,开发环境显示 `debug` 及以上
+2. **输出被 Next.js 日志淹没**: Next.js 自身也有大量日志
+
+**解决步骤**:
+
+1. **确认环境变量**:
+```bash
+echo $NODE_ENV  # 应该是 'development'
+```
+
+2. **过滤 Pino JSON 日志**:
+```bash
+pnpm dev 2>&1 | grep '"level"'  # 只看结构化日志
+pnpm dev 2>&1 | grep '"level":"ERROR"'  # 只看错误
+```
+
+3. **使用 jq 美化输出**:
+```bash
+# 安装 jq: brew install jq (macOS) 或 apt install jq (Linux)
+pnpm dev 2>&1 | grep '"level"' | jq .
+```
+
+4. **临时降低日志等级** (调试用):
+
+在 `lib/logger.ts` 中:
+```typescript
+export const logger = pino({
+  level: 'trace',  // 临时改为 trace (最低等级)
+  // ...
+})
+```
+
+### 问题 4: 敏感信息泄露到日志
+
+**症状**: API key 或 password 出现在日志输出中。
+
+**原因**: 使用了未被自动脱敏的字段名。
+
+**自动脱敏的字段** (大小写不敏感):
+- `apiKey`, `api_key`
+- `password`
+- `token`, `secret`
+- `ENCRYPTION_SECRET`
+- 嵌套对象中的同名字段 (`*.apiKey`)
+
+**解决**:
+
+1. **检查字段名**: 确保敏感字段使用上述命名
+2. **如果必须使用其他名字,手动脱敏**:
+```typescript
+logger.info({
+  customSecretField: '***REDACTED***',  // 手动脱敏
+  userId: 'abc'
+}, 'Operation completed')
+```
+
+3. **添加新的脱敏规则** (在 `lib/logger.ts`):
+```typescript
+redact: {
+  paths: [
+    'apiKey', 'api_key', 'password', 'token', 'secret',
+    'customSecretField',  // 新增自定义字段
+    '*.customSecretField',  // 嵌套对象中也脱敏
+  ],
+  censor: '***REDACTED***'
+}
+```
+
+### 问题 5: 日志显示 `[object Object]`
+
+**症状**: 日志输出类似 `{"msg":"Data saved","result":"[object Object]"}`
+
+**原因**: 将对象转为字符串后传入日志,丢失了结构信息。
+
+**错误示例**:
+```typescript
+const data = { id: 'abc', name: 'test' }
+logger.info({ result: data.toString() }, 'Data saved')  // ❌ 错误
+logger.info({ result: `Data: ${data}` }, 'Data saved')  // ❌ 错误
+```
+
+**正确做法**:
+```typescript
+const data = { id: 'abc', name: 'test' }
+logger.info({ result: data }, 'Data saved')  // ✅ 正确 - 直接传对象
+logger.info({ dataId: data.id, dataName: data.name }, 'Data saved')  // ✅ 正确 - 拆解字段
+```
+
+---
+
 ## 常用调试代码片段
 
 ```typescript
+// ⚠️ 注意:调试完成后请移除这些 console.log,改用 logger.*
+
 // 1. 打印 Store 状态
 console.log('[Debug] Store state:', useRSSStore.getState())
 
@@ -793,16 +937,29 @@ console.log('[Debug] Store state:', useRSSStore.getState())
 console.log('[Debug] Props:', { articleId, isRead, ... })
 
 // 3. 测试数据库查询
+import { logger } from "@/lib/logger"  // ✅ 使用 logger 替代 console.log
+
+logger.debug({ table: 'feeds', operation: 'test_query' }, 'Testing database query')
 const { data, error } = await supabase.from('feeds').select('*')
-console.log('[Debug] Query result:', { data, error })
+if (error) {
+  logger.error({ error, table: 'feeds' }, 'Query failed')
+} else {
+  logger.debug({ resultCount: data.length }, 'Query succeeded')
+}
 
 // 4. 测试 Realtime 连接
 const channel = supabase.channel('test')
-console.log('[Debug] Channel state:', channel.state)
+logger.debug({ channelState: channel.state }, 'Testing Realtime connection')
 
 // 5. 测试 RSS 解析
+const startTime = Date.now()
 const { feed, articles } = await parseRSSFeed('https://...', 'test-id')
-console.log('[Debug] Parsed:', { feed, articlesCount: articles.length })
+const duration = Date.now() - startTime
+logger.info({
+  feedUrl: 'https://...',
+  articleCount: articles.length,
+  duration
+}, 'RSS parsing test completed')
 ```
 
 ---

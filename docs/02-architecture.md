@@ -204,6 +204,85 @@ UI 自动更新
 - `lib/realtime.ts`：Realtime 管理器
 - `hooks/use-realtime-sync.ts`：订阅实时更新的 hook
 
+## 日志架构 (Structured Logging)
+
+### 核心设计
+
+**文件**: `lib/logger.ts`
+
+**模式**: Pino 单例 - 结构化 JSON 日志输出
+
+**关键决策**: ❌ **不使用 pino-pretty transport**
+- **原因**: Worker threads 与 Next.js 热重载 + Webpack bundling 不兼容
+- **错误**: `"Cannot find module '.next/server/vendor-chunks/lib/worker.js'"`
+- **解决方案**: 开发环境和生产环境都使用 JSON 输出
+
+### 自动功能
+
+1. **敏感字段脱敏**:
+   - 自动隐藏: `apiKey`, `api_key`, `password`, `token`, `secret`
+   - 包括嵌套对象路径 (`*.apiKey`, `*.password`)
+   - 输出: `***REDACTED***`
+
+2. **结构化上下文**:
+   ```typescript
+   logger.info({ userId, feedId, duration: 123 }, 'Feed refreshed')
+   // 输出: {"level":"INFO","time":"2025-01-13T00:08:54.123Z","userId":"abc","feedId":"xyz","duration":123,"msg":"Feed refreshed"}
+   ```
+
+3. **性能追踪**:
+   ```typescript
+   const startTime = Date.now()
+   // ... 操作 ...
+   const duration = Date.now() - startTime
+   logger.info({ duration, operationType: 'rss_parse' }, 'Operation completed')
+   ```
+
+### 日志覆盖
+
+**API Routes**: `app/api/rss/*.ts`
+- RSS 解析性能监控 (duration metrics)
+- 请求参数记录 (url, feedId)
+- 错误上下文 (error, url, duration)
+
+**数据库操作**: `lib/db/*.ts`
+- CRUD 操作日志 (userId, feedId/configId/articleId)
+- 成功/失败统计 (savedCount, deletedCount)
+- 迁移流程追踪 (legacy API config encryption)
+
+**加密操作**: `lib/encryption.ts`
+- 加密/解密成功记录 (plaintextLength, encryptedLength)
+- 错误上下文 (error details)
+
+**Store Actions**: `lib/store/api-configs.slice.ts`
+- 删除操作现已使用悲观模式 (先删除 DB,再更新 store)
+- 错误传播 (configId, error message)
+
+### 使用模式
+
+```typescript
+import { logger } from "@/lib/logger"
+
+// ✅ 信息日志 - 关键操作成功
+logger.info({ userId, feedId, articleCount: 42 }, 'Feed refreshed successfully')
+
+// ❌ 错误日志 - 包含 error 对象和上下文
+logger.error({ error, userId, feedId }, 'Feed refresh failed')
+
+// 🐛 调试日志 - 仅开发环境 (production 忽略)
+logger.debug({ queryParams }, 'Processing request')
+
+// ⏱️ 性能日志 - 记录耗时
+const startTime = Date.now()
+await expensiveOperation()
+logger.info({ duration: Date.now() - startTime }, 'Operation completed')
+```
+
+### 日志等级
+
+- **Production**: `info` 及以上 (`info`, `warn`, `error`)
+- **Development**: `debug` 及以上 (包括详细调试信息)
+
 ## RSS 抓取流程
 
 添加 Feed 时发生了什么？
