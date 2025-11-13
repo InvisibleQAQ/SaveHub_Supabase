@@ -5,7 +5,7 @@ import { scheduleFeedRefresh, cancelFeedRefresh } from "../scheduler"
 
 export interface FeedsSlice {
   addFeed: (feed: Partial<Feed>) => { success: boolean; reason: 'created' | 'duplicate' }
-  removeFeed: (feedId: string) => void
+  removeFeed: (feedId: string) => Promise<{ success: boolean; error?: string; articlesDeleted?: number }>
   updateFeed: (feedId: string, updates: Partial<Feed>) => void
   moveFeed: (feedId: string, targetFolderId: string | undefined, targetOrder: number) => void
 }
@@ -52,17 +52,40 @@ export const createFeedsSlice: StateCreator<
     return { success: true, reason: 'created' as const }
   },
 
-  removeFeed: (feedId) => {
-    set((state: any) => ({
-      feeds: state.feeds.filter((f: any) => f.id !== feedId),
-      articles: state.articles.filter((a: any) => a.feedId !== feedId),
-      selectedFeedId: state.selectedFeedId === feedId ? null : state.selectedFeedId,
-    }))
+  removeFeed: async (feedId) => {
+    // Pessimistic delete: delete from DB first, then update store
+    // This ensures store and DB stay consistent
+    try {
+      const state = get() as any
+      const feed = state.feeds.find((f: any) => f.id === feedId)
 
-    // Cancel scheduler before deleting (prevents memory leak)
-    cancelFeedRefresh(feedId)
+      if (!feed) {
+        console.warn(`Feed ${feedId} not found in store`)
+        return { success: false, error: 'Feed not found in store' }
+      }
 
-    dbManager.deleteFeed(feedId).catch(console.error)
+      // Step 1: Delete from database (this will also delete associated articles)
+      const { deleteFeed } = await import("../db")
+      const stats = await deleteFeed(feedId)
+
+      // Step 2: Cancel scheduler (prevents memory leak)
+      cancelFeedRefresh(feedId)
+
+      // Step 3: Update store only if DB delete succeeded
+      set((state: any) => ({
+        feeds: state.feeds.filter((f: any) => f.id !== feedId),
+        articles: state.articles.filter((a: any) => a.feedId !== feedId),
+        selectedFeedId: state.selectedFeedId === feedId ? null : state.selectedFeedId,
+      }))
+
+      console.info(`Feed "${feed.title}" deleted successfully. Removed ${stats.articlesDeleted} articles.`)
+      return { success: true, articlesDeleted: stats.articlesDeleted }
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error'
+      console.error(`Failed to delete feed from database:`, error)
+      // Store remains unchanged if DB delete fails
+      return { success: false, error: errorMessage }
+    }
   },
 
   updateFeed: (feedId, updates) => {

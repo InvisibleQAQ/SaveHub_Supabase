@@ -88,12 +88,16 @@ function getFeedById(feedId: string): Feed | null {
  * Steps:
  * 1. Parse RSS feed from URL
  * 2. Add new articles to store (deduplicates by URL)
- * 3. Update last_fetched timestamp on success
- * 4. On failure, DON'T update last_fetched (enables auto-retry)
+ * 3. Update last_fetched + status on BOTH success AND failure
+ * 4. Failure updates last_fetched to prevent retry storms
  *
- * @throws Error if RSS parsing fails (caller should handle)
+ * @returns Result object with success status and optional error message
  */
-async function refreshFeed(feed: Feed): Promise<void> {
+async function refreshFeed(feed: Feed): Promise<{
+  success: boolean
+  error?: string
+  addedCount?: number
+}> {
   const start = Date.now()
   log(`Starting refresh for: ${feed.title}`)
 
@@ -104,16 +108,29 @@ async function refreshFeed(feed: Feed): Promise<void> {
     // Add new articles to store (deduplicates automatically)
     const addedCount = useRSSStore.getState().addArticles(articles)
 
-    // Update last_fetched timestamp on success
-    useRSSStore.getState().updateFeed(feed.id, { lastFetched: new Date() })
+    // Update last_fetched + status on success
+    useRSSStore.getState().updateFeed(feed.id, {
+      lastFetched: new Date(),
+      lastFetchStatus: "success",
+      lastFetchError: null,
+    })
 
     const duration = Date.now() - start
     log(`✅ Refreshed ${feed.title} in ${duration}ms (added ${addedCount} new articles)`)
+    return { success: true, addedCount }
   } catch (error) {
     const duration = Date.now() - start
+    const errorMsg = error instanceof Error ? error.message : String(error)
+
+    // Update last_fetched + status on failure (prevents retry storms)
+    useRSSStore.getState().updateFeed(feed.id, {
+      lastFetched: new Date(),
+      lastFetchStatus: "failed",
+      lastFetchError: errorMsg,
+    })
+
     logError(`❌ Failed to refresh ${feed.title} after ${duration}ms:`, error)
-    // DON'T update last_fetched on failure - enables automatic retry
-    throw error
+    return { success: false, error: errorMsg }
   }
 }
 
@@ -124,13 +141,13 @@ async function refreshFeed(feed: Feed): Promise<void> {
  * - Cancels existing timeout if already scheduled (idempotent)
  * - Calculates delay from last_fetched + refresh_interval
  * - Prevents overlapping executions (skips if already running)
- * - Automatically reschedules after execution completes
- * - Handles errors gracefully (retries at next interval)
+ * - Automatically reschedules after execution completes (success OR failure)
+ * - Treats failure as valid completion (updates last_fetched to prevent retry storms)
  *
  * Edge cases handled:
  * - Feed deleted during refresh: Doesn't reschedule (no memory leak)
  * - Overlapping execution: Skips but reschedules for next run
- * - Network failure: Doesn't update last_fetched, retries later
+ * - Network failure: Updates last_fetched + status, retries at next interval
  * - Interval changed mid-execution: New scheduler starts with new interval
  */
 export function scheduleFeedRefresh(feed: Feed): void {
@@ -157,21 +174,16 @@ export function scheduleFeedRefresh(feed: Feed): void {
     runningTasks.add(feed.id)
 
     try {
+      // refreshFeed() never throws - it returns {success, error}
       await refreshFeed(feed)
 
-      // After successful refresh, schedule next run with NEW last_fetched
+      // Success or failure doesn't matter - both update last_fetched
+      // Reschedule with updated feed data (includes new last_fetched + status)
       const updatedFeed = getFeedById(feed.id)
       if (updatedFeed) {
         scheduleFeedRefresh(updatedFeed)
       } else {
         log(`Feed ${feed.id} not found after refresh (possibly deleted)`)
-      }
-    } catch (error) {
-      // On error, reschedule with current feed data (retry at next interval)
-      log(`Will retry ${feed.title} at next interval`)
-      const currentFeed = getFeedById(feed.id)
-      if (currentFeed) {
-        scheduleFeedRefresh(currentFeed)
       }
     } finally {
       runningTasks.delete(feed.id)

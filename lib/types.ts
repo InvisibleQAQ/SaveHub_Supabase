@@ -25,6 +25,8 @@ export const FeedSchema = z.object({
     .min(1, "Refresh interval must be at least 1 minute")
     .max(10080, "Refresh interval cannot exceed 1 week (10080 minutes)")
     .default(60),
+  lastFetchStatus: z.enum(["success", "failed"]).nullable().optional(),
+  lastFetchError: z.string().nullable().optional(),
 })
 
 export const ArticleSchema = z.object({

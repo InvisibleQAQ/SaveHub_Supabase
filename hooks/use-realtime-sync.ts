@@ -46,7 +46,10 @@ export function useRealtimeSync() {
         store.updateFeed(feedRow.id, feed)
       },
       (id) => {
-        store.removeFeed(id)
+        // Fire-and-forget in realtime context
+        store.removeFeed(id).catch((error) => {
+          console.error("[v0] Realtime: Failed to remove feed", error)
+        })
       },
     )
 

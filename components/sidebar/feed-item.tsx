@@ -1,7 +1,7 @@
 "use client"
 
 import Link from "next/link"
-import { Rss, Edit, Trash2, Check, ExternalLink, Settings } from "lucide-react"
+import { Rss, Edit, Trash2, Check, ExternalLink, Settings, AlertCircle } from "lucide-react"
 import { useRouter } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
@@ -12,6 +12,12 @@ import {
   ContextMenuSeparator,
   ContextMenuTrigger,
 } from "@/components/ui/context-menu"
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip"
 import { cn } from "@/lib/utils"
 import { FeedActionsMenu } from "./feed-actions-menu"
 import { useRSSStore } from "@/lib/store"
@@ -88,23 +94,45 @@ export function FeedItem({ feed, unreadCount, isActive, variant, onRename, onMov
   }
 
   if (variant === "icon") {
+    const iconContent = (
+      <div className="relative">
+        <Rss className="h-4 w-4" />
+        {feed.lastFetchStatus === "failed" && (
+          <AlertCircle className="absolute -top-1 -right-1 h-3 w-3 text-destructive" />
+        )}
+      </div>
+    )
+
     return (
       <ContextMenu>
         <ContextMenuTrigger asChild>
-          <Button
-            variant={isActive ? "secondary" : "ghost"}
-            size="icon"
-            className={cn(
-              "h-10 w-10 flex items-center justify-center",
-              isActive && "bg-sidebar-primary text-sidebar-primary-foreground hover:bg-sidebar-primary hover:text-sidebar-primary-foreground"
-            )}
-            title={feed.title}
-            asChild
-          >
-            <Link href={`/feed/${feed.id}`}>
-              <Rss className="h-4 w-4" />
-            </Link>
-          </Button>
+          <TooltipProvider>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  variant={isActive ? "secondary" : "ghost"}
+                  size="icon"
+                  className={cn(
+                    "h-10 w-10 flex items-center justify-center",
+                    isActive && "bg-sidebar-primary text-sidebar-primary-foreground hover:bg-sidebar-primary hover:text-sidebar-primary-foreground"
+                  )}
+                  asChild
+                >
+                  <Link href={`/feed/${feed.id}`}>
+                    {iconContent}
+                  </Link>
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent side="right">
+                <p className="font-medium">{feed.title}</p>
+                {feed.lastFetchStatus === "failed" && (
+                  <p className="text-xs text-destructive mt-1">
+                    Last refresh failed: {feed.lastFetchError || "Unknown error"}
+                  </p>
+                )}
+              </TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
         </ContextMenuTrigger>
         <ContextMenuContent>
           <ContextMenuItem onClick={handleEditProperties}>
@@ -158,10 +186,27 @@ export function FeedItem({ feed, unreadCount, isActive, variant, onRename, onMov
           >
             <Link href={`/feed/${feed.id}`}>
               <div className="flex-1 min-w-0">
-                <div className="flex items-center justify-between">
-                  <span className="font-medium truncate">{feed.title}</span>
+                <div className="flex items-center justify-between gap-2">
+                  <div className="flex items-center gap-2 min-w-0 flex-1">
+                    <span className="font-medium truncate">{feed.title}</span>
+                    {feed.lastFetchStatus === "failed" && (
+                      <TooltipProvider>
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <AlertCircle className="h-4 w-4 text-destructive flex-shrink-0" />
+                          </TooltipTrigger>
+                          <TooltipContent>
+                            <p className="text-xs">Last refresh failed</p>
+                            {feed.lastFetchError && (
+                              <p className="text-xs text-muted-foreground mt-1">{feed.lastFetchError}</p>
+                            )}
+                          </TooltipContent>
+                        </Tooltip>
+                      </TooltipProvider>
+                    )}
+                  </div>
                   {unreadCount > 0 && (
-                    <Badge variant="secondary" className="ml-2 bg-sidebar-accent text-sidebar-accent-foreground text-xs">
+                    <Badge variant="secondary" className="ml-2 bg-sidebar-accent text-sidebar-accent-foreground text-xs flex-shrink-0">
                       {unreadCount}
                     </Badge>
                   )}
