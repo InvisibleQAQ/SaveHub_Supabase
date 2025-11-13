@@ -1,6 +1,7 @@
 import type { StateCreator } from "zustand"
 import type { ApiConfig } from "../types"
 import type { RSSReaderStore } from "./index"
+import { logger } from "../logger"
 
 export interface ApiConfigsSlice {
   // Actions
@@ -45,17 +46,22 @@ export const createApiConfigsSlice: StateCreator<
   },
 
   deleteApiConfig: (id) => {
-    set((state) => ({
-      apiConfigs: state.apiConfigs.filter((config) => config.id !== id),
-    }))
-
-    // Delete from database directly
+    // Pessimistic delete: delete from DB first, then update store
+    // This ensures store and DB stay consistent
     const deleteFromDB = async () => {
       try {
+        logger.debug({ configId: id }, 'Deleting API config from store')
         const { deleteApiConfig: dbDeleteApiConfig } = await import("../db")
         await dbDeleteApiConfig(id)
+
+        // Only update store if DB delete succeeded
+        set((state) => ({
+          apiConfigs: state.apiConfigs.filter((config) => config.id !== id),
+        }))
+
+        logger.info({ configId: id }, 'API config deleted from store')
       } catch (error) {
-        console.error("Failed to delete API config from database:", error)
+        logger.error({ error, configId: id }, 'Failed to delete API config from database')
         set({ error: error instanceof Error ? error.message : "Unknown error" })
       }
     }
@@ -77,11 +83,12 @@ export const createApiConfigsSlice: StateCreator<
   syncApiConfigsToSupabase: async () => {
     try {
       const { apiConfigs } = get()
-      // This will be implemented in the database operations
+      logger.debug({ configCount: apiConfigs.length }, 'Syncing API configs to Supabase')
       const { saveApiConfigs } = await import("../db")
       await saveApiConfigs(apiConfigs)
+      logger.debug({ configCount: apiConfigs.length }, 'API configs synced to Supabase')
     } catch (error) {
-      console.error("Failed to sync API configs to Supabase:", error)
+      logger.error({ error }, 'Failed to sync API configs to Supabase')
       set({ error: error instanceof Error ? error.message : "Unknown error" })
     }
   },
@@ -89,11 +96,13 @@ export const createApiConfigsSlice: StateCreator<
   loadApiConfigsFromSupabase: async () => {
     try {
       set({ isLoading: true, error: null })
+      logger.debug('Loading API configs from Supabase')
       const { loadApiConfigs } = await import("../db")
       const apiConfigs = await loadApiConfigs()
       set({ apiConfigs, isLoading: false })
+      logger.debug({ loadedCount: apiConfigs.length }, 'API configs loaded from Supabase')
     } catch (error) {
-      console.error("Failed to load API configs from Supabase:", error)
+      logger.error({ error }, 'Failed to load API configs from Supabase')
       set({
         error: error instanceof Error ? error.message : "Unknown error",
         isLoading: false,

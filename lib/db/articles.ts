@@ -1,6 +1,7 @@
 import type { Article } from "../types"
 import { supabase } from "../supabase/client"
 import { getCurrentUserId, toISOString } from "./core"
+import { logger } from "../logger"
 
 /**
  * Save multiple articles to database
@@ -24,15 +25,15 @@ export async function saveArticles(articles: Article[]): Promise<void> {
     user_id: userId,
   }))
 
-  console.log(`[DB] Saving ${articles.length} articles`)
+  logger.debug({ userId, articleCount: articles.length }, 'Saving articles')
   const { data, error } = await supabase.from("articles").upsert(dbRows).select()
 
   if (error) {
-    console.error('[DB] Failed to save articles:', error)
+    logger.error({ error, userId, articleCount: articles.length }, 'Failed to save articles')
     throw error
-  }
+  }1
 
-  console.log(`[DB] Successfully saved ${data?.length || 0} articles`)
+  logger.info({ userId, savedCount: data?.length || 0 }, 'Articles saved successfully')
 }
 
 /**
@@ -40,6 +41,7 @@ export async function saveArticles(articles: Article[]): Promise<void> {
  * Can filter by feedId and limit results
  */
 export async function loadArticles(feedId?: string, limit?: number): Promise<Article[]> {
+  logger.debug({ feedId, limit }, 'Loading articles')
   let query = supabase
     .from("articles")
     .select("*")
@@ -55,8 +57,12 @@ export async function loadArticles(feedId?: string, limit?: number): Promise<Art
 
   const { data, error } = await query
 
-  if (error) throw error
+  if (error) {
+    logger.error({ error, feedId, limit }, 'Failed to load articles')
+    throw error
+  }
 
+  logger.debug({ feedId, limit, articleCount: data?.length || 0 }, 'Articles loaded successfully')
   return (data || []).map(row => ({
     id: row.id,
     feedId: row.feed_id,
@@ -90,18 +96,18 @@ export async function updateArticle(articleId: string, updates: Partial<Article>
   if (updates.publishedAt !== undefined) dbUpdates.published_at = toISOString(updates.publishedAt)
   if (updates.thumbnail !== undefined) dbUpdates.thumbnail = updates.thumbnail
 
-  console.log(`[DB] Updating article ${articleId} with:`, dbUpdates)
+  logger.debug({ articleId, updateFields: Object.keys(dbUpdates) }, 'Updating article')
   const { error } = await supabase
     .from("articles")
     .update(dbUpdates)
     .eq("id", articleId)
 
   if (error) {
-    console.error('[DB] Failed to update article:', error)
+    logger.error({ error, articleId, updateFields: Object.keys(dbUpdates) }, 'Failed to update article')
     throw error
   }
 
-  console.log('[DB] Successfully updated article')
+  logger.debug({ articleId, updatedFields: Object.keys(dbUpdates) }, 'Article updated successfully')
 }
 
 /**
@@ -109,8 +115,11 @@ export async function updateArticle(articleId: string, updates: Partial<Article>
  * Returns number of articles deleted
  */
 export async function clearOldArticles(daysToKeep = 30): Promise<number> {
+  const userId = await getCurrentUserId()
   const cutoffDate = new Date()
   cutoffDate.setDate(cutoffDate.getDate() - daysToKeep)
+
+  logger.debug({ userId, daysToKeep, cutoffDate: cutoffDate.toISOString() }, 'Clearing old articles')
 
   const { data, error } = await supabase
     .from("articles")
@@ -120,8 +129,14 @@ export async function clearOldArticles(daysToKeep = 30): Promise<number> {
     .eq("is_starred", false)
     .select("id")
 
-  if (error) throw error
-  return data?.length || 0
+  if (error) {
+    logger.error({ error, userId, daysToKeep }, 'Failed to clear old articles')
+    throw error
+  }
+
+  const deletedCount = data?.length || 0
+  logger.info({ userId, daysToKeep, deletedCount }, 'Old articles cleared successfully')
+  return deletedCount
 }
 
 /**
@@ -134,11 +149,17 @@ export async function getArticleStats(): Promise<{
   starred: number
   byFeed: Record<string, { total: number; unread: number }>
 }> {
+  const userId = await getCurrentUserId()
+  logger.debug({ userId }, 'Calculating article statistics')
+
   const { data: articles, error } = await supabase
     .from("articles")
     .select("id, feed_id, is_read, is_starred")
 
-  if (error) throw error
+  if (error) {
+    logger.error({ error, userId }, 'Failed to get article statistics')
+    throw error
+  }
 
   const stats = {
     total: articles?.length || 0,
@@ -161,5 +182,6 @@ export async function getArticleStats(): Promise<{
     }
   })
 
+  logger.debug({ userId, stats: { total: stats.total, unread: stats.unread, starred: stats.starred } }, 'Article statistics calculated')
   return stats
 }

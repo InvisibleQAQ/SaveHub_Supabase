@@ -1,5 +1,6 @@
 import { type NextRequest, NextResponse } from "next/server"
 import Parser from "rss-parser"
+import { logger } from "@/lib/logger"
 
 const parser = new Parser({
   customFields: {
@@ -9,12 +10,17 @@ const parser = new Parser({
 })
 
 export async function POST(request: NextRequest) {
+  const startTime = Date.now()
+
   try {
     const { url, feedId } = await request.json()
 
     if (!url || !feedId) {
+      logger.warn({ url, feedId }, 'RSS parse request missing URL or feedId')
       return NextResponse.json({ error: "URL and feedId are required" }, { status: 400 })
     }
+
+    logger.info({ url, feedId }, 'Parsing RSS feed')
 
     // Parse the RSS feed
     const feed = await parser.parseURL(url)
@@ -61,9 +67,13 @@ export async function POST(request: NextRequest) {
       }
     })
 
+    const duration = Date.now() - startTime
+    logger.info({ url, feedId, articleCount: articles.length, duration }, 'RSS feed parsed successfully')
+
     return NextResponse.json({ feed: parsedFeed, articles })
   } catch (error) {
-    console.error("Error parsing RSS feed:", error)
+    const duration = Date.now() - startTime
+    logger.error({ error, url: request.url, duration }, 'Failed to parse RSS feed')
     return NextResponse.json(
       { error: `Failed to parse RSS feed: ${error instanceof Error ? error.message : "Unknown error"}` },
       { status: 500 },

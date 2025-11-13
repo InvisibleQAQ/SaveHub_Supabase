@@ -3,6 +3,8 @@
  * Reference: LobeChat's KeyVaultsGateKeeper implementation
  */
 
+import { logger } from "./logger"
+
 /**
  * Get encryption key from environment variable
  * CRITICAL: This must be a 32-character random string
@@ -92,9 +94,11 @@ export async function encrypt(plaintext: string): Promise<string> {
     combined.set(iv, 0)
     combined.set(new Uint8Array(ciphertext), iv.length)
 
-    return Buffer.from(combined).toString('base64')
+    const encrypted = Buffer.from(combined).toString('base64')
+    logger.debug({ plaintextLength: plaintext.length, encryptedLength: encrypted.length }, 'Data encrypted')
+    return encrypted
   } catch (error) {
-    console.error('[Encryption] Failed to encrypt:', error)
+    logger.error({ error, plaintextLength: plaintext.length }, 'Encryption failed')
     throw new Error('Encryption failed')
   }
 }
@@ -120,9 +124,11 @@ export async function decrypt(encryptedData: string): Promise<string> {
       ciphertext
     )
 
-    return uint8ArrayToString(new Uint8Array(decrypted))
+    const plaintext = uint8ArrayToString(new Uint8Array(decrypted))
+    logger.debug({ encryptedLength: encryptedData.length, decryptedLength: plaintext.length }, 'Data decrypted')
+    return plaintext
   } catch (error) {
-    console.error('[Encryption] Failed to decrypt:', error)
+    logger.error({ error, encryptedLength: encryptedData.length }, 'Decryption failed')
     throw new Error('Decryption failed')
   }
 }

@@ -2,6 +2,7 @@ import type { ApiConfig } from "../types"
 import { supabase } from "../supabase/client"
 import { getCurrentUserId, toISOString } from "./core"
 import { encrypt, decrypt, isEncrypted } from "../encryption"
+import { logger } from "../logger"
 
 /**
  * Save multiple API configs to database
@@ -24,18 +25,18 @@ export async function saveApiConfigs(configs: ApiConfig[]): Promise<{ success: b
       created_at: toISOString(config.createdAt),
     })))
 
-    console.log(`[DB] Saving ${configs.length} API configs (encrypted)`)
+    logger.debug({ userId, configCount: configs.length }, 'Saving API configs (encrypted)')
     const { data, error } = await supabase.from("api_configs").upsert(dbRows).select()
 
     if (error) {
-      console.error('[DB] Failed to save API configs:', error)
+      logger.error({ error, userId, configCount: configs.length }, 'Failed to save API configs')
       return { success: false, error: error.message }
     }
 
-    console.log(`[DB] Successfully saved ${data?.length || 0} API configs`)
+    logger.info({ userId, savedCount: data?.length || 0 }, 'API configs saved successfully')
     return { success: true }
   } catch (error) {
-    console.error('[DB] Error saving API configs:', error)
+    logger.error({ error, userId, configCount: configs.length }, 'Error saving API configs')
     return {
       success: false,
       error: error instanceof Error ? error.message : "Unknown error"
@@ -51,7 +52,7 @@ export async function saveApiConfigs(configs: ApiConfig[]): Promise<{ success: b
 export async function loadApiConfigs(): Promise<ApiConfig[]> {
   const userId = await getCurrentUserId()
 
-  console.log('[DB] Loading API configs for user:', userId)
+  logger.debug({ userId }, 'Loading API configs')
 
   try {
     const { data, error } = await supabase
@@ -61,11 +62,11 @@ export async function loadApiConfigs(): Promise<ApiConfig[]> {
       .order("created_at", { ascending: false })
 
     if (error) {
-      console.error('[DB] Error loading API configs:', error)
+      logger.error({ error, userId }, 'Error loading API configs')
       throw error
     }
 
-    console.log('[DB] Loaded API configs:', data?.length || 0, 'configs')
+    logger.debug({ userId, configCount: data?.length || 0 }, 'Loaded API configs from database')
 
     if (!data || data.length === 0) {
       return []
@@ -82,14 +83,14 @@ export async function loadApiConfigs(): Promise<ApiConfig[]> {
 
         // Check if data is already encrypted
         if (!isEncrypted(row.api_key)) {
-          console.warn(`[DB] Migrating plaintext API key for config ${row.id}`)
+          logger.warn({ configId: row.id, userId }, 'Migrating plaintext API key')
           apiKey = row.api_key // Keep plaintext for now, will encrypt on next save
           needsMigration = true
         } else {
           try {
             apiKey = await decrypt(row.api_key)
           } catch (decryptError) {
-            console.error(`[DB] Failed to decrypt API key for config ${row.id}, deleting corrupted data`)
+            logger.error({ error: decryptError, configId: row.id, userId }, 'Failed to decrypt API key, deleting corrupted data')
             // Delete corrupted config from database
             await supabase.from("api_configs").delete().eq("id", row.id)
             continue // Skip this config
@@ -97,14 +98,14 @@ export async function loadApiConfigs(): Promise<ApiConfig[]> {
         }
 
         if (!isEncrypted(row.api_base)) {
-          console.warn(`[DB] Migrating plaintext API base for config ${row.id}`)
+          logger.warn({ configId: row.id, userId }, 'Migrating plaintext API base')
           apiBase = row.api_base // Keep plaintext for now, will encrypt on next save
           needsMigration = true
         } else {
           try {
             apiBase = await decrypt(row.api_base)
           } catch (decryptError) {
-            console.error(`[DB] Failed to decrypt API base for config ${row.id}, deleting corrupted data`)
+            logger.error({ error: decryptError, configId: row.id, userId }, 'Failed to decrypt API base, deleting corrupted data')
             // Delete corrupted config from database
             await supabase.from("api_configs").delete().eq("id", row.id)
             continue // Skip this config
@@ -113,20 +114,25 @@ export async function loadApiConfigs(): Promise<ApiConfig[]> {
 
         // Auto-migrate: re-save with encryption if legacy plaintext detected
         if (needsMigration) {
-          console.log(`[DB] Auto-encrypting legacy config ${row.id}`)
+          logger.info({ configId: row.id, userId }, 'Auto-encrypting legacy config')
           // We'll trigger a re-save by returning the config,
           // and the calling code should save it back
           setTimeout(async () => {
-            await saveApiConfigs([{
-              id: row.id,
-              name: row.name,
-              apiKey,
-              apiBase,
-              model: row.model,
-              isDefault: row.is_default,
-              isActive: row.is_active,
-              createdAt: new Date(row.created_at),
-            }])
+            try {
+              await saveApiConfigs([{
+                id: row.id,
+                name: row.name,
+                apiKey,
+                apiBase,
+                model: row.model,
+                isDefault: row.is_default,
+                isActive: row.is_active,
+                createdAt: new Date(row.created_at),
+              }])
+              logger.info({ configId: row.id, userId }, 'Legacy config auto-migration completed')
+            } catch (migrationError) {
+              logger.error({ error: migrationError, configId: row.id, userId }, 'Legacy config auto-migration failed')
+            }
           }, 0)
         }
 
@@ -141,15 +147,16 @@ export async function loadApiConfigs(): Promise<ApiConfig[]> {
           createdAt: new Date(row.created_at),
         })
       } catch (error) {
-        console.error(`[DB] Error processing config ${row.id}:`, error)
+        logger.error({ error, configId: row.id, userId }, 'Error processing API config, skipping')
         // Skip corrupted configs
         continue
       }
     }
 
+    logger.info({ userId, loadedCount: configs.length }, 'API configs loaded and decrypted successfully')
     return configs
   } catch (error) {
-    console.error('[DB] Error loading API configs:', error)
+    logger.error({ error, userId }, 'Fatal error loading API configs')
     return []
   }
 }
@@ -158,14 +165,15 @@ export async function loadApiConfigs(): Promise<ApiConfig[]> {
  * Delete an API config
  */
 export async function deleteApiConfig(configId: string): Promise<void> {
-  console.log(`[DB] Deleting API config ${configId}`)
+  const userId = await getCurrentUserId()
+  logger.debug({ configId, userId }, 'Deleting API config')
 
   const { error } = await supabase.from("api_configs").delete().eq("id", configId)
 
   if (error) {
-    console.error('[DB] Failed to delete API config:', error)
+    logger.error({ error, configId, userId }, 'Failed to delete API config')
     throw error
   }
 
-  console.log('[DB] Successfully deleted API config')
+  logger.info({ configId, userId }, 'API config deleted successfully')
 }
