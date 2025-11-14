@@ -98,7 +98,12 @@ export function FeedItem({ feed, unreadCount, isActive, variant, onRename, onMov
       <div className="relative">
         <Rss className="h-4 w-4" />
         {feed.lastFetchStatus === "failed" && (
-          <AlertCircle className="absolute -top-1 -right-1 h-3 w-3 text-destructive" />
+          <AlertCircle className="absolute -top-1 -left-1 h-3 w-3 text-destructive" />
+        )}
+        {unreadCount > 0 && (
+          <span className="absolute -top-1 -right-1 flex h-4 w-4 items-center justify-center rounded-full bg-sidebar-primary text-sidebar-primary-foreground text-[9px] font-medium">
+            {unreadCount > 99 ? "99+" : unreadCount}
+          </span>
         )}
       </div>
     )

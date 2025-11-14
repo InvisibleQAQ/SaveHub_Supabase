@@ -20,7 +20,7 @@ interface CollapsedViewProps {
 export function CollapsedView({ onExpand, totalArticles, totalUnread, totalStarred }: CollapsedViewProps) {
   const pathname = usePathname()
   const router = useRouter()
-  const { feeds } = useRSSStore()
+  const { feeds, getUnreadCount } = useRSSStore()
 
   const handleLogout = async (e: React.MouseEvent) => {
     e.stopPropagation()
@@ -56,8 +56,9 @@ export function CollapsedView({ onExpand, totalArticles, totalUnread, totalStarr
       <ScrollArea className="flex-1 w-full">
         <div className="flex flex-col items-center space-y-1 py-1">
           {feeds.map((feed) => {
+            const unreadCount = getUnreadCount(feed.id)
             const isActive = pathname === `/feed/${feed.id}`
-            return <FeedItem key={feed.id} feed={feed} unreadCount={0} isActive={isActive} variant="icon" />
+            return <FeedItem key={feed.id} feed={feed} unreadCount={unreadCount} isActive={isActive} variant="icon" />
           })}
         </div>
       </ScrollArea>
