@@ -245,11 +245,6 @@ export function ExpandedView({
                 draggedFeedId && "bg-sidebar-accent/30 border-2 border-dashed border-sidebar-border"
               )}
             >
-              {feedsByFolder.none && feedsByFolder.none.length > 0 && (
-                <div className="mb-2 text-xs font-medium text-sidebar-foreground/60 uppercase tracking-wide">
-                  Root Level
-                </div>
-              )}
               {feedsByFolder.none?.map((feed) => {
                 const unreadCount = getUnreadCount(feed.id)
                 const isActive = pathname === `/feed/${feed.id}`

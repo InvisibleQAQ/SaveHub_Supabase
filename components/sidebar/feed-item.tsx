@@ -211,14 +211,6 @@ export function FeedItem({ feed, unreadCount, isActive, variant, onRename, onMov
                     </Badge>
                   )}
                 </div>
-                {feed.description && (
-                  <p className="text-xs text-sidebar-foreground/60 truncate mt-1">{feed.description}</p>
-                )}
-                {feed.lastFetched && (
-                  <p className="text-xs text-sidebar-foreground/40 mt-1">
-                    Updated {new Date(feed.lastFetched).toLocaleDateString()}
-                  </p>
-                )}
               </div>
             </Link>
           </Button>
