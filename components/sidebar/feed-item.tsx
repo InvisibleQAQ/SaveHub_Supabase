@@ -1,7 +1,8 @@
 "use client"
 
+import { useState } from "react"
 import Link from "next/link"
-import { Rss, Edit, Trash2, Check, ExternalLink, Settings, AlertCircle } from "lucide-react"
+import { Rss, Edit, Trash2, Check, ExternalLink, Settings, AlertCircle, RefreshCw, ArrowRightToLine, Loader2 } from "lucide-react"
 import { useRouter } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
@@ -19,8 +20,9 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip"
 import { cn } from "@/lib/utils"
-import { FeedActionsMenu } from "./feed-actions-menu"
 import { useRSSStore } from "@/lib/store"
+import { parseRSSFeed } from "@/lib/rss-parser"
+import { useToast } from "@/hooks/use-toast"
 import type { Feed } from "@/lib/types"
 import type { RenameDialogState, MoveDialogState, DeleteFeedDialogState } from "./types"
 
@@ -39,7 +41,9 @@ interface FeedItemProps {
 }
 
 export function FeedItem({ feed, unreadCount, isActive, variant, onRename, onMove, onDelete, onDragStart, onDragOver, onDrop, isDragging }: FeedItemProps) {
-  const { markFeedAsRead } = useRSSStore()
+  const [isRefreshing, setIsRefreshing] = useState(false)
+  const { markFeedAsRead, addArticles, updateFeed } = useRSSStore()
+  const { toast } = useToast()
   const router = useRouter()
 
   const handleDragStart = (e: React.DragEvent) => {
@@ -93,6 +97,45 @@ export function FeedItem({ feed, unreadCount, isActive, variant, onRename, onMov
     router.push(`/feed/${feed.id}/properties`)
   }
 
+  const handleRefresh = async (e: React.MouseEvent) => {
+    e.preventDefault()
+
+    if (isRefreshing) return
+
+    setIsRefreshing(true)
+    try {
+      const { articles } = await parseRSSFeed(feed.url, feed.id)
+      const newArticlesCount = addArticles(articles)
+      updateFeed(feed.id, { lastFetched: new Date() })
+
+      toast({
+        title: "Feed refreshed",
+        description: newArticlesCount === 0
+          ? `"${feed.title}" has no new articles`
+          : `Found ${newArticlesCount} new article${newArticlesCount > 1 ? 's' : ''} in "${feed.title}"`,
+      })
+    } catch (error) {
+      console.error(`Error refreshing feed ${feed.title}:`, error)
+      toast({
+        title: "Refresh failed",
+        description: error instanceof Error ? error.message : "Failed to refresh feed",
+        variant: "destructive",
+      })
+    } finally {
+      setIsRefreshing(false)
+    }
+  }
+
+  const handleMove = (e: React.MouseEvent) => {
+    e.preventDefault()
+    onMove?.({
+      open: true,
+      feedId: feed.id,
+      feedTitle: feed.title,
+      currentFolderId: feed.folderId,
+    })
+  }
+
   if (variant === "icon") {
     const iconContent = (
       <div className="relative">
@@ -140,6 +183,21 @@ export function FeedItem({ feed, unreadCount, isActive, variant, onRename, onMov
           </TooltipProvider>
         </ContextMenuTrigger>
         <ContextMenuContent>
+          <ContextMenuItem onClick={handleRefresh} disabled={isRefreshing}>
+            {isRefreshing ? (
+              <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+            ) : (
+              <RefreshCw className="h-4 w-4 mr-2" />
+            )}
+            Refresh Feed
+          </ContextMenuItem>
+          {onMove && (
+            <ContextMenuItem onClick={handleMove}>
+              <ArrowRightToLine className="h-4 w-4 mr-2" />
+              Move to Folder
+            </ContextMenuItem>
+          )}
+          <ContextMenuSeparator />
           <ContextMenuItem onClick={handleEditProperties}>
             <Settings className="h-4 w-4 mr-2" />
             Edit Feed Properties
@@ -219,20 +277,24 @@ export function FeedItem({ feed, unreadCount, isActive, variant, onRename, onMov
               </div>
             </Link>
           </Button>
-
-          {onRename && onMove && onDelete && (
-            <FeedActionsMenu
-              feedId={feed.id}
-              feedTitle={feed.title}
-              folderId={feed.folderId}
-              onRename={onRename}
-              onMove={onMove}
-              onDelete={onDelete}
-            />
-          )}
         </div>
       </ContextMenuTrigger>
       <ContextMenuContent>
+        <ContextMenuItem onClick={handleRefresh} disabled={isRefreshing}>
+          {isRefreshing ? (
+            <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+          ) : (
+            <RefreshCw className="h-4 w-4 mr-2" />
+          )}
+          Refresh Feed
+        </ContextMenuItem>
+        {onMove && (
+          <ContextMenuItem onClick={handleMove}>
+            <ArrowRightToLine className="h-4 w-4 mr-2" />
+            Move to Folder
+          </ContextMenuItem>
+        )}
+        <ContextMenuSeparator />
         <ContextMenuItem onClick={handleEditProperties}>
           <Settings className="h-4 w-4 mr-2" />
           Edit Feed Properties

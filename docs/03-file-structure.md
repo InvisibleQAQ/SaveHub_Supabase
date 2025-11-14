@@ -40,9 +40,8 @@ rssreader3/
 │   │   ├── collapsed-view.tsx    # 收缩视图
 │   │   ├── expanded-view.tsx     # 展开视图
 │   │   ├── view-button.tsx       # 视图切换按钮（复用组件）
-│   │   ├── feed-item.tsx         # Feed 项组件
+│   │   ├── feed-item.tsx         # Feed 项组件（包含右键菜单）
 │   │   ├── folder-item.tsx       # 文件夹项组件
-│   │   ├── feed-actions-menu.tsx   # Feed 操作菜单
 │   │   └── folder-actions-menu.tsx # 文件夹操作菜单
 │   ├── article-list.tsx     # 文章列表（接收 viewMode/feedId props）
 │   ├── article-content.tsx  # 文章内容
@@ -509,18 +508,17 @@ sidebar/
 │
 ├── 原子组件 (可复用)
 │   ├── view-button.tsx (55行)     # All/Unread/Starred 按钮（支持 icon/full 模式）
-│   ├── feed-item.tsx (90行)       # Feed 项（支持 icon/full 模式）
+│   ├── feed-item.tsx (320行)      # Feed 项（支持 icon/full 模式，内置右键菜单）
 │   └── folder-item.tsx (85行)     # 文件夹项 + 子 feed 列表
 │
 └── 操作菜单 (消除重复)
-    ├── feed-actions-menu.tsx (85行)    # Feed 右键菜单（刷新/移动/重命名/删除）
     └── folder-actions-menu.tsx (65行)  # 文件夹右键菜单（添加/重命名/删除）
 ```
 
 **核心改进**：
 
 1. **消除特殊情况** - collapsed/expanded 不再是 if 分支，而是两个独立组件
-2. **消除重复代码** - dropdown menu 从 2 次变为 1 次（提取为独立组件）
+2. **统一操作界面** - Feed 操作全部整合到右键菜单中，移除独立的 dropdown menu 组件
 3. **单一职责** - 每个文件只做一件事，易于理解和维护
 4. **可复用性** - `view-button` 和 `feed-item` 支持 `icon/full` 两种模式
 5. **可测试性** - 每个组件可独立测试
