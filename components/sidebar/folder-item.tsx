@@ -12,7 +12,6 @@ import {
   ContextMenuSeparator,
   ContextMenuTrigger,
 } from "@/components/ui/context-menu"
-import { FolderActionsMenu } from "./folder-actions-menu"
 import { FeedItem } from "./feed-item"
 import { useRSSStore } from "@/lib/store"
 import type { Folder as FolderType, Feed } from "@/lib/types"
@@ -92,15 +91,6 @@ export function FolderItem({
                   )}
                 </Button>
               </CollapsibleTrigger>
-
-              <FolderActionsMenu
-                folderId={folder.id}
-                folderName={folder.name}
-                feedCount={feeds.length}
-                onAddFeed={onAddFeed}
-                onRename={onRename}
-                onDelete={onDelete}
-              />
             </div>
 
             <CollapsibleContent className="ml-4 space-y-1">
