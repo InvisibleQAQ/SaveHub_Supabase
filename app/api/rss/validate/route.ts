@@ -7,8 +7,12 @@ const parser = new Parser()
 export async function POST(request: NextRequest) {
   const startTime = Date.now()
 
+  // ✅ Declare outside try block so catch can access it
+  let url: string | undefined
+
   try {
-    const { url } = await request.json()
+    const body = await request.json()
+    url = body.url
 
     if (!url) {
       logger.warn({ url }, 'RSS validate request missing URL')
@@ -26,7 +30,18 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ valid: true })
   } catch (error) {
     const duration = Date.now() - startTime
-    logger.warn({ error, url: request.url, duration }, 'RSS feed validation failed')
+
+    // ✅ Now we have proper error serialization + context
+    logger.warn(
+      {
+        error,           // Will be properly serialized by pino.stdSerializers.err
+        url,             // Now accessible from outer scope
+        duration,
+        errorType: error instanceof Error ? error.constructor.name : typeof error,
+      },
+      'RSS feed validation failed'
+    )
+
     return NextResponse.json({ valid: false })
   }
 }

@@ -12,8 +12,14 @@ const parser = new Parser({
 export async function POST(request: NextRequest) {
   const startTime = Date.now()
 
+  // ✅ Declare outside try block so catch can access them
+  let url: string | undefined
+  let feedId: string | undefined
+
   try {
-    const { url, feedId } = await request.json()
+    const body = await request.json()
+    url = body.url
+    feedId = body.feedId
 
     if (!url || !feedId) {
       logger.warn({ url, feedId }, 'RSS parse request missing URL or feedId')
@@ -73,7 +79,19 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ feed: parsedFeed, articles })
   } catch (error) {
     const duration = Date.now() - startTime
-    logger.error({ error, url: request.url, duration }, 'Failed to parse RSS feed')
+
+    // ✅ Now we have proper error serialization + context
+    logger.error(
+      {
+        error,           // Will be properly serialized by pino.stdSerializers.err
+        url,             // Now accessible from outer scope
+        feedId,          // Now accessible from outer scope
+        duration,
+        errorType: error instanceof Error ? error.constructor.name : typeof error,
+      },
+      'Failed to parse RSS feed'
+    )
+
     return NextResponse.json(
       { error: `Failed to parse RSS feed: ${error instanceof Error ? error.message : "Unknown error"}` },
       { status: 500 },

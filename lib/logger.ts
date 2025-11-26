@@ -48,6 +48,13 @@ export const logger = pino({
     censor: '***REDACTED***',
   },
 
+  // ✅ Serialize Error objects properly
+  // Without this, JSON.stringify(new Error("test")) returns {}
+  serializers: {
+    error: pino.stdSerializers.err,  // Extracts message, stack, type, etc.
+    err: pino.stdSerializers.err,    // Support both naming conventions
+  },
+
   // Better timestamps and error serialization
   timestamp: pino.stdTimeFunctions.isoTime,
   formatters: {
