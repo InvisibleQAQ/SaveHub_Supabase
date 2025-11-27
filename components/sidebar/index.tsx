@@ -12,7 +12,7 @@ import { useRSSStore } from "@/lib/store"
 import { useSidebarState } from "./use-sidebar-state"
 
 export function Sidebar() {
-  const { articles, getUnreadCount, isSidebarCollapsed, toggleSidebar, renameFolder, updateFeed } = useRSSStore()
+  const { articles, getUnreadCount, isSidebarCollapsed, toggleSidebar, renameFolder, updateFeed, settings, updateSettings } = useRSSStore()
 
   const {
     showAddFeed,
@@ -48,6 +48,10 @@ export function Sidebar() {
     updateFeed(renameDialog.id, { title: newName })
   }
 
+  const handleTogglePin = () => {
+    updateSettings({ sidebarPinned: !settings.sidebarPinned })
+  }
+
   if (isSidebarCollapsed) {
     return (
       <CollapsedView
@@ -79,6 +83,8 @@ export function Sidebar() {
         totalArticles={totalArticles}
         totalUnread={totalUnread}
         totalStarred={totalStarred}
+        sidebarPinned={settings.sidebarPinned}
+        onTogglePin={handleTogglePin}
       />
 
       <AddFeedDialog

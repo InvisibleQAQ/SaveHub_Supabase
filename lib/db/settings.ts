@@ -10,6 +10,7 @@ export interface AppSettings {
   articlesRetentionDays: number
   markAsReadOnScroll: boolean
   showThumbnails: boolean
+  sidebarPinned: boolean
 }
 
 export const defaultSettings: AppSettings = {
@@ -21,6 +22,7 @@ export const defaultSettings: AppSettings = {
   articlesRetentionDays: 30,
   markAsReadOnScroll: false,
   showThumbnails: true,
+  sidebarPinned: false,
 }
 
 /**
@@ -39,6 +41,7 @@ export async function saveSettings(settings: AppSettings): Promise<void> {
     articles_retention_days: settings.articlesRetentionDays,
     mark_as_read_on_scroll: settings.markAsReadOnScroll,
     show_thumbnails: settings.showThumbnails,
+    sidebar_pinned: settings.sidebarPinned,
     updated_at: new Date().toISOString(),
   }
 
@@ -86,5 +89,6 @@ export async function loadSettings(): Promise<AppSettings | null> {
     articlesRetentionDays: data.articles_retention_days,
     markAsReadOnScroll: data.mark_as_read_on_scroll,
     showThumbnails: data.show_thumbnails,
+    sidebarPinned: data.sidebar_pinned ?? false,
   }
 }

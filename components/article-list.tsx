@@ -42,6 +42,7 @@ export function ArticleList({ viewMode = "all", feedId = null }: ArticleListProp
     toggleStar,
     isSidebarCollapsed,
     setSidebarCollapsed,
+    settings,
   } = useRSSStore()
 
   const selectedFeed = feeds.find((f) => f.id === feedId)
@@ -113,7 +114,7 @@ export function ArticleList({ viewMode = "all", feedId = null }: ArticleListProp
   }
 
   return (
-    <div className="flex flex-col h-full bg-card" onClick={() => !isSidebarCollapsed && setSidebarCollapsed(true)}>
+    <div className="flex flex-col h-full bg-card" onClick={() => !isSidebarCollapsed && !settings.sidebarPinned && setSidebarCollapsed(true)}>
       {/* Header */}
       <div className="flex-shrink-0 p-4 border-b border-border">
         <div className="flex items-center justify-between mb-4">

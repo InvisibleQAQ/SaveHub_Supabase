@@ -3,7 +3,7 @@
 import React from "react"
 import Link from "next/link"
 import { usePathname, useRouter } from "next/navigation"
-import { Search, BookOpen, Rss, Star, Plus, FolderPlus, ChevronLeft, Settings, LogOut } from "lucide-react"
+import { Search, BookOpen, Rss, Star, Plus, FolderPlus, ChevronLeft, Settings, LogOut, Pin, PinOff } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { ScrollArea } from "@/components/ui/scroll-area"
@@ -34,6 +34,8 @@ interface ExpandedViewProps {
   totalArticles: number
   totalUnread: number
   totalStarred: number
+  sidebarPinned: boolean
+  onTogglePin: () => void
 }
 
 export function ExpandedView({
@@ -51,6 +53,8 @@ export function ExpandedView({
   totalArticles,
   totalUnread,
   totalStarred,
+  sidebarPinned,
+  onTogglePin,
 }: ExpandedViewProps) {
   const pathname = usePathname()
   const router = useRouter()
@@ -148,6 +152,18 @@ export function ExpandedView({
         <div className="flex items-center justify-between mb-4">
           <h1 className="text-lg font-semibold text-sidebar-foreground">RSS Reader</h1>
           <div className="flex items-center gap-1">
+            <Button
+              variant="ghost"
+              size="icon"
+              className={cn(
+                "h-8 w-8 text-sidebar-foreground hover:bg-sidebar-accent",
+                sidebarPinned && "bg-sidebar-accent"
+              )}
+              title={sidebarPinned ? "Unpin sidebar" : "Pin sidebar"}
+              onClick={onTogglePin}
+            >
+              {sidebarPinned ? <Pin className="h-4 w-4" /> : <PinOff className="h-4 w-4" />}
+            </Button>
             <Button
               variant="ghost"
               size="icon"

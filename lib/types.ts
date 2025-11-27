@@ -83,5 +83,6 @@ export interface RSSReaderState {
     articlesRetentionDays: number
     markAsReadOnScroll: boolean
     showThumbnails: boolean
+    sidebarPinned: boolean
   }
 }

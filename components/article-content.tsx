@@ -70,7 +70,7 @@ export function ArticleContent() {
 
   if (!selectedArticle) {
     return (
-      <div className="flex items-center justify-center h-full text-muted-foreground" onClick={() => !isSidebarCollapsed && setSidebarCollapsed(true)}>
+      <div className="flex items-center justify-center h-full text-muted-foreground" onClick={() => !isSidebarCollapsed && !settings.sidebarPinned && setSidebarCollapsed(true)}>
         <div className="text-center max-w-md">
           <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-muted flex items-center justify-center">
             <BookOpen className="h-8 w-8" />
@@ -89,7 +89,7 @@ export function ArticleContent() {
   const sanitizedContent = sanitizeHTML(selectedArticle.content)
 
   return (
-    <div className="flex flex-col h-full" onClick={() => !isSidebarCollapsed && setSidebarCollapsed(true)}>
+    <div className="flex flex-col h-full" onClick={() => !isSidebarCollapsed && !settings.sidebarPinned && setSidebarCollapsed(true)}>
       {/* Header */}
       <div className="p-6 border-b border-border bg-card/50 flex-shrink-0">
         <div className="flex items-start justify-between gap-4 mb-4">
