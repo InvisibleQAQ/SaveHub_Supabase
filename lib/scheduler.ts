@@ -106,7 +106,7 @@ async function refreshFeed(feed: Feed): Promise<{
     const { articles } = await parseRSSFeed(feed.url, feed.id)
 
     // Add new articles to store (deduplicates automatically)
-    const addedCount = useRSSStore.getState().addArticles(articles)
+    const addedCount = await useRSSStore.getState().addArticles(articles)
 
     // Update last_fetched + status on success
     useRSSStore.getState().updateFeed(feed.id, {

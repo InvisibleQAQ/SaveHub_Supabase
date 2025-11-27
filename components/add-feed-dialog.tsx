@@ -17,6 +17,7 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { Switch } from "@/components/ui/switch"
 import { useRSSStore } from "@/lib/store"
 import { parseRSSFeed, validateRSSUrl, discoverRSSFeeds } from "@/lib/rss-parser"
 import { useToast } from "@/hooks/use-toast"
@@ -33,6 +34,7 @@ export function AddFeedDialog({ open, onOpenChange, defaultFolderId, lockFolder 
   const [searchQuery, setSearchQuery] = useState("")
   const [selectedFolderId, setSelectedFolderId] = useState<string>(defaultFolderId || "none")
   const [refreshInterval, setRefreshInterval] = useState<number | undefined>(undefined)
+  const [enableDeduplication, setEnableDeduplication] = useState(false)
   const [isLoading, setIsLoading] = useState(false)
   const [discoveredFeeds, setDiscoveredFeeds] = useState<string[]>([])
   const [isDiscovering, setIsDiscovering] = useState(false)
@@ -76,6 +78,7 @@ export function AddFeedDialog({ open, onOpenChange, defaultFolderId, lockFolder 
         unreadCount: articles.filter((a) => !a.isRead).length,
         refreshInterval: refreshInterval, // undefined will use default from settings
         lastFetched: new Date(),
+        enableDeduplication: enableDeduplication,
       }
 
       // Add feed and articles to store
@@ -93,7 +96,7 @@ export function AddFeedDialog({ open, onOpenChange, defaultFolderId, lockFolder 
       }
 
       console.log("[v0] Adding articles to store:", articles.length)
-      addArticles(articles)
+      await addArticles(articles)
 
       toast({
         title: "Success",
@@ -105,6 +108,7 @@ export function AddFeedDialog({ open, onOpenChange, defaultFolderId, lockFolder 
       setSearchQuery("")
       setSelectedFolderId(defaultFolderId || "none")
       setRefreshInterval(undefined)
+      setEnableDeduplication(false)
       setDiscoveredFeeds([])
       onOpenChange(false)
     } catch (error) {
@@ -255,6 +259,23 @@ export function AddFeedDialog({ open, onOpenChange, defaultFolderId, lockFolder 
                     Leave empty to use default ({settings.refreshInterval} minutes)
                   </p>
                 </div>
+
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between">
+                    <div className="space-y-0.5">
+                      <Label htmlFor="enable-deduplication">Enable Article Deduplication</Label>
+                      <p className="text-xs text-muted-foreground">
+                        Filter out articles with identical title and content
+                      </p>
+                    </div>
+                    <Switch
+                      id="enable-deduplication"
+                      checked={enableDeduplication}
+                      onCheckedChange={setEnableDeduplication}
+                      disabled={isLoading}
+                    />
+                  </div>
+                </div>
               </div>
 
               <DialogFooter className="mt-6">
@@ -338,6 +359,23 @@ export function AddFeedDialog({ open, onOpenChange, defaultFolderId, lockFolder 
                 <p className="text-xs text-muted-foreground">
                   Leave empty to use default ({settings.refreshInterval} minutes)
                 </p>
+              </div>
+
+              <div className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <div className="space-y-0.5">
+                    <Label htmlFor="enable-deduplication-discover">Enable Article Deduplication</Label>
+                    <p className="text-xs text-muted-foreground">
+                      Filter out articles with identical title and content
+                    </p>
+                  </div>
+                  <Switch
+                    id="enable-deduplication-discover"
+                    checked={enableDeduplication}
+                    onCheckedChange={setEnableDeduplication}
+                    disabled={isDiscovering || isLoading}
+                  />
+                </div>
               </div>
 
               {discoveredFeeds.length > 0 && (

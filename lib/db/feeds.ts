@@ -24,6 +24,7 @@ export async function saveFeeds(feeds: Feed[]): Promise<{ success: boolean; erro
     last_fetched: toISOString(feed.lastFetched),
     last_fetch_status: feed.lastFetchStatus || null,
     last_fetch_error: feed.lastFetchError || null,
+    enable_deduplication: feed.enableDeduplication ?? false,
   }))
 
   logger.debug({ userId, feedCount: feeds.length }, 'Saving feeds')
@@ -71,6 +72,7 @@ export async function loadFeeds(): Promise<Feed[]> {
     lastFetched: row.last_fetched ? new Date(row.last_fetched) : undefined,
     lastFetchStatus: row.last_fetch_status || undefined,
     lastFetchError: row.last_fetch_error || undefined,
+    enableDeduplication: row.enable_deduplication ?? false,
   }))
 }
 
@@ -94,6 +96,7 @@ export async function updateFeed(feedId: string, updates: Partial<Feed>): Promis
   if (updates.lastFetched !== undefined) updateData.last_fetched = toISOString(updates.lastFetched)
   if (updates.lastFetchStatus !== undefined) updateData.last_fetch_status = updates.lastFetchStatus || null
   if (updates.lastFetchError !== undefined) updateData.last_fetch_error = updates.lastFetchError || null
+  if (updates.enableDeduplication !== undefined) updateData.enable_deduplication = updates.enableDeduplication
 
   logger.debug({ feedId, userId, updateFields: Object.keys(updateData) }, 'Updating feed')
 

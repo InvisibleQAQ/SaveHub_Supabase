@@ -8,6 +8,7 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { Switch } from "@/components/ui/switch"
 import { useRSSStore } from "@/lib/store"
 import { useToast } from "@/hooks/use-toast"
 import { dbManager } from "@/lib/db"
@@ -32,6 +33,7 @@ export function EditFeedForm({ feedId }: EditFeedFormProps) {
     category: "",
     folderId: "none" as string,
     refreshInterval: 60,
+    enableDeduplication: false,
   })
 
   useEffect(() => {
@@ -43,6 +45,7 @@ export function EditFeedForm({ feedId }: EditFeedFormProps) {
         category: feed.category || "",
         folderId: feed.folderId || "none",
         refreshInterval: feed.refreshInterval,
+        enableDeduplication: feed.enableDeduplication,
       })
     }
   }, [feed])
@@ -108,6 +111,7 @@ export function EditFeedForm({ feedId }: EditFeedFormProps) {
         category: formData.category.trim() || undefined,
         folderId: formData.folderId === "none" ? undefined : formData.folderId,
         refreshInterval: formData.refreshInterval,
+        enableDeduplication: formData.enableDeduplication,
       }
 
       // Update in store
@@ -267,6 +271,25 @@ export function EditFeedForm({ feedId }: EditFeedFormProps) {
             <p className="text-xs text-muted-foreground">
               How often to check for new articles (1 minute to 1 week). Default: {settings.refreshInterval} minutes
             </p>
+          </div>
+
+          <div className="space-y-2">
+            <div className="flex items-center justify-between">
+              <div className="space-y-0.5">
+                <Label htmlFor="enableDeduplication">
+                  Enable Article Deduplication
+                </Label>
+                <p className="text-xs text-muted-foreground">
+                  Automatically filter out articles with identical title and content
+                </p>
+              </div>
+              <Switch
+                id="enableDeduplication"
+                checked={formData.enableDeduplication}
+                onCheckedChange={(checked) => setFormData({ ...formData, enableDeduplication: checked })}
+                disabled={isLoading}
+              />
+            </div>
           </div>
 
           <div className="flex gap-3 pt-4">

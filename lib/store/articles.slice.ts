@@ -1,9 +1,10 @@
 import type { StateCreator } from "zustand"
 import type { Article } from "../types"
 import { dbManager } from "../db"
+import { computeContentHash } from "../utils/hash"
 
 export interface ArticlesSlice {
-  addArticles: (articles: Article[]) => number
+  addArticles: (articles: Article[]) => Promise<number>
   markAsRead: (articleId: string) => void
   markAsUnread: (articleId: string) => void
   toggleStar: (articleId: string) => void
@@ -16,19 +17,52 @@ export const createArticlesSlice: StateCreator<
   [],
   ArticlesSlice
 > = (set, get) => ({
-  addArticles: (articles) => {
+  addArticles: async (articles) => {
     const currentState = get() as any
+
+    // Step 1: ALWAYS compute content hash for all articles
+    // This allows users to freely enable/disable deduplication at any time
+    const enrichedArticles = await Promise.all(
+      articles.map(async (article) => {
+        const contentHash = await computeContentHash(article.title, article.content)
+        return { ...article, contentHash }
+      })
+    )
+
+    // Step 2: Build deduplication check sets
     const existingUrls = new Set(currentState.articles.map((a: any) => a.url))
-    const newArticles = articles.filter((a) => !existingUrls.has(a.url))
+    const existingHashes = new Set(
+      currentState.articles
+        .filter((a: any) => a.contentHash) // Only articles with hash
+        .map((a: any) => a.contentHash)
+    )
+
+    // Step 3: Filter out duplicates based on feed configuration
+    const newArticles = enrichedArticles.filter((article) => {
+      // Always check URL duplication
+      if (existingUrls.has(article.url)) {
+        return false
+      }
+
+      // Check content hash duplication ONLY if feed has deduplication enabled
+      const feed = currentState.feeds.find((f: any) => f.id === article.feedId)
+      if (feed?.enableDeduplication && article.contentHash && existingHashes.has(article.contentHash)) {
+        return false
+      }
+
+      return true
+    })
 
     if (newArticles.length === 0) {
       return 0
     }
 
+    // Step 4: Update store
     set((state: any) => ({
       articles: [...state.articles, ...newArticles],
     }))
 
+    // Step 5: Persist to database
     dbManager.saveArticles(newArticles).catch((error) => {
       console.error("Failed to save articles to Supabase:", error)
     })

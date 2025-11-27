@@ -21,7 +21,7 @@ export function FeedRefresh({ feedId, className }: FeedRefreshProps) {
     try {
       const { articles } = await parseRSSFeed(feed.url, feed.id)
 
-      const newArticlesCount = addArticles(articles)
+      const newArticlesCount = await addArticles(articles)
 
       updateFeed(feed.id, { lastFetched: new Date() })
 

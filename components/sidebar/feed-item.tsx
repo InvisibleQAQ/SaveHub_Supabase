@@ -105,7 +105,7 @@ export function FeedItem({ feed, unreadCount, isActive, variant, onRename, onMov
     setIsRefreshing(true)
     try {
       const { articles } = await parseRSSFeed(feed.url, feed.id)
-      const newArticlesCount = addArticles(articles)
+      const newArticlesCount = await addArticles(articles)
       updateFeed(feed.id, { lastFetched: new Date() })
 
       toast({

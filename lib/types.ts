@@ -27,6 +27,7 @@ export const FeedSchema = z.object({
     .default(60),
   lastFetchStatus: z.enum(["success", "failed"]).nullable().optional(),
   lastFetchError: z.string().nullable().optional(),
+  enableDeduplication: z.boolean().default(false),
 })
 
 export const ArticleSchema = z.object({
@@ -41,6 +42,7 @@ export const ArticleSchema = z.object({
   isRead: z.boolean().default(false),
   isStarred: z.boolean().default(false),
   thumbnail: z.string().optional(),
+  contentHash: z.string().optional(), // SHA-256 hash of (title + content), used for deduplication
 })
 
 // API Configuration schema

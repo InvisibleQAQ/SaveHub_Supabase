@@ -55,7 +55,7 @@ export function useRealtimeSync() {
 
     // Subscribe to articles changes
     realtimeManager.subscribeToArticles(
-      (articleRow) => {
+      async (articleRow) => {
         const article: Article = {
           id: articleRow.id,
           feedId: articleRow.feed_id,
@@ -68,10 +68,11 @@ export function useRealtimeSync() {
           isRead: articleRow.is_read,
           isStarred: articleRow.is_starred,
           thumbnail: articleRow.thumbnail || undefined,
+          contentHash: articleRow.content_hash || undefined,
         }
-        store.addArticles([article])
+        await store.addArticles([article])
       },
-      (articleRow) => {
+      async (articleRow) => {
         // For updates, we need to update the article in the store
         const existingArticle = store.articles.find((a) => a.id === articleRow.id)
         if (existingArticle) {
@@ -80,7 +81,7 @@ export function useRealtimeSync() {
             isRead: articleRow.is_read,
             isStarred: articleRow.is_starred,
           }
-          store.addArticles([updatedArticle])
+          await store.addArticles([updatedArticle])
         }
       },
       (id) => {

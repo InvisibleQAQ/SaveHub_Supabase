@@ -22,6 +22,7 @@ export async function saveArticles(articles: Article[]): Promise<void> {
     is_read: article.isRead,
     is_starred: article.isStarred,
     thumbnail: article.thumbnail || null,
+    content_hash: article.contentHash || null,
     user_id: userId,
   }))
 
@@ -75,6 +76,7 @@ export async function loadArticles(feedId?: string, limit?: number): Promise<Art
     isRead: row.is_read,
     isStarred: row.is_starred,
     thumbnail: row.thumbnail || undefined,
+    contentHash: row.content_hash || undefined,
   }))
 }
 
