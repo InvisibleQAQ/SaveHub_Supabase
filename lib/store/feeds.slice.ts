@@ -98,11 +98,21 @@ export const createFeedsSlice: StateCreator<
 
     ;(get() as any).syncToSupabase?.()
 
-    // Reschedule if refresh_interval or last_fetched changed
-    if (updates.refreshInterval !== undefined || updates.lastFetched !== undefined) {
+    // Reschedule if any scheduling-relevant field changed:
+    // - url: Task payload contains feedUrl
+    // - title: Task payload contains feedTitle
+    // - refreshInterval: Affects delay calculation
+    // - lastFetched: Affects delay calculation
+    const needsReschedule =
+      updates.url !== undefined ||
+      updates.title !== undefined ||
+      updates.refreshInterval !== undefined ||
+      updates.lastFetched !== undefined
+
+    if (needsReschedule) {
       const updatedFeed = get().feeds.find((f: any) => f.id === feedId)
       if (updatedFeed) {
-        // This will cancel old schedule and create new one with updated timing (async, fire-and-forget)
+        // This will cancel old schedule and create new one with updated data (async, fire-and-forget)
         scheduleFeedRefresh(updatedFeed).catch((err) => {
           console.error("Failed to reschedule feed refresh:", err)
         })

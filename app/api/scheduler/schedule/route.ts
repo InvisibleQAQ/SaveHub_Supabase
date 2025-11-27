@@ -130,6 +130,21 @@ export async function POST(request: NextRequest) {
 
     // Add job to queue
     const rssQueue = getQueue()
+    const jobId = `feed-${feed.id}`
+
+    // Remove existing job first (BullMQ doesn't auto-replace jobs with same jobId)
+    try {
+      const existingJob = await rssQueue.getJob(jobId)
+      if (existingJob) {
+        await existingJob.remove()
+        logger.debug({ feedId: feed.id }, "Removed existing scheduled job")
+      }
+    } catch (removeError) {
+      // Job might be active or already removed, continue anyway
+      logger.debug({ feedId: feed.id, error: removeError }, "Could not remove existing job")
+    }
+
+    // Add new job with updated data
     await rssQueue.add(
       "refresh",
       {
@@ -142,7 +157,7 @@ export async function POST(request: NextRequest) {
         priority,
       },
       {
-        jobId: `feed-${feed.id}`,
+        jobId,
         delay,
         priority: numericPriority,
       }
