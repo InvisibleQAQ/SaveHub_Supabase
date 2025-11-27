@@ -1,7 +1,8 @@
 import type { StateCreator } from "zustand"
 import type { Feed } from "../types"
 import { dbManager } from "../db"
-import { scheduleFeedRefresh, cancelFeedRefresh } from "../scheduler"
+// Client-side scheduler API (calls server-side BullMQ via API routes)
+import { scheduleFeedRefresh, cancelFeedRefresh } from "../scheduler-client"
 
 export interface FeedsSlice {
   addFeed: (feed: Partial<Feed>) => { success: boolean; reason: 'created' | 'duplicate' }
@@ -46,8 +47,10 @@ export const createFeedsSlice: StateCreator<
 
     ;(get() as any).syncToSupabase?.()
 
-    // Schedule automatic refresh for new feed
-    scheduleFeedRefresh(newFeed)
+    // Schedule automatic refresh for new feed (async, fire-and-forget)
+    scheduleFeedRefresh(newFeed).catch((err) => {
+      console.error("Failed to schedule feed refresh:", err)
+    })
 
     return { success: true, reason: 'created' as const }
   },
@@ -69,7 +72,7 @@ export const createFeedsSlice: StateCreator<
       const stats = await deleteFeed(feedId)
 
       // Step 2: Cancel scheduler (prevents memory leak)
-      cancelFeedRefresh(feedId)
+      await cancelFeedRefresh(feedId)
 
       // Step 3: Update store only if DB delete succeeded
       set((state: any) => ({
@@ -99,8 +102,10 @@ export const createFeedsSlice: StateCreator<
     if (updates.refreshInterval !== undefined || updates.lastFetched !== undefined) {
       const updatedFeed = get().feeds.find((f: any) => f.id === feedId)
       if (updatedFeed) {
-        // This will cancel old schedule and create new one with updated timing
-        scheduleFeedRefresh(updatedFeed)
+        // This will cancel old schedule and create new one with updated timing (async, fire-and-forget)
+        scheduleFeedRefresh(updatedFeed).catch((err) => {
+          console.error("Failed to reschedule feed refresh:", err)
+        })
       }
     }
   },
