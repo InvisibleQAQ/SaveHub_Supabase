@@ -1,17 +1,12 @@
 "use client"
 
 import { ArticleList } from "@/components/article-list"
-import { ArticleContent } from "@/components/article-content"
+import { ArticlePageLayout } from "@/components/article-page-layout"
 
 export default function UnreadArticlesPage() {
   return (
-    <>
-      <div className="w-96 border-r border-border bg-card">
-        <ArticleList viewMode="unread" />
-      </div>
-      <div className="flex-1 bg-background">
-        <ArticleContent />
-      </div>
-    </>
+    <ArticlePageLayout>
+      <ArticleList viewMode="unread" />
+    </ArticlePageLayout>
   )
 }

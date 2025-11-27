@@ -45,14 +45,22 @@ RSS Reader built with Next.js 14, React 18, Supabase for data persistence, and Z
 
 ```bash
 # Development
-pnpm dev          # Start dev server (default: localhost:3000)
+pnpm dev          # Start Next.js dev server only (localhost:3000)
+pnpm dev:all      # Start all services: Next.js + BullMQ worker + Bull Dashboard (recommended)
 pnpm build        # Build for production
 pnpm start        # Start production server
 pnpm lint         # Run Next.js linter
 
+# Background Job Queue (BullMQ)
+pnpm worker       # Start BullMQ worker (production)
+pnpm worker:dev   # Start BullMQ worker with hot reload (development)
+pnpm dashboard    # Start Bull Dashboard for queue monitoring
+
 # Database
 # Run scripts/001_create_tables.sql in Supabase SQL editor to initialize database
 ```
+
+**Note**: `pnpm dev:all` uses `concurrently` to run Next.js, worker, and dashboard in parallel. This is the recommended way to develop locally when working with scheduled feed refreshes.
 
 ## Environment Variables
 
@@ -180,12 +188,17 @@ ENCRYPTION_SECRET=your_secret_for_api_key_encryption  # For encrypting API confi
 
 ### Component Structure
 
+**Shared Page Layouts**:
+- **`article-page-layout.tsx`**: 共享布局组件，包含 ArticleList（左侧固定宽度 w-96）+ ArticleContent（右侧自适应）
+  - 所有文章列表页面**必须**使用此布局，确保样式一致性
+  - 内置 `flex-shrink-0` 防止 Sidebar 动画导致的布局抖动
+
 **Route Pages** (`app/(reader)/*/page.tsx`):
-- `all/page.tsx`: Renders `<ArticleList viewMode="all" />`
-- `unread/page.tsx`: Renders `<ArticleList viewMode="unread" />`
-- `starred/page.tsx`: Renders `<ArticleList viewMode="starred" />`
-- `feed/[feedId]/page.tsx`: Renders `<ArticleList feedId={params.feedId} />`
-- **`feed/[feedId]/properties/page.tsx`** (NEW): Renders `<EditFeedForm feedId={params.feedId} />`
+- `all/page.tsx`: `<ArticlePageLayout><ArticleList viewMode="all" /></ArticlePageLayout>`
+- `unread/page.tsx`: `<ArticlePageLayout><ArticleList viewMode="unread" /></ArticlePageLayout>`
+- `starred/page.tsx`: `<ArticlePageLayout><ArticleList viewMode="starred" /></ArticlePageLayout>`
+- `feed/[feedId]/page.tsx`: `<ArticlePageLayout><ArticleList feedId={params.feedId} /></ArticlePageLayout>`
+- `feed/[feedId]/properties/page.tsx`: Renders `<EditFeedForm feedId={params.feedId} />` (不使用 ArticlePageLayout)
 
 **Settings Pages** (`app/(reader)/settings/*/page.tsx`):
 - `general/page.tsx`: General settings
@@ -317,6 +330,27 @@ updateFeed(feedId, { title, url, description, category, folderId })
 - Control open state with local `useState` or store
 - Use `react-hook-form` + Zod for form validation (see `add-feed-dialog.tsx`)
 - Call Zustand actions to persist changes
+
+### Creating New Article List Page
+**必须使用 `ArticlePageLayout` 包装**，确保布局一致性和防止抖动：
+
+```tsx
+// app/(reader)/your-new-route/page.tsx
+"use client"
+
+import { ArticleList } from "@/components/article-list"
+import { ArticlePageLayout } from "@/components/article-page-layout"
+
+export default function YourNewPage() {
+  return (
+    <ArticlePageLayout>
+      <ArticleList viewMode="all" /> {/* 或其他 props */}
+    </ArticlePageLayout>
+  )
+}
+```
+
+**不要**直接写布局样式（`w-96 border-r` 等），所有样式由 `ArticlePageLayout` 统一管理。
 
 ### Logging Pattern
 ```typescript
