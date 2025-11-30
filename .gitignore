@@ -29,3 +29,6 @@ next-env.d.ts
 /.claude/
 
 /reference_repository/
+
+# Python
+__pycache__/
