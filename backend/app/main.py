@@ -26,9 +26,8 @@ app.add_middleware(
 )
 
 # Import and register routers
-from app.api.routers import rss, chat
+from app.api.routers import rss
 app.include_router(rss.router, prefix="/api")
-app.include_router(chat.router, prefix="/api")
 
 
 @app.get("/health")
