@@ -12,8 +12,49 @@ from typing import Optional, Dict, Any
 from urllib.parse import urlparse
 import hashlib
 import logging
+import re
+from html.parser import HTMLParser
 
 logger = logging.getLogger(__name__)
+
+
+class HTMLStripper(HTMLParser):
+    """Strip HTML tags and decode entities."""
+
+    def __init__(self):
+        super().__init__()
+        self.reset()
+        self.fed = []
+
+    def handle_data(self, data):
+        self.fed.append(data)
+
+    def get_data(self):
+        return ''.join(self.fed)
+
+
+def strip_html_tags(html: str) -> str:
+    """
+    Strip HTML tags and normalize whitespace.
+
+    Args:
+        html: HTML string
+
+    Returns:
+        Plain text with normalized whitespace
+    """
+    if not html:
+        return ''
+
+    # Use HTMLParser to strip tags
+    stripper = HTMLStripper()
+    stripper.feed(html)
+    text = stripper.get_data()
+
+    # Normalize whitespace (collapse multiple spaces/newlines)
+    text = re.sub(r'\s+', ' ', text).strip()
+
+    return text
 
 
 def extract_thumbnail(entry: Dict[str, Any]) -> Optional[str]:
@@ -199,7 +240,9 @@ def parse_rss_feed(url: str, feed_id: str) -> Dict[str, Any]:
     articles = []
     for entry in parsed.entries:
         content = extract_content(entry)
-        summary_text = entry.get('summary', '') or entry.get('description', '')
+        summary_text = strip_html_tags(
+            entry.get('summary', '') or entry.get('description', '')
+        )
 
         article = {
             'id': str(uuid4()),
