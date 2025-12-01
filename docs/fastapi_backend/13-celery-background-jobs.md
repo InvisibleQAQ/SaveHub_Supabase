@@ -4,6 +4,20 @@
 
 本文档说明如何使用 Celery 替换现有的 BullMQ 后台任务系统，实现 RSS 订阅源的定时刷新功能。
 
+## 数据库访问策略
+
+本项目 Celery 任务使用 **Supabase Python SDK**（Service Role Client）访问数据库，**不使用 SQLAlchemy**。
+
+| 场景 | 客户端 | RLS |
+|------|--------|-----|
+| Celery 后台任务 | `get_service_client()` | 绕过（Service Role Key） |
+| API 请求（用户操作） | `get_supabase_client(access_token)` | 生效 |
+
+**关键点**：
+- Celery worker 使用 `SUPABASE_SERVICE_ROLE_KEY` 绕过 RLS
+- 所有数据库操作通过 `supabase.table("table_name")` 进行
+- 详见 [后端环境搭建指南](./11-fastapi-backend-setup.md) 中的 Supabase 客户端配置
+
 ## 现有 BullMQ 实现分析
 
 ### 核心功能
@@ -230,20 +244,17 @@ RSS 订阅源刷新任务
 
 Celery 任务，用于在后台刷新 RSS 订阅源。
 匹配 BullMQ worker 的行为：限速、重试、状态更新、自动调度。
+
+注意：使用 Supabase Python SDK（Service Role Client）绕过 RLS。
 """
 
 from celery import shared_task
 from celery.exceptions import MaxRetriesExceededError
-from sqlalchemy.orm import Session
-from sqlalchemy import and_
-from app.database import SessionLocal
+from app.supabase_client import get_service_client
 from app.services.rss_parser import parse_rss_feed
 from app.core.rate_limiter import rate_limiter
-from app.models.feed import Feed
-from app.models.article import Article
 from datetime import datetime, timezone
 import logging
-from typing import Optional
 
 logger = logging.getLogger(__name__)
 
@@ -299,11 +310,11 @@ def refresh_feed_task(
         任务结果: { success, articleCount, duration, error? }
     """
     start_time = datetime.now(timezone.utc)
-    db: Optional[Session] = None
+
+    # 使用 Service Role Client（绕过 RLS）
+    supabase = get_service_client()
 
     try:
-        db = SessionLocal()
-
         # 1. 域名限速
         wait_time = rate_limiter.wait_for_domain(feed_url)
         if wait_time > 0:
@@ -324,44 +335,50 @@ def refresh_feed_task(
         new_article_count = 0
         for article_data in articles:
             # 检查是否已存在（通过 URL + user_id 去重）
-            existing = db.query(Article).filter(
-                and_(
-                    Article.url == article_data["url"],
-                    Article.user_id == user_id,
-                )
-            ).first()
+            existing = supabase.table("articles") \
+                .select("id") \
+                .eq("url", article_data["url"]) \
+                .eq("user_id", user_id) \
+                .execute()
 
-            if not existing:
-                db_article = Article(
-                    id=article_data["id"],
-                    feed_id=feed_id,
-                    user_id=user_id,
-                    title=article_data["title"],
-                    content=article_data["content"],
-                    summary=article_data.get("summary"),
-                    url=article_data["url"],
-                    author=article_data.get("author"),
-                    published_at=article_data["publishedAt"],
-                    is_read=False,
-                    is_starred=False,
-                    thumbnail=article_data.get("thumbnail"),
-                    content_hash=article_data.get("contentHash"),
-                )
-                db.add(db_article)
+            if not existing.data:
+                # 插入新文章
+                supabase.table("articles").insert({
+                    "id": article_data["id"],
+                    "feed_id": feed_id,
+                    "user_id": user_id,
+                    "title": article_data["title"],
+                    "content": article_data["content"],
+                    "summary": article_data.get("summary"),
+                    "url": article_data["url"],
+                    "author": article_data.get("author"),
+                    "published_at": article_data["publishedAt"].isoformat(),
+                    "is_read": False,
+                    "is_starred": False,
+                    "thumbnail": article_data.get("thumbnail"),
+                    "content_hash": article_data.get("contentHash"),
+                }).execute()
                 new_article_count += 1
 
         # 4. 更新订阅源状态
-        feed = db.query(Feed).filter(
-            and_(Feed.id == feed_id, Feed.user_id == user_id)
-        ).first()
+        supabase.table("feeds").update({
+            "last_fetched": datetime.now(timezone.utc).isoformat(),
+            "last_fetch_status": "success",
+            "last_fetch_error": None,
+        }).eq("id", feed_id).eq("user_id", user_id).execute()
 
-        if feed:
-            feed.last_fetched = datetime.now(timezone.utc)
-            feed.last_fetch_status = "success"
-            feed.last_fetch_error = None
-            feed.unread_count = feed.unread_count + new_article_count
+        # 更新未读计数（需要先获取当前值）
+        feed_response = supabase.table("feeds") \
+            .select("unread_count") \
+            .eq("id", feed_id) \
+            .single() \
+            .execute()
 
-        db.commit()
+        if feed_response.data:
+            current_unread = feed_response.data.get("unread_count", 0)
+            supabase.table("feeds").update({
+                "unread_count": current_unread + new_article_count
+            }).eq("id", feed_id).execute()
 
         # 5. 计算持续时间
         duration = (datetime.now(timezone.utc) - start_time).total_seconds() * 1000
@@ -391,17 +408,14 @@ def refresh_feed_task(
         )
 
         # 更新错误状态
-        if db:
-            try:
-                feed = db.query(Feed).filter(Feed.id == feed_id).first()
-                if feed:
-                    feed.last_fetched = datetime.now(timezone.utc)
-                    feed.last_fetch_status = "failed"
-                    feed.last_fetch_error = str(e)[:500]  # 截断错误信息
-                    db.commit()
-            except Exception as update_error:
-                logger.error(f"Failed to update feed status: {update_error}")
-                db.rollback()
+        try:
+            supabase.table("feeds").update({
+                "last_fetched": datetime.now(timezone.utc).isoformat(),
+                "last_fetch_status": "failed",
+                "last_fetch_error": str(e)[:500],  # 截断错误信息
+            }).eq("id", feed_id).execute()
+        except Exception as update_error:
+            logger.error(f"Failed to update feed status: {update_error}")
 
         # 判断是否应该重试
         if is_retryable_error(e):
@@ -421,10 +435,6 @@ def refresh_feed_task(
             "duration": duration,
         }
 
-    finally:
-        if db:
-            db.close()
-
 
 def schedule_next_refresh(
     feed_id: str,
@@ -439,34 +449,38 @@ def schedule_next_refresh(
         user_id: 用户 ID
         interval_minutes: 刷新间隔（分钟）
     """
-    db = SessionLocal()
-    try:
-        feed = db.query(Feed).filter(Feed.id == feed_id).first()
-        if not feed:
-            logger.warning(f"Feed not found for scheduling: {feed_id}")
-            return
+    supabase = get_service_client()
 
-        delay_seconds = interval_minutes * 60
+    # 获取 feed 信息
+    feed_response = supabase.table("feeds") \
+        .select("url, title") \
+        .eq("id", feed_id) \
+        .single() \
+        .execute()
 
-        # 调度下一次任务
-        refresh_feed_task.apply_async(
-            kwargs={
-                "feed_id": feed_id,
-                "feed_url": feed.url,
-                "feed_title": feed.title,
-                "user_id": user_id,
-                "refresh_interval": interval_minutes,
-            },
-            countdown=delay_seconds,
-            task_id=f"feed-{feed_id}",  # 使用固定 task_id 便于取消
-        )
+    if not feed_response.data:
+        logger.warning(f"Feed not found for scheduling: {feed_id}")
+        return
 
-        logger.debug(
-            f"Scheduled next refresh for {feed.title} in {delay_seconds}s"
-        )
+    feed = feed_response.data
+    delay_seconds = interval_minutes * 60
 
-    finally:
-        db.close()
+    # 调度下一次任务
+    refresh_feed_task.apply_async(
+        kwargs={
+            "feed_id": feed_id,
+            "feed_url": feed["url"],
+            "feed_title": feed["title"],
+            "user_id": user_id,
+            "refresh_interval": interval_minutes,
+        },
+        countdown=delay_seconds,
+        task_id=f"feed-{feed_id}",  # 使用固定 task_id 便于取消
+    )
+
+    logger.debug(
+        f"Scheduled next refresh for {feed['title']} in {delay_seconds}s"
+    )
 
 
 @shared_task(name="app.tasks.rss_tasks.cancel_feed_refresh")
@@ -783,13 +797,15 @@ poetry run celery -A celery_worker.celery_app flower --port=5555
 
 1. **任务序列化**: Celery 默认使用 JSON，确保所有参数可序列化
 
-2. **数据库连接**: 每个任务使用独立的数据库 session，避免连接泄漏
+2. **Supabase 客户端**: 每个任务调用 `get_service_client()` 获取新的客户端实例（无需手动关闭）
 
 3. **异步转同步**: Celery worker 是同步的，需要用 `asyncio.run()` 调用异步函数
 
 4. **任务幂等性**: 设计任务时考虑重复执行的情况
 
 5. **内存管理**: 长时间运行的 worker 可能积累内存，考虑使用 `--max-tasks-per-child`
+
+6. **Service Role Key**: Celery 任务使用 Service Role Key 绕过 RLS，确保 `.env` 中配置了 `SUPABASE_SERVICE_ROLE_KEY`
 
 ## 下一步
 

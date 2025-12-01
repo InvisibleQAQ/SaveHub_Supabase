@@ -407,19 +407,30 @@ async def parse_feed(
 修改 `backend/app/main.py`：
 
 ```python
+"""
+FastAPI 后端主入口
+
+使用 Supabase Python SDK（HTTPS API），不使用 SQLAlchemy。
+"""
+
+import logging
+import os
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from app.api.routers import chat, rss  # 添加 rss
-from app.database import engine, Base
-import os
-from dotenv import load_dotenv
+from dotenv import load_dotenv, find_dotenv
 
-load_dotenv()
+# 加载环境变量
+_ = load_dotenv(find_dotenv())
 
-# OpenAI 配置
-os.environ["OPENAI_API_KEY"] = os.getenv("OPENAI_API_KEY", "")
+# 配置日志
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
-app = FastAPI(title="SaveHub Backend")
+app = FastAPI(
+    title="SaveHub Backend API",
+    description="FastAPI backend for RSS parsing (uses Supabase Python SDK)",
+    version="1.0.0"
+)
 
 # CORS 配置
 app.add_middleware(
@@ -430,15 +441,25 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# 启动时创建表
-@app.on_event("startup")
-async def startup():
-    Base.metadata.create_all(bind=engine)
-
 # 注册路由
-app.include_router(chat.router, prefix="/api")
-app.include_router(rss.router, prefix="/api")  # 新增
+from app.api.routers import rss
+app.include_router(rss.router, prefix="/api")
+
+
+@app.get("/health")
+async def health_check():
+    """根级别健康检查端点"""
+    return {"status": "healthy"}
+
+
+@app.get("/api/health")
+async def api_health_check():
+    """API 健康检查端点"""
+    return {"status": "healthy", "service": "rss-api"}
 ```
+
+**注意**：本项目使用 **Supabase Python SDK** 访问数据库，不使用 SQLAlchemy。
+数据库交互通过 `supabase_client.py` 进行，详见 [后端环境搭建指南](./11-fastapi-backend-setup.md)。
 
 ## 响应格式对比
 

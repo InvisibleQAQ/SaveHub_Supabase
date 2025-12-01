@@ -2,79 +2,117 @@
 
 ## 前置要求
 
-- Python 3.10+
-- Poetry（Python 包管理器）
-- Redis Server
+- Python 3.10+（推荐使用 **Miniconda**）
+- pip（Python 包管理器）
+- Redis Server（用于 Celery 后台任务，可选）
 - 已配置的 Supabase 项目
 
-## 现有后端结构
+## 核心架构
 
-项目中已存在 FastAPI 后端，位于 `backend/` 目录：
+本项目使用 **Supabase Python SDK** 访问数据库，**不使用 SQLAlchemy**。
+
+| 特性 | 本项目方案 | 说明 |
+|-----|-----------|------|
+| 数据库访问 | Supabase Python SDK | HTTPS API，与前端一致 |
+| ORM | 无 | 不使用 SQLAlchemy |
+| 类型安全 | Pydantic 模型 | 强类型请求/响应验证 |
+| 连接方式 | HTTPS | 非直连 PostgreSQL |
+
+## 后端结构
 
 ```
 backend/
 ├── app/
-│   ├── api/routers/chat.py      # 聊天功能 API
-│   ├── models/                   # SQLAlchemy 模型
-│   ├── schemas/chat.py          # Pydantic schemas
-│   ├── services/chat_service.py # LLM 服务
-│   ├── database.py              # 数据库连接
+│   ├── api/routers/
+│   │   └── rss.py               # RSS 解析 API
+│   ├── schemas/
+│   │   └── rss.py               # Pydantic 模型（请求/响应）
+│   ├── services/
+│   │   └── rss_parser.py        # feedparser 封装
+│   ├── supabase_client.py       # Supabase 客户端
 │   ├── dependencies.py          # JWT 验证
 │   └── main.py                  # FastAPI 应用入口
-├── pyproject.toml               # Poetry 依赖配置
+├── requirements.txt             # pip 依赖配置
 ├── Dockerfile
-└── .env.example
+└── .env
 ```
 
 ## 环境配置
 
-### 1. 安装依赖
+### 1. Python 环境
+
+推荐使用 **Miniconda base 环境**（无需创建虚拟环境）：
 
 ```bash
 cd backend
-poetry install
+
+# 确认 Miniconda 已激活（命令行应显示 (base)）
+conda --version
+python --version  # 应为 3.10+
 ```
 
-### 2. 添加新依赖
-
-修改 `pyproject.toml`，添加 RSS 和 Celery 相关依赖：
-
-```toml
-[tool.poetry.dependencies]
-python = "^3.10"
-# 现有依赖...
-fastapi = "^0.112.1"
-uvicorn = "^0.30.6"
-sqlalchemy = "^2.0.32"
-supabase = "^2.7.2"
-langchain = "^0.2.14"
-langchain-openai = "^0.1.22"
-pydantic = "^2.8.2"
-python-dotenv = "^1.0.1"
-psycopg2-binary = "^2.9.9"
-httpx = "^0.27.0"
-
-# 新增依赖
-feedparser = "^6.0.0"          # RSS 解析
-celery = {extras = ["redis"], version = "^5.3.0"}  # 任务队列
-redis = "^5.0.0"               # Redis 客户端
-```
-
-安装新依赖：
+如果需要创建独立环境（可选）：
 
 ```bash
-poetry add feedparser "celery[redis]" redis
+# 创建独立 conda 环境
+conda create -n savehub python=3.11
+conda activate savehub
 ```
 
-### 3. 环境变量配置
+### 2. 安装依赖
+
+```bash
+pip install -r requirements.txt
+```
+
+### 3. requirements.txt 内容
+
+创建或更新 `backend/requirements.txt`：
+
+```txt
+# Web 框架
+fastapi>=0.112.1
+uvicorn>=0.30.6
+
+# Supabase（数据库访问 + 认证）
+supabase>=2.7.2
+
+# LLM
+langchain>=0.2.14
+langchain-openai>=0.1.22
+
+# 数据验证
+pydantic>=2.8.2
+
+# 工具
+python-dotenv>=1.0.1
+httpx>=0.27.0
+
+# RSS 解析
+feedparser>=6.0.0
+
+# 任务队列
+celery[redis]>=5.3.0
+redis>=5.0.0
+```
+
+安装新依赖（如果已有 requirements.txt）：
+
+```bash
+pip install feedparser "celery[redis]" redis
+# 或者更新 requirements.txt 后重新安装
+pip install -r requirements.txt
+```
+
+### 4. 环境变量配置
 
 更新 `.env` 文件：
 
 ```env
-# Supabase 配置（现有）
+# Supabase 配置
 SUPABASE_URL=https://your-project.supabase.co
 SUPABASE_ANON_KEY=your-anon-key
-DATABASE_URL=postgresql://postgres:password@db.your-project.supabase.co:5432/postgres
+SUPABASE_SERVICE_ROLE_KEY=your-service-role-key  # 用于后台任务（绕过 RLS）
 
 # OpenAI 配置（现有）
 OPENAI_API_KEY=your-openai-key
@@ -87,81 +125,171 @@ CELERY_BROKER_URL=redis://localhost:6379/0
 CELERY_RESULT_BACKEND=redis://localhost:6379/0
 ```
 
-## 数据库模型
+**Key 使用场景**:
+
+- `SUPABASE_ANON_KEY`: API 请求（RLS 生效，需要 JWT）
+- `SUPABASE_SERVICE_ROLE_KEY`: Celery 后台任务（绕过 RLS）
+
+## Supabase 客户端配置
+
+### 创建 Supabase 客户端
+
+创建 `backend/app/supabase_client.py`：
+
+```python
+import os
+from supabase import create_client, Client
+from dotenv import load_dotenv
+
+load_dotenv()
+
+SUPABASE_URL = os.getenv("SUPABASE_URL")
+SUPABASE_ANON_KEY = os.getenv("SUPABASE_ANON_KEY")
+SUPABASE_SERVICE_ROLE_KEY = os.getenv("SUPABASE_SERVICE_ROLE_KEY")
+
+def get_supabase_client(access_token: str | None = None) -> Client:
+    """
+    获取 Supabase 客户端
+    - 带 access_token: 用于 API 请求（RLS 生效）
+    - 不带 token: 使用 anon key（需要 JWT header）
+    """
+    client = create_client(SUPABASE_URL, SUPABASE_ANON_KEY)
+    if access_token:
+        client.auth.set_session(access_token, "")
+    return client
+
+def get_service_client() -> Client:
+    """
+    获取 Service Role 客户端（绕过 RLS）
+    仅用于后台任务（Celery workers）
+    """
+    return create_client(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY)
+```
+
+## Pydantic 数据模型
+
+使用 Pydantic 模型定义数据结构，提供类型安全和自动验证。
 
 ### Feed 模型
 
-创建 `backend/app/models/feed.py`：
+创建 `backend/app/schemas/feed.py`：
 
 ```python
-from sqlalchemy import Column, String, Integer, Boolean, DateTime, ForeignKey, Text
-from sqlalchemy.dialects.postgresql import UUID
-from sqlalchemy.sql import func
-from app.database import Base
-import uuid
+from pydantic import BaseModel, Field
+from typing import Optional
+from datetime import datetime
+from uuid import UUID
 
-class Feed(Base):
-    __tablename__ = "feeds"
+class FeedBase(BaseModel):
+    title: str
+    url: str
+    description: Optional[str] = None
+    category: Optional[str] = None
+    folder_id: Optional[UUID] = None
+    order: int = 0
+    refresh_interval: int = 60  # 分钟
 
-    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    user_id = Column(UUID(as_uuid=True), nullable=False)
-    title = Column(Text, nullable=False)
-    url = Column(Text, nullable=False)
-    description = Column(Text)
-    category = Column(Text)
-    folder_id = Column(UUID(as_uuid=True), ForeignKey("folders.id", ondelete="SET NULL"))
-    order = Column(Integer, default=0)
-    unread_count = Column(Integer, default=0)
-    refresh_interval = Column(Integer, default=60)  # 分钟
-    last_fetched = Column(DateTime(timezone=True))
-    last_fetch_status = Column(Text)  # 'success' | 'failed' | null
-    last_fetch_error = Column(Text)
-    enable_deduplication = Column(Boolean, default=False)
-    created_at = Column(DateTime(timezone=True), server_default=func.now())
+class FeedCreate(FeedBase):
+    """创建 Feed 的请求模型"""
+    pass
+
+class FeedUpdate(BaseModel):
+    """更新 Feed 的请求模型（所有字段可选）"""
+    title: Optional[str] = None
+    url: Optional[str] = None
+    description: Optional[str] = None
+    category: Optional[str] = None
+    folder_id: Optional[UUID] = None
+    order: Optional[int] = None
+    refresh_interval: Optional[int] = None
+    enable_deduplication: Optional[bool] = None
+
+class Feed(FeedBase):
+    """数据库 Feed 实体"""
+    id: UUID
+    user_id: UUID
+    unread_count: int = 0
+    last_fetched: Optional[datetime] = None
+    last_fetch_status: Optional[str] = None  # 'success' | 'failed'
+    last_fetch_error: Optional[str] = None
+    enable_deduplication: bool = False
+    created_at: datetime
+
+    class Config:
+        from_attributes = True  # 支持从 dict 创建
 ```
 
 ### Article 模型
 
-创建 `backend/app/models/article.py`：
+创建 `backend/app/schemas/article.py`：
 
 ```python
-from sqlalchemy import Column, String, Integer, Boolean, DateTime, ForeignKey, Text
-from sqlalchemy.dialects.postgresql import UUID
-from sqlalchemy.sql import func
-from app.database import Base
-import uuid
+from pydantic import BaseModel
+from typing import Optional
+from datetime import datetime
+from uuid import UUID
 
-class Article(Base):
-    __tablename__ = "articles"
+class ArticleBase(BaseModel):
+    title: str
+    content: str
+    url: str
+    summary: Optional[str] = None
+    author: Optional[str] = None
+    published_at: datetime
+    thumbnail: Optional[str] = None
 
-    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    user_id = Column(UUID(as_uuid=True), nullable=False)
-    feed_id = Column(UUID(as_uuid=True), ForeignKey("feeds.id", ondelete="CASCADE"), nullable=False)
-    title = Column(Text, nullable=False)
-    content = Column(Text, nullable=False)
-    summary = Column(Text)
-    url = Column(Text, nullable=False)
-    author = Column(Text)
-    published_at = Column(DateTime(timezone=True), nullable=False)
-    is_read = Column(Boolean, default=False)
-    is_starred = Column(Boolean, default=False)
-    thumbnail = Column(Text)
-    content_hash = Column(Text)  # SHA-256 用于去重
-    created_at = Column(DateTime(timezone=True), server_default=func.now())
+class ArticleCreate(ArticleBase):
+    """创建 Article 的请求模型"""
+    feed_id: UUID
+
+class Article(ArticleBase):
+    """数据库 Article 实体"""
+    id: UUID
+    user_id: UUID
+    feed_id: UUID
+    is_read: bool = False
+    is_starred: bool = False
+    content_hash: Optional[str] = None
+    created_at: datetime
+
+    class Config:
+        from_attributes = True
 ```
 
-### 更新模型导出
-
-修改 `backend/app/models/__init__.py`：
+### 使用示例
 
 ```python
-from app.models.profile import Profile
-from app.models.chat_session import ChatSession
-from app.models.message import Message
-from app.models.feed import Feed
-from app.models.article import Article
+from app.supabase_client import get_supabase_client
+from app.schemas.feed import Feed
+from typing import List
 
-__all__ = ["Profile", "ChatSession", "Message", "Feed", "Article"]
+async def get_user_feeds(user_id: str, access_token: str) -> List[Feed]:
+    """获取用户的所有 Feeds"""
+    client = get_supabase_client(access_token)
+
+    response = client.table("feeds") \
+        .select("*") \
+        .eq("user_id", user_id) \
+        .order("order") \
+        .execute()
+
+    # Pydantic 自动验证和转换
+    return [Feed(**item) for item in response.data]
+
+async def update_feed_status(feed_id: str, status: str, error: str | None = None):
+    """更新 Feed 抓取状态（Celery 任务使用 service client）"""
+    from app.supabase_client import get_service_client
+
+    client = get_service_client()  # 绕过 RLS
+
+    client.table("feeds") \
+        .update({
+            "last_fetched": datetime.utcnow().isoformat(),
+            "last_fetch_status": status,
+            "last_fetch_error": error
+        }) \
+        .eq("id", feed_id) \
+        .execute()
 ```
 
 ## Pydantic Schemas
@@ -250,7 +378,12 @@ class CancelResponse(BaseModel):
 
 ```bash
 cd backend
-poetry run uvicorn app.main:app --reload --port 8000
+
+# 确保虚拟环境已激活
+# Windows (Git Bash): source venv/Scripts/activate
+# macOS/Linux: source venv/bin/activate
+
+uvicorn app.main:app --reload --port 8000
 ```
 
 ### 启动 Redis
@@ -279,23 +412,34 @@ redis-cli ping
 
 ## 开发命令
 
-### Poetry 常用命令
+### pip 常用命令
 
 ```bash
+# 激活虚拟环境（每次开发前）
+# Windows (Git Bash)
+source venv/Scripts/activate
+# macOS/Linux
+source venv/bin/activate
+
 # 安装所有依赖
-poetry install
+pip install -r requirements.txt
 
 # 添加新依赖
-poetry add package_name
+pip install package_name
+# 然后手动添加到 requirements.txt，或使用：
+pip freeze > requirements.txt  # 注意：会覆盖所有依赖
 
-# 添加开发依赖
-poetry add --group dev pytest
-
-# 激活虚拟环境
-poetry shell
+# 安装开发依赖（可选：使用 requirements-dev.txt）
+pip install pytest
 
 # 运行脚本
-poetry run python script.py
+python script.py
+
+# 查看已安装的包
+pip list
+
+# 升级包
+pip install --upgrade package_name
 ```
 
 ### 数据库相关
@@ -307,15 +451,18 @@ supabase gen types typescript --project-id your-project-id > lib/supabase/types.
 
 ## 常见问题
 
-### 1. Poetry 安装失败
+### 1. pip 安装失败
 
 ```bash
 # 更新 pip
 pip install --upgrade pip
 
 # 清除缓存重试
-poetry cache clear --all pypi
-poetry install
+pip cache purge
+pip install -r requirements.txt
+
+# 如果某个包安装失败，尝试单独安装
+pip install package_name --no-cache-dir
 ```
 
 ### 2. Redis 连接失败
@@ -328,18 +475,44 @@ redis-cli ping
 lsof -i :6379
 ```
 
-### 3. 数据库连接失败
+### 3. Supabase 连接失败
 
-确保 `.env` 中的 `DATABASE_URL` 格式正确：
+确保 `.env` 中的配置正确：
+
+```env
+SUPABASE_URL=https://your-project.supabase.co
+SUPABASE_ANON_KEY=your-anon-key
+SUPABASE_SERVICE_ROLE_KEY=your-service-role-key
 ```
-postgresql://postgres:[PASSWORD]@db.[PROJECT_REF].supabase.co:5432/postgres
+
+**调试方法**:
+
+```python
+from supabase import create_client
+client = create_client(url, key)
+# 测试连接
+result = client.table("feeds").select("count").limit(1).execute()
+print(result)
 ```
 
 ### 4. Supabase JWT 验证失败
 
-检查 `SUPABASE_URL` 和 `SUPABASE_ANON_KEY` 是否与前端配置一致。
+检查以下配置：
+
+- `SUPABASE_URL` 和 `SUPABASE_ANON_KEY` 是否与前端配置一致
+- JWT Token 是否已过期
+- RLS 策略是否正确配置
+
+### 5. RLS 权限错误
+
+如果收到 `new row violates row-level security policy` 错误：
+
+- 检查 Supabase 表的 RLS 策略
+- 确保请求携带了有效的 JWT Token
+- 后台任务应使用 `get_service_client()` 绕过 RLS
 
 ## 下一步
 
 完成环境搭建后，继续阅读：
+
 - [RSS 功能迁移详细步骤](./12-rss-migration-to-fastapi.md)

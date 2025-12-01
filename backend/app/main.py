@@ -1,21 +1,21 @@
-import openai
+import logging
 import os
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from app.api.routers import chat
-from app.database import engine
-from app.models import profile, chat_session, message
 from dotenv import load_dotenv, find_dotenv
 
-_ = load_dotenv(find_dotenv()) # read local .env file
-openai.api_key = os.environ['OPENAI_API_KEY']
+# Load environment variables
+_ = load_dotenv(find_dotenv())
 
-def create_tables():
-    profile.Base.metadata.create_all(bind=engine)
-    chat_session.Base.metadata.create_all(bind=engine)
-    message.Base.metadata.create_all(bind=engine)
+# Configure logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
-app = FastAPI()
+app = FastAPI(
+    title="SaveHub Backend API",
+    description="FastAPI backend for RSS parsing (uses Supabase Python SDK)",
+    version="1.0.0"
+)
 
 app.add_middleware(
     CORSMiddleware,
@@ -25,8 +25,19 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-@app.on_event("startup")
-async def on_startup():
-    create_tables()
-
+# Import and register routers
+from app.api.routers import rss, chat
+app.include_router(rss.router, prefix="/api")
 app.include_router(chat.router, prefix="/api")
+
+
+@app.get("/health")
+async def health_check():
+    """Root health check endpoint."""
+    return {"status": "healthy"}
+
+
+@app.get("/api/health")
+async def api_health_check():
+    """API health check endpoint."""
+    return {"status": "healthy", "service": "rss-api"}

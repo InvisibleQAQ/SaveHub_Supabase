@@ -8,11 +8,11 @@
 
 ### 需要迁移的组件
 
-| 组件 | 原实现 | 新实现 |
-|------|--------|--------|
+| 组件         | 原实现                          | 新实现               |
+| ------------ | ------------------------------- | -------------------- |
 | RSS 解析 API | Next.js API Routes + rss-parser | FastAPI + feedparser |
-| 后台任务队列 | BullMQ + Redis | Celery + Redis |
-| 定时调度 | BullMQ Scheduler | Celery Beat |
+| 后台任务队列 | BullMQ + Redis                  | Celery + Redis       |
+| 定时调度     | BullMQ Scheduler                | Celery Beat          |
 
 ### 保持不变的组件
 
@@ -115,20 +115,69 @@
 
 ## 数据库访问策略
 
-### SQLAlchemy ORM
+### Supabase Python SDK（唯一方案）
 
-选择使用 SQLAlchemy ORM 而非 Supabase Python SDK：
+本项目**仅使用 Supabase Python SDK**，不使用 SQLAlchemy ORM。
 
-**优点**:
-- 更 Pythonic 的 API
-- 已在 FastAPI 后端使用（chat 功能）
-- 更好的类型提示支持
-- 事务控制更灵活
+**核心优势**:
+
+- **与前端一致**：前后端使用相同的 HTTPS API 访问模式
+- **无需直连数据库**：避免 `db.*.supabase.co` 连接问题（防火墙、暂停项目等）
+- **RLS 自动生效**：自动应用 Supabase 行级安全策略
+- **强类型约束**：FastAPI + Pydantic 提供完整类型安全
+- **简化维护**：无需维护 SQLAlchemy models、migrations
+
+**Pydantic 强类型 + Supabase SDK 模式**:
+
+```python
+from pydantic import BaseModel
+from typing import Optional, List
+from uuid import UUID
+from datetime import datetime
+
+# 1. Pydantic 模型定义数据结构（强类型）
+class Feed(BaseModel):
+    id: UUID
+    user_id: UUID
+    title: str
+    url: str
+    description: Optional[str] = None
+    unread_count: int = 0
+    last_fetched: Optional[datetime] = None
+
+    class Config:
+        from_attributes = True
+
+# 2. 类型化的数据库操作函数
+async def get_user_feeds(supabase_client, user_id: str) -> List[Feed]:
+    """获取用户的所有订阅源（强类型返回）"""
+    response = supabase_client.table("feeds") \
+        .select("*") \
+        .eq("user_id", user_id) \
+        .order("created_at", desc=True) \
+        .execute()
+
+    # Pydantic 自动验证和类型转换
+    return [Feed(**item) for item in response.data]
+
+# 3. 在 FastAPI 端点中使用
+@router.get("/feeds", response_model=List[Feed])
+async def list_feeds(user=Depends(verify_jwt)):
+    supabase = get_supabase_client(user.session.access_token)
+    return await get_user_feeds(supabase, user.user.id)
+```
+
+**两种客户端模式**:
+
+| 场景 | 客户端 | RLS |
+|------|--------|-----|
+| API 请求（用户操作） | `get_supabase_client(access_token)` | 生效 |
+| 后台任务（Celery） | `get_service_client()` | 绕过 |
 
 **注意事项**:
-- 绕过 Supabase RLS（行级安全）
-- 需要在应用层实现用户隔离（`user_id` 过滤）
-- 使用与 Supabase 相同的 PostgreSQL 连接
+
+- API 请求需携带 JWT Token（`Authorization: Bearer <token>`）
+- Service Role Key 仅用于后台任务，绕过 RLS
 
 ## 认证策略
 
@@ -174,12 +223,12 @@ async rewrites() {
 
 ### 端点对应关系
 
-| 前端调用 | 代理后 | FastAPI 处理 |
-|----------|--------|--------------|
-| `/api/backend/rss/validate` | `/api/rss/validate` | `rss.router` |
-| `/api/backend/rss/parse` | `/api/rss/parse` | `rss.router` |
+| 前端调用                            | 代理后                      | FastAPI 处理         |
+| ----------------------------------- | --------------------------- | -------------------- |
+| `/api/backend/rss/validate`       | `/api/rss/validate`       | `rss.router`       |
+| `/api/backend/rss/parse`          | `/api/rss/parse`          | `rss.router`       |
 | `/api/backend/scheduler/schedule` | `/api/scheduler/schedule` | `scheduler.router` |
-| `/api/backend/scheduler/cancel` | `/api/scheduler/cancel` | `scheduler.router` |
+| `/api/backend/scheduler/cancel`   | `/api/scheduler/cancel`   | `scheduler.router` |
 
 ## 迁移策略
 
@@ -203,36 +252,34 @@ backend/
 ├── app/
 │   ├── api/
 │   │   └── routers/
-│   │       ├── chat.py           # 现有：聊天功能
-│   │       ├── rss.py            # 新增：RSS 解析
-│   │       └── scheduler.py      # 新增：任务调度
-│   ├── models/
-│   │   ├── __init__.py
-│   │   ├── profile.py            # 现有
-│   │   ├── chat_session.py       # 现有
-│   │   ├── message.py            # 现有
-│   │   ├── feed.py               # 新增：Feed 模型
-│   │   └── article.py            # 新增：Article 模型
+│   │       ├── rss.py            # RSS 解析 API
+│   │       └── scheduler.py      # 任务调度 API（后续）
 │   ├── schemas/
-│   │   ├── chat.py               # 现有
-│   │   ├── rss.py                # 新增：RSS 请求/响应
-│   │   └── scheduler.py          # 新增：调度器请求/响应
+│   │   ├── rss.py                # RSS 请求/响应 Pydantic 模型
+│   │   ├── feed.py               # Feed Pydantic 模型
+│   │   ├── article.py            # Article Pydantic 模型
+│   │   └── scheduler.py          # 调度器请求/响应（后续）
 │   ├── services/
-│   │   ├── chat_service.py       # 现有
-│   │   └── rss_parser.py         # 新增：feedparser 封装
-│   ├── tasks/
-│   │   ├── __init__.py           # 新增
-│   │   ├── celery_config.py      # 新增：Celery 配置
-│   │   └── rss_tasks.py          # 新增：RSS 刷新任务
+│   │   ├── rss_parser.py         # feedparser 封装
+│   │   └── supabase_db.py        # Supabase 数据库操作（强类型）
+│   ├── tasks/                    # Celery 任务（后续）
+│   │   ├── __init__.py
+│   │   ├── celery_config.py
+│   │   └── rss_tasks.py
 │   ├── core/
-│   │   └── rate_limiter.py       # 新增：域名限速
-│   ├── database.py               # 现有
-│   ├── dependencies.py           # 现有：JWT 验证
-│   └── main.py                   # 修改：添加新路由
-├── celery_worker.py              # 新增：Celery 入口
-├── pyproject.toml                # 修改：添加依赖
-└── .env                          # 修改：添加 Redis 配置
+│   │   └── rate_limiter.py       # 域名限速（后续）
+│   ├── supabase_client.py        # Supabase 客户端（替代 database.py）
+│   ├── dependencies.py           # JWT 验证 + Supabase 依赖
+│   └── main.py                   # FastAPI 应用入口
+├── celery_worker.py              # Celery 入口（后续）
+├── requirements.txt              # pip 依赖
+└── .env                          # 环境变量
 ```
+
+**架构说明**：
+- **无 SQLAlchemy**：不使用 `models/` 目录和 `database.py`
+- **Pydantic 模型**：所有数据结构定义在 `schemas/`
+- **Supabase SDK**：通过 `supabase_client.py` 访问数据库
 
 ## 下一步
 

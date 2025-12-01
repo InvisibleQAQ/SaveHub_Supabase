@@ -2,7 +2,7 @@
 
 ### Overview
 
-This project uses Supabase for user authentication and SQLAlchemy for database management. We have designed our database schema to accommodate user profiles and chat sessions, leveraging Supabase's authentication system.
+This project uses **Supabase Python SDK** for both user authentication and database management (no SQLAlchemy). We have designed our database schema to accommodate user profiles and chat sessions, leveraging Supabase's authentication system and HTTPS API access.
 
 #### Supabase Authentication and User Profile
 
@@ -220,15 +220,15 @@ The messages table stores the messages exchanged during a chat session.
 
 2. Set Up Environment Variables
 
-   Copy the .env.example file to create your own .env file. This file will store your environment variables, such as database connection strings and API keys.
+   Copy the .env.example file to create your own .env file. This file will store your environment variables.
 
    ```bash
    cp .env.example .env
    # Update the .env file with your specific configurations, including:
-   DATABASE_URL: Your database connection string (e.g., PostgreSQL or Supabase URL).
-   OPENAI_API_KEY: Your OpenAI API key.
-   SUPABASE_API_KEY: Your Supabase API Key
+   SUPABASE_URL: Your Supabase project URL
    SUPABASE_ANON_KEY: Your Supabase Anon Key
+   SUPABASE_SERVICE_ROLE_KEY: Your Supabase Service Role Key (for backend tasks)
+   OPENAI_API_KEY: Your OpenAI API key
    ```
 
 3. Install Dependencies
@@ -241,7 +241,12 @@ The messages table stores the messages exchanged during a chat session.
    This will create a virtual environment and install all the dependencies listed in pyproject.toml.
 
 4. Set Up the Database
-   If you are using a new database, you have to create `profiles` abd triggers with `auth.users` table manually as mentioned in Database Schema section above. Other tables will be created after running the FastAPI server
+   If you are using a new database, you need to create all tables manually in Supabase SQL Editor as mentioned in the Database Schema section above. This includes:
+   - `profiles` table with trigger for `auth.users`
+   - `chat_sessions` table
+   - `messages` table
+
+   Note: Since we use Supabase Python SDK (not SQLAlchemy ORM), tables are NOT auto-created by the server.
 
 5. Run the FastAPI Server
    You can start the FastAPI server using Uvicorn, which comes pre-installed with the dependencies:
