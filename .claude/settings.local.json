@@ -1,0 +1,12 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(~/.claude/scripts/update_module_claude.sh:*)",
+      "Bash(git add:*)",
+      "Bash(~/.claude/scripts/get_modules_by_depth.sh:*)",
+      "Bash(find:*)"
+    ],
+    "deny": [],
+    "ask": []
+  }
+}
