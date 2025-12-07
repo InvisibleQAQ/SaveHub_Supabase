@@ -23,12 +23,12 @@ pnpm worker:dev   # BullMQ worker with hot reload
 pnpm dashboard    # Bull Dashboard (localhost:5555)
 ```
 
-### Backend (Poetry)
+### Backend (pip + requirements.txt)
 
 ```bash
 cd backend
-poetry install                              # Install dependencies
-poetry run uvicorn app.main:app --reload    # Dev server (localhost:8000)
+pip install -r requirements.txt             # Install dependencies (base environment)
+uvicorn app.main:app --reload               # Dev server (localhost:8000)
 # API docs: http://localhost:8000/docs
 ```
 

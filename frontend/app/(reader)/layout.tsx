@@ -8,37 +8,21 @@ import { DatabaseSetup } from "@/components/database-setup"
 import { KeyboardShortcuts } from "@/components/keyboard-shortcuts"
 import { Sidebar } from "@/components/sidebar"
 import { Loader2 } from "lucide-react"
-import { supabase } from "@/lib/supabase/client"
+import { useAuth } from "@/lib/context/auth-context"
 import { initializeScheduler, stopAllSchedulers } from "@/lib/scheduler"
 
 export default function ReaderLayout({ children }: { children: React.ReactNode }) {
   const router = useRouter()
+  const { isAuthenticated, isLoading: isAuthLoading } = useAuth()
   const { isLoading, error, isDatabaseReady, isSidebarCollapsed, loadFromSupabase, checkDatabaseStatus, setError } = useRSSStore()
   const [isCheckingDatabase, setIsCheckingDatabase] = useState(true)
-  const [isCheckingAuth, setIsCheckingAuth] = useState(true)
 
+  // Redirect to login if not authenticated
   useEffect(() => {
-    const checkAuth = async () => {
-      const { data: { session } } = await supabase.auth.getSession()
-      if (!session) {
-        router.push('/login')
-        return
-      }
-      setIsCheckingAuth(false)
+    if (!isAuthLoading && !isAuthenticated) {
+      router.push('/login')
     }
-
-    checkAuth()
-
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
-      if (event === 'SIGNED_OUT' || !session) {
-        router.push('/login')
-      }
-    })
-
-    return () => {
-      subscription.unsubscribe()
-    }
-  }, [router])
+  }, [isAuthLoading, isAuthenticated, router])
 
   useRealtimeSync()
 
@@ -90,7 +74,7 @@ export default function ReaderLayout({ children }: { children: React.ReactNode }
     return () => document.removeEventListener("refresh-feeds", handleRefresh)
   }, [])
 
-  if (isCheckingAuth) {
+  if (isAuthLoading) {
     return (
       <div className="flex items-center justify-center h-screen bg-background">
         <div className="text-center">
@@ -99,6 +83,11 @@ export default function ReaderLayout({ children }: { children: React.ReactNode }
         </div>
       </div>
     )
+  }
+
+  // Don't render anything if not authenticated (redirecting to login)
+  if (!isAuthenticated) {
+    return null
   }
 
   if (isCheckingDatabase) {

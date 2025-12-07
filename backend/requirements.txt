@@ -4,6 +4,7 @@ uvicorn>=0.30.6
 
 # Supabase（数据库访问 + 认证）
 supabase>=2.7.2
+gotrue>=2.0.0
 
 # LLM
 langchain>=0.2.14
@@ -22,3 +23,5 @@ feedparser>=6.0.0
 # 任务队列
 celery[redis]>=5.3.0
 redis>=5.0.0
+
+email-validator>=2.0.0

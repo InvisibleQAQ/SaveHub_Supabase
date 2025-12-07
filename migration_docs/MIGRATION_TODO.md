@@ -24,11 +24,11 @@
 
 ---
 
-## Phase 1: Authentication (优先级 1)
+## Phase 1: Authentication (优先级 1) ✅ 已完成
 
 ### FastAPI 后端
 
-- [ ] **1.1** 创建 `backend/app/schemas/auth.py`
+- [x] **1.1** 创建 `backend/app/schemas/auth.py`
   ```
   - LoginRequest (email, password)
   - RegisterRequest (email, password)
@@ -36,7 +36,7 @@
   - SessionResponse (authenticated, user_id, email)
   ```
 
-- [ ] **1.2** 创建 `backend/app/api/routers/auth.py`
+- [x] **1.2** 创建 `backend/app/api/routers/auth.py`
   ```
   POST /api/auth/login     - 登录，设置 HttpOnly Cookie
   POST /api/auth/register  - 注册新用户
@@ -45,17 +45,18 @@
   POST /api/auth/refresh   - 刷新 token
   ```
 
-- [ ] **1.3** 修改 `backend/app/dependencies.py`
+- [x] **1.3** 修改 `backend/app/dependencies.py`
   - 添加 `verify_cookie_auth()` 函数
+  - 添加 `verify_auth()` 函数（支持 cookie 和 header 两种认证方式）
   - 从 Cookie 读取 JWT token
   - 保留原有 `verify_jwt()` 用于向后兼容
 
-- [ ] **1.4** 修改 `backend/app/main.py`
+- [x] **1.4** 修改 `backend/app/main.py`
   - 注册 auth router: `app.include_router(auth.router, prefix="/api")`
 
 ### Frontend 前端
 
-- [ ] **1.5** 创建 `frontend/lib/api/auth.ts`
+- [x] **1.5** 创建 `frontend/lib/api/auth.ts`
   ```typescript
   login(email, password): Promise<AuthUser>
   register(email, password): Promise<AuthUser>
@@ -64,23 +65,29 @@
   refreshToken(): Promise<boolean>
   ```
 
-- [ ] **1.6** 创建 `frontend/lib/context/auth-context.tsx`
+- [x] **1.6** 创建 `frontend/lib/context/auth-context.tsx`
   - AuthProvider 组件
   - useAuth hook
   - 管理用户状态和认证方法
+  - 自动 token 刷新（每 10 分钟）
 
-- [ ] **1.7** 修改 `frontend/app/login/page.tsx`
+- [x] **1.7** 修改 `frontend/app/login/page.tsx`
   - 替换 Supabase Auth UI 为自定义表单
   - 使用 AuthContext
+  - 支持登录/注册切换
 
-- [ ] **1.8** 修改 `frontend/app/(reader)/layout.tsx`
-  - 使用 `authApi.getSession()` 替代 `supabase.auth.getSession()`
+- [x] **1.8** 修改 `frontend/app/(reader)/layout.tsx`
+  - 使用 `useAuth()` hook 替代 `supabase.auth.getSession()`
+  - 移除 `supabase.auth.onAuthStateChange` 订阅
+
+- [x] **1.9** 修改 `frontend/app/layout.tsx`
+  - 添加 `AuthProvider` 包装整个应用
 
 ### Phase 1 测试
 
-- [ ] **1.9** 测试登录/登出功能
-- [ ] **1.10** 测试 session 持久化
-- [ ] **1.11** 测试 token 刷新
+- [ ] **1.10** 测试登录/登出功能
+- [ ] **1.11** 测试 session 持久化
+- [ ] **1.12** 测试 token 刷新
 
 ---
 
@@ -284,11 +291,11 @@ Browser ↔ WebSocket /ws/realtime ↔ FastAPI ↔ Supabase Realtime
 
 | Phase | 状态 | 完成项 | 总项 |
 |-------|------|--------|------|
-| Phase 1: Auth | 未开始 | 0 | 11 |
+| Phase 1: Auth | ✅ 已完成 | 9 | 12 |
 | Phase 2a: Feeds/Folders | 未开始 | 0 | 9 |
 | Phase 2b: Articles/Settings | 未开始 | 0 | 12 |
 | Phase 3: Realtime | 未开始 | 0 | 9 |
-| **总计** | | **0** | **41** |
+| **总计** | | **9** | **42** |
 
 ---
 
@@ -301,4 +308,4 @@ Browser ↔ WebSocket /ws/realtime ↔ FastAPI ↔ Supabase Realtime
 
 ---
 
-*最后更新: 2024-12-07*
+*最后更新: 2025-12-07*

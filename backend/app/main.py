@@ -26,8 +26,9 @@ app.add_middleware(
 )
 
 # Import and register routers
-from app.api.routers import rss
+from app.api.routers import rss, auth
 app.include_router(rss.router, prefix="/api")
+app.include_router(auth.router, prefix="/api")
 
 
 @app.get("/health")
