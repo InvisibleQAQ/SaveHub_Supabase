@@ -176,17 +176,17 @@
 - [X] **3.1** 创建 `backend/app/services/realtime.py`
 
   - ConnectionManager 类管理 WebSocket 连接
-- [ ] **3.2** 创建 `backend/app/services/supabase_realtime.py`
+- [X] **3.2** 创建 `backend/app/services/supabase_realtime.py`
 
   - SupabaseRealtimeForwarder 类订阅 postgres_changes
-- [ ] **3.3** 创建 `backend/app/api/routers/websocket.py`
+- [X] **3.3** 创建 `backend/app/api/routers/websocket.py`
 
   ```
   WS /api/ws/realtime - WebSocket 端点
   - 认证通过 cookie
   - 转发 feeds/articles/folders 变更
   ```
-- [ ] **3.4** 注册 WebSocket router 到 main.py
+- [X] **3.4** 注册 WebSocket router 到 main.py
 
 ### Frontend 前端
 

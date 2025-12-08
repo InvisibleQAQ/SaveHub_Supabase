@@ -1,5 +1,6 @@
 import logging
 import os
+from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from dotenv import load_dotenv, find_dotenv
@@ -11,10 +12,29 @@ _ = load_dotenv(find_dotenv())
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
+# Import realtime forwarder for lifecycle management
+from app.services.supabase_realtime import realtime_forwarder
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """Application lifespan manager for startup/shutdown events."""
+    # Startup: Start Supabase Realtime subscription
+    logger.info("Starting Supabase Realtime forwarder...")
+    await realtime_forwarder.start()
+
+    yield
+
+    # Shutdown: Stop Supabase Realtime subscription
+    logger.info("Stopping Supabase Realtime forwarder...")
+    await realtime_forwarder.stop()
+
+
 app = FastAPI(
     title="SaveHub Backend API",
     description="FastAPI backend for RSS parsing (uses Supabase Python SDK)",
-    version="1.0.0"
+    version="1.0.0",
+    lifespan=lifespan,
 )
 
 app.add_middleware(
@@ -26,13 +46,14 @@ app.add_middleware(
 )
 
 # Import and register routers
-from app.api.routers import rss, auth, feeds, folders, articles, settings
+from app.api.routers import rss, auth, feeds, folders, articles, settings, websocket
 app.include_router(rss.router, prefix="/api")
 app.include_router(auth.router, prefix="/api")
 app.include_router(feeds.router, prefix="/api")
 app.include_router(folders.router, prefix="/api")
 app.include_router(articles.router, prefix="/api")
 app.include_router(settings.router, prefix="/api")
+app.include_router(websocket.router, prefix="/api")
 
 
 @app.get("/health")

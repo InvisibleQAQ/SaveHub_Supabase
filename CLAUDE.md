@@ -2,6 +2,15 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+## Cardinal Rule: Docs as Code
+
+> "Changed the code but not the docs? Then the docs are lies. Lies are worse than no docs at all."
+
+- **When modifying code in a directory, update that directory's CLAUDE.md** — create one if it doesn't exist
+- **Don't be stupid**: Frontend style tweaks or non-architectural changes don't need doc updates
+- **CLAUDE.md should read like kernel comments**: Precise, short, pointing to code locations — not copying code
+- **Pasting large code blocks into docs?** You're writing a blog post, not doing engineering
+
 ## Project Overview
 
 SaveHub is an RSS reader application with a **monorepo architecture**:
