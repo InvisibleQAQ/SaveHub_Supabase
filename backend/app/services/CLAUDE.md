@@ -7,6 +7,7 @@ Backend 业务逻辑层，使用 Supabase Python SDK 实现数据持久化。
 ```
 services/
 ├── realtime.py             # ConnectionManager - WebSocket 连接管理
+├── supabase_realtime.py    # SupabaseRealtimeForwarder - Supabase postgres_changes 转发
 ├── rss_parser.py           # RSS 解析服务
 └── db/                     # 数据库服务模块
     ├── __init__.py         # 导出所有服务类
@@ -35,6 +36,7 @@ service = FeedService(supabase_client, user_id)
 | 服务 | 功能 |
 |------|------|
 | `ConnectionManager` | WebSocket 连接管理（多标签页支持） |
+| `SupabaseRealtimeForwarder` | 订阅 Supabase postgres_changes，转发给 WebSocket 客户端 |
 | `FeedService` | 订阅源增删改查、级联删除文章 |
 | `ArticleService` | 文章增删改查、过期清理、统计分析 |
 | `FolderService` | 文件夹增删改查 |
@@ -60,6 +62,44 @@ connection_manager.disconnect(websocket, user_id)
 ```
 
 **数据结构**: `user_id -> List[WebSocket]` 映射，单用户可有多个连接，自动清理断开的连接。
+
+## SupabaseRealtimeForwarder (supabase_realtime.py)
+
+订阅 Supabase postgres_changes，将数据库变更事件转发给 WebSocket 客户端。
+
+**使用方式**:
+```python
+from app.services.supabase_realtime import realtime_forwarder
+
+# 启动订阅（通常在应用启动时调用）
+await realtime_forwarder.start()
+
+# 停止订阅（通常在应用关闭时调用）
+await realtime_forwarder.stop()
+
+# 检查运行状态
+is_running = realtime_forwarder.is_running
+```
+
+**订阅的表**: `feeds`, `articles`, `folders`
+
+**消息格式** (转发给 WebSocket 客户端):
+```json
+{
+  "type": "postgres_changes",
+  "table": "feeds",
+  "event": "INSERT|UPDATE|DELETE",
+  "payload": {
+    "new": { ... },
+    "old": { ... }
+  }
+}
+```
+
+**工作流程**:
+1. 订阅 Supabase Realtime 的 postgres_changes
+2. 收到变更时，从 payload 提取 `user_id`
+3. 通过 `ConnectionManager.send_to_user()` 转发给该用户的所有 WebSocket 连接
 
 ## 注意事项
 
