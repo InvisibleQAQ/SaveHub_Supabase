@@ -163,9 +163,9 @@
 
 #### Phase 2b 测试
 
-- [ ] **2.19** 测试 articles CRUD
-- [ ] **2.20** 测试 settings CRUD
-- [ ] **2.21** 测试整体数据加载流程
+- [X] **2.19** 测试 articles CRUD
+- [X] **2.20** 测试 settings CRUD
+- [X] **2.21** 测试整体数据加载流程
 
 ---
 
@@ -173,7 +173,7 @@
 
 ### FastAPI 后端
 
-- [ ] **3.1** 创建 `backend/app/services/realtime.py`
+- [X] **3.1** 创建 `backend/app/services/realtime.py`
 
   - ConnectionManager 类管理 WebSocket 连接
 - [ ] **3.2** 创建 `backend/app/services/supabase_realtime.py`
@@ -304,8 +304,8 @@ Browser ↔ WebSocket /ws/realtime ↔ FastAPI ↔ Supabase Realtime
 | Phase 1: Auth               | ✅ 已完成 | 9            | 12           |
 | Phase 2a: Feeds/Folders     | ✅ 已完成 | 9            | 9            |
 | Phase 2b: Articles/Settings | 进行中    | 9            | 12           |
-| Phase 3: Realtime           | 未开始    | 0            | 9            |
-| **总计**              |           | **27** | **42** |
+| Phase 3: Realtime           | 进行中    | 1            | 9            |
+| **总计**              |           | **28** | **42** |
 
 ---
 
