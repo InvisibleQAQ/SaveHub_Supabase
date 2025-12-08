@@ -118,10 +118,10 @@
 
 #### Frontend 前端
 
-- [ ] **2.4** 创建 `frontend/lib/api/feeds.ts`
-- [ ] **2.5** 创建 `frontend/lib/api/folders.ts`
-- [ ] **2.6** 修改 `frontend/lib/store/feeds.slice.ts` - 使用 API
-- [ ] **2.7** 修改 `frontend/lib/store/folders.slice.ts` - 使用 API
+- [x] **2.4** 创建 `frontend/lib/api/feeds.ts`
+- [x] **2.5** 创建 `frontend/lib/api/folders.ts`
+- [x] **2.6** 修改 `frontend/lib/store/feeds.slice.ts` - 使用 API
+- [x] **2.7** 修改 `frontend/lib/store/folders.slice.ts` - 使用 API
 
 #### Phase 2a 测试
 
@@ -292,10 +292,10 @@ Browser ↔ WebSocket /ws/realtime ↔ FastAPI ↔ Supabase Realtime
 | Phase | 状态 | 完成项 | 总项 |
 |-------|------|--------|------|
 | Phase 1: Auth | ✅ 已完成 | 9 | 12 |
-| Phase 2a: Feeds/Folders | 进行中 | 3 | 9 |
+| Phase 2a: Feeds/Folders | 进行中 | 7 | 9 |
 | Phase 2b: Articles/Settings | 未开始 | 0 | 12 |
 | Phase 3: Realtime | 未开始 | 0 | 9 |
-| **总计** | | **12** | **42** |
+| **总计** | | **16** | **42** |
 
 ---
 

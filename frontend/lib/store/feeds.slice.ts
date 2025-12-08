@@ -1,14 +1,14 @@
 import type { StateCreator } from "zustand"
 import type { Feed } from "../types"
-import { dbManager } from "../db"
+import { feedsApi } from "../api/feeds"
 // Client-side scheduler API (calls server-side BullMQ via API routes)
 import { scheduleFeedRefresh, cancelFeedRefresh } from "../scheduler-client"
 
 export interface FeedsSlice {
-  addFeed: (feed: Partial<Feed>) => { success: boolean; reason: 'created' | 'duplicate' }
+  addFeed: (feed: Partial<Feed>) => Promise<{ success: boolean; reason: 'created' | 'duplicate' | 'error'; error?: string }>
   removeFeed: (feedId: string) => Promise<{ success: boolean; error?: string; articlesDeleted?: number }>
-  updateFeed: (feedId: string, updates: Partial<Feed>) => void
-  moveFeed: (feedId: string, targetFolderId: string | undefined, targetOrder: number) => void
+  updateFeed: (feedId: string, updates: Partial<Feed>) => Promise<{ success: boolean; error?: string }>
+  moveFeed: (feedId: string, targetFolderId: string | undefined, targetOrder: number) => Promise<void>
 }
 
 export const createFeedsSlice: StateCreator<
@@ -17,9 +17,10 @@ export const createFeedsSlice: StateCreator<
   [],
   FeedsSlice
 > = (set, get) => ({
-  addFeed: (feed) => {
+  addFeed: async (feed) => {
     const state = get() as any
 
+    // Check for duplicate in local state first (fast path)
     const existingFeed = state.feeds.find((f: any) => f.url === feed.url)
     if (existingFeed) {
       return { success: false, reason: 'duplicate' as const }
@@ -41,23 +42,32 @@ export const createFeedsSlice: StateCreator<
       refreshInterval: feed.refreshInterval ?? defaultRefreshInterval,
     }
 
-    set((state: any) => ({
-      feeds: [...state.feeds, newFeed],
-    }))
+    try {
+      // Pessimistic update: save to API first
+      await feedsApi.saveFeeds([newFeed])
 
-    ;(get() as any).syncToSupabase?.()
+      // API succeeded, update local store
+      set((state: any) => ({
+        feeds: [...state.feeds, newFeed],
+      }))
 
-    // Schedule automatic refresh for new feed (async, fire-and-forget)
-    scheduleFeedRefresh(newFeed).catch((err) => {
-      console.error("Failed to schedule feed refresh:", err)
-    })
+      // Schedule automatic refresh for new feed (async, fire-and-forget)
+      scheduleFeedRefresh(newFeed).catch((err) => {
+        console.error("Failed to schedule feed refresh:", err)
+      })
 
-    return { success: true, reason: 'created' as const }
+      return { success: true, reason: 'created' as const }
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error'
+      if (errorMessage === 'duplicate') {
+        return { success: false, reason: 'duplicate' as const }
+      }
+      console.error("Failed to add feed:", error)
+      return { success: false, reason: 'error' as const, error: errorMessage }
+    }
   },
 
   removeFeed: async (feedId) => {
-    // Pessimistic delete: delete from DB first, then update store
-    // This ensures store and DB stay consistent
     try {
       const state = get() as any
       const feed = state.feeds.find((f: any) => f.id === feedId)
@@ -67,14 +77,13 @@ export const createFeedsSlice: StateCreator<
         return { success: false, error: 'Feed not found in store' }
       }
 
-      // Step 1: Delete from database (this will also delete associated articles)
-      const { deleteFeed } = await import("../db")
-      const stats = await deleteFeed(feedId)
+      // Step 1: Delete from API (this will also delete associated articles)
+      const stats = await feedsApi.deleteFeed(feedId)
 
       // Step 2: Cancel scheduler (prevents memory leak)
       await cancelFeedRefresh(feedId)
 
-      // Step 3: Update store only if DB delete succeeded
+      // Step 3: Update store only if API delete succeeded
       set((state: any) => ({
         feeds: state.feeds.filter((f: any) => f.id !== feedId),
         articles: state.articles.filter((a: any) => a.feedId !== feedId),
@@ -85,83 +94,99 @@ export const createFeedsSlice: StateCreator<
       return { success: true, articlesDeleted: stats.articlesDeleted }
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Unknown error'
-      console.error(`Failed to delete feed from database:`, error)
-      // Store remains unchanged if DB delete fails
+      console.error(`Failed to delete feed from API:`, error)
       return { success: false, error: errorMessage }
     }
   },
 
-  updateFeed: (feedId, updates) => {
-    set((state: any) => ({
-      feeds: state.feeds.map((f: any) => (f.id === feedId ? { ...f, ...updates } : f)),
-    }))
+  updateFeed: async (feedId, updates) => {
+    try {
+      // Call API first (pessimistic update)
+      await feedsApi.updateFeed(feedId, updates)
 
-    ;(get() as any).syncToSupabase?.()
+      // API succeeded, update local store
+      set((state: any) => ({
+        feeds: state.feeds.map((f: any) => (f.id === feedId ? { ...f, ...updates } : f)),
+      }))
 
-    // Reschedule if any scheduling-relevant field changed:
-    // - url: Task payload contains feedUrl
-    // - title: Task payload contains feedTitle
-    // - refreshInterval: Affects delay calculation
-    // - lastFetched: Affects delay calculation
-    const needsReschedule =
-      updates.url !== undefined ||
-      updates.title !== undefined ||
-      updates.refreshInterval !== undefined ||
-      updates.lastFetched !== undefined
+      // Reschedule if any scheduling-relevant field changed:
+      // - url: Task payload contains feedUrl
+      // - title: Task payload contains feedTitle
+      // - refreshInterval: Affects delay calculation
+      // - lastFetched: Affects delay calculation
+      const needsReschedule =
+        updates.url !== undefined ||
+        updates.title !== undefined ||
+        updates.refreshInterval !== undefined ||
+        updates.lastFetched !== undefined
 
-    if (needsReschedule) {
-      const updatedFeed = get().feeds.find((f: any) => f.id === feedId)
-      if (updatedFeed) {
-        // This will cancel old schedule and create new one with updated data (async, fire-and-forget)
-        scheduleFeedRefresh(updatedFeed).catch((err) => {
-          console.error("Failed to reschedule feed refresh:", err)
-        })
+      if (needsReschedule) {
+        const updatedFeed = get().feeds.find((f: any) => f.id === feedId)
+        if (updatedFeed) {
+          // This will cancel old schedule and create new one with updated data (async, fire-and-forget)
+          scheduleFeedRefresh(updatedFeed).catch((err) => {
+            console.error("Failed to reschedule feed refresh:", err)
+          })
+        }
       }
+
+      return { success: true }
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error'
+      console.error("Failed to update feed:", error)
+      return { success: false, error: errorMessage }
     }
   },
 
-  moveFeed: (feedId, targetFolderId, targetOrder) => {
-    set((state: any) => {
-      const feed = state.feeds.find((f: any) => f.id === feedId)
-      if (!feed) return state
+  moveFeed: async (feedId, targetFolderId, targetOrder) => {
+    const state = get() as any
+    const feed = state.feeds.find((f: any) => f.id === feedId)
+    if (!feed) return
 
-      const oldFolderId = feed.folderId
+    const oldFolderId = feed.folderId
 
-      let updatedFeeds = state.feeds.map((f: any) =>
-        f.id === feedId ? { ...f, folderId: targetFolderId } : f
-      )
+    // Calculate new feed positions locally
+    let updatedFeeds = state.feeds.map((f: any) =>
+      f.id === feedId ? { ...f, folderId: targetFolderId } : f
+    )
 
-      const sameFolderFeeds = updatedFeeds.filter(
-        (f: any) => (f.folderId || undefined) === (targetFolderId || undefined)
-      )
+    const sameFolderFeeds = updatedFeeds.filter(
+      (f: any) => (f.folderId || undefined) === (targetFolderId || undefined)
+    )
 
-      const otherFeeds = updatedFeeds.filter(
-        (f: any) => (f.folderId || undefined) !== (targetFolderId || undefined)
-      )
+    const otherFeeds = updatedFeeds.filter(
+      (f: any) => (f.folderId || undefined) !== (targetFolderId || undefined)
+    )
 
-      const movedFeed = sameFolderFeeds.find((f: any) => f.id === feedId)!
-      const otherSameFolderFeeds = sameFolderFeeds.filter((f: any) => f.id !== feedId)
+    const movedFeed = sameFolderFeeds.find((f: any) => f.id === feedId)!
+    const otherSameFolderFeeds = sameFolderFeeds.filter((f: any) => f.id !== feedId)
 
-      otherSameFolderFeeds.splice(targetOrder, 0, movedFeed)
+    otherSameFolderFeeds.splice(targetOrder, 0, movedFeed)
 
-      const reorderedSameFolderFeeds = otherSameFolderFeeds.map((f: any, index: number) => ({
-        ...f,
-        order: index,
-      }))
+    const reorderedSameFolderFeeds = otherSameFolderFeeds.map((f: any, index: number) => ({
+      ...f,
+      order: index,
+    }))
 
-      if (oldFolderId !== targetFolderId && oldFolderId !== undefined) {
-        const oldFolderFeeds = otherFeeds
-          .filter((f: any) => f.folderId === oldFolderId)
-          .map((f: any, index: number) => ({ ...f, order: index }))
+    if (oldFolderId !== targetFolderId && oldFolderId !== undefined) {
+      const oldFolderFeeds = otherFeeds
+        .filter((f: any) => f.folderId === oldFolderId)
+        .map((f: any, index: number) => ({ ...f, order: index }))
 
-        updatedFeeds = [...reorderedSameFolderFeeds, ...oldFolderFeeds, ...otherFeeds.filter((f: any) => f.folderId !== oldFolderId)]
-      } else {
-        updatedFeeds = [...reorderedSameFolderFeeds, ...otherFeeds]
-      }
+      updatedFeeds = [...reorderedSameFolderFeeds, ...oldFolderFeeds, ...otherFeeds.filter((f: any) => f.folderId !== oldFolderId)]
+    } else {
+      updatedFeeds = [...reorderedSameFolderFeeds, ...otherFeeds]
+    }
 
-      return { feeds: updatedFeeds }
-    })
+    try {
+      // Save all feeds to API (to persist order changes)
+      await feedsApi.saveFeeds(updatedFeeds)
 
-    ;(get() as any).syncToSupabase?.()
+      // Update local store
+      set({ feeds: updatedFeeds })
+    } catch (error) {
+      console.error("Failed to save feed order:", error)
+      // On error, don't update local store to keep it consistent with API
+    }
   },
 })
