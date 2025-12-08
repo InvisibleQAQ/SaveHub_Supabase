@@ -1,6 +1,6 @@
 import type { StateCreator } from "zustand"
 import type { Article } from "../types"
-import { dbManager } from "../db"
+import { articlesApi } from "../api/articles"
 import { computeContentHash } from "../utils/hash"
 
 export interface ArticlesSlice {
@@ -63,8 +63,8 @@ export const createArticlesSlice: StateCreator<
     }))
 
     // Step 5: Persist to database
-    dbManager.saveArticles(newArticles).catch((error) => {
-      console.error("Failed to save articles to Supabase:", error)
+    articlesApi.saveArticles(newArticles).catch((error) => {
+      console.error("Failed to save articles to API:", error)
     })
 
     return newArticles.length
@@ -75,7 +75,7 @@ export const createArticlesSlice: StateCreator<
       articles: state.articles.map((a: any) => (a.id === articleId ? { ...a, isRead: true } : a)),
     }))
 
-    dbManager.updateArticle(articleId, { isRead: true }).catch(console.error)
+    articlesApi.updateArticle(articleId, { isRead: true }).catch(console.error)
   },
 
   markAsUnread: (articleId) => {
@@ -83,7 +83,7 @@ export const createArticlesSlice: StateCreator<
       articles: state.articles.map((a: any) => (a.id === articleId ? { ...a, isRead: false } : a)),
     }))
 
-    dbManager.updateArticle(articleId, { isRead: false }).catch(console.error)
+    articlesApi.updateArticle(articleId, { isRead: false }).catch(console.error)
   },
 
   toggleStar: (articleId) => {
@@ -97,7 +97,7 @@ export const createArticlesSlice: StateCreator<
       articles: state.articles.map((a: any) => (a.id === articleId ? { ...a, isStarred: newStarredState } : a)),
     }))
 
-    dbManager.updateArticle(articleId, { isStarred: newStarredState }).catch(console.error)
+    articlesApi.updateArticle(articleId, { isStarred: newStarredState }).catch(console.error)
   },
 
   markFeedAsRead: (feedId) => {
@@ -114,7 +114,7 @@ export const createArticlesSlice: StateCreator<
 
     Promise.all(
       feedArticles.map((article: any) =>
-        dbManager.updateArticle(article.id, { isRead: true })
+        articlesApi.updateArticle(article.id, { isRead: true })
       )
     ).catch(console.error)
   },
