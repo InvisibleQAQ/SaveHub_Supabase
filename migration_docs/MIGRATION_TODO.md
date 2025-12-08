@@ -157,9 +157,9 @@
 - [X] **2.13** 创建 `frontend/lib/api/articles.ts`
 - [X] **2.14** 创建 `frontend/lib/api/settings.ts`
 - [X] **2.15** 创建 `frontend/lib/api/index.ts` (统一导出)
-- [ ] **2.16** 修改 `frontend/lib/store/articles.slice.ts` - 使用 API
-- [ ] **2.17** 修改 `frontend/lib/store/settings.slice.ts` - 使用 API
-- [ ] **2.18** 修改 `frontend/lib/store/database.slice.ts` - 使用 API 替代 dbManager
+- [X] **2.16** 修改 `frontend/lib/store/articles.slice.ts` - 使用 API
+- [X] **2.17** 修改 `frontend/lib/store/settings.slice.ts` - 使用 API
+- [X] **2.18** 修改 `frontend/lib/store/database.slice.ts` - 使用 API 替代 dbManager
 
 #### Phase 2b 测试
 
@@ -303,9 +303,9 @@ Browser ↔ WebSocket /ws/realtime ↔ FastAPI ↔ Supabase Realtime
 | --------------------------- | --------- | ------------ | ------------ |
 | Phase 1: Auth               | ✅ 已完成 | 9            | 12           |
 | Phase 2a: Feeds/Folders     | ✅ 已完成 | 9            | 9            |
-| Phase 2b: Articles/Settings | 进行中    | 4            | 12           |
+| Phase 2b: Articles/Settings | 进行中    | 9            | 12           |
 | Phase 3: Realtime           | 未开始    | 0            | 9            |
-| **总计**              |           | **22** | **42** |
+| **总计**              |           | **27** | **42** |
 
 ---
 

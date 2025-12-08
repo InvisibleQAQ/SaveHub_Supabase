@@ -1,5 +1,21 @@
 import type { StateCreator } from "zustand"
-import { dbManager, defaultSettings } from "../db"
+import { authApi } from "../api/auth"
+import { foldersApi } from "../api/folders"
+import { feedsApi } from "../api/feeds"
+import { articlesApi } from "../api/articles"
+import { settingsApi } from "../api/settings"
+
+// Default settings for new users
+const defaultSettings = {
+  theme: "system" as const,
+  fontSize: 16,
+  autoRefresh: true,
+  refreshInterval: 30,
+  articlesRetentionDays: 30,
+  markAsReadOnScroll: false,
+  showThumbnails: true,
+  sidebarPinned: false,
+}
 
 export interface DatabaseSlice {
   isDatabaseReady: boolean
@@ -19,7 +35,9 @@ export const createDatabaseSlice: StateCreator<
 
   checkDatabaseStatus: async () => {
     try {
-      const isReady = await dbManager.isDatabaseInitialized()
+      // Check if user is authenticated via FastAPI backend
+      const session = await authApi.getSession()
+      const isReady = session.authenticated
       set({ isDatabaseReady: isReady } as any)
       return isReady
     } catch (error) {
@@ -34,22 +52,14 @@ export const createDatabaseSlice: StateCreator<
   },
 
   syncToSupabase: async () => {
+    // Note: Individual slices now sync data on each operation
+    // This method is kept for backward compatibility but does nothing
+    // because data is already synced via API calls in each slice action
     const state = get() as any
     if (!state.isDatabaseReady) {
       return
     }
-
-    try {
-      await Promise.all([
-        dbManager.saveFolders(state.folders),
-        dbManager.saveFeeds(state.feeds),
-        dbManager.saveArticles(state.articles),
-        dbManager.saveSettings(state.settings),
-        dbManager.saveApiConfigs(state.apiConfigs),
-      ])
-    } catch (error) {
-      console.error("Failed to sync to Supabase:", error)
-    }
+    // No-op: Data is synced in real-time by individual slice actions
   },
 
   loadFromSupabase: async () => {
@@ -66,34 +76,36 @@ export const createDatabaseSlice: StateCreator<
     try {
       set({ isLoading: true } as any)
 
-      const [folders, feeds, articles, settings, apiConfigs] = await Promise.all([
-        dbManager.loadFolders(),
-        dbManager.loadFeeds(),
-        dbManager.loadArticles(),
-        dbManager.loadSettings(),
-        dbManager.loadApiConfigs(),
+      // Load all data from FastAPI backend in parallel
+      const [folders, feeds, articles, settings] = await Promise.all([
+        foldersApi.getFolders(),
+        feedsApi.getFeeds(),
+        articlesApi.getArticles(),
+        settingsApi.getSettings().catch(() => null),
       ])
 
-      console.log('[Store] Loaded data - apiConfigs:', apiConfigs?.length || 0)
+      console.log('[Store] Loaded data via API')
 
       set({
         folders: folders || [],
         feeds: feeds || [],
         articles: articles || [],
         settings: settings || defaultSettings,
-        apiConfigs: apiConfigs || [],
+        apiConfigs: [], // API configs not yet migrated to FastAPI
         isLoading: false,
       } as any)
 
+      // Clear old articles based on retention settings
       const retentionDays = settings?.articlesRetentionDays || 30
-      const deletedCount = await dbManager.clearOldArticles(retentionDays)
+      const result = await articlesApi.clearOldArticles(retentionDays)
 
-      if (deletedCount > 0) {
-        const updatedArticles = await dbManager.loadArticles()
+      if (result.deletedCount > 0) {
+        // Reload articles after cleanup
+        const updatedArticles = await articlesApi.getArticles()
         set({ articles: updatedArticles || [] } as any)
       }
     } catch (error) {
-      console.error("Failed to load from Supabase:", error)
+      console.error("Failed to load from API:", error)
       set({
         error: "Failed to load saved data",
         isLoading: false,
