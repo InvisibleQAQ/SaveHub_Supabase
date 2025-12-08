@@ -87,6 +87,8 @@ async def login(request: LoginRequest, response: Response):
         return AuthResponse(
             user_id=user.id,
             email=user.email or "",
+            access_token=session.access_token,
+            refresh_token=session.refresh_token,
         )
 
     except AuthApiError as e:
@@ -124,6 +126,8 @@ async def register(request: RegisterRequest, response: Response):
         return AuthResponse(
             user_id=user.id,
             email=user.email or "",
+            access_token=session.access_token if session else None,
+            refresh_token=session.refresh_token if session else None,
         )
 
     except AuthApiError as e:
@@ -167,8 +171,10 @@ async def logout(request: Request, response: Response):
 async def get_session(request: Request):
     """
     Check current session status by verifying the access token cookie.
+    Returns tokens for frontend Supabase SDK initialization.
     """
     access_token = request.cookies.get(COOKIE_NAME_ACCESS)
+    refresh_token_cookie = request.cookies.get(COOKIE_NAME_REFRESH)
 
     if not access_token:
         return SessionResponse(authenticated=False)
@@ -184,6 +190,8 @@ async def get_session(request: Request):
             authenticated=True,
             user_id=user.id,
             email=user.email,
+            access_token=access_token,
+            refresh_token=refresh_token_cookie,
         )
 
     except Exception as e:

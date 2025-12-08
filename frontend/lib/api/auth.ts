@@ -8,11 +8,15 @@ const API_BASE = "/api/backend/auth"
 export interface AuthUser {
   userId: string
   email: string
+  accessToken?: string
+  refreshToken?: string
 }
 
 export interface SessionResponse {
   authenticated: boolean
   user?: AuthUser
+  accessToken?: string
+  refreshToken?: string
 }
 
 export interface AuthError {
@@ -42,12 +46,15 @@ export async function login(email: string, password: string): Promise<AuthUser> 
   return {
     userId: data.user_id,
     email: data.email,
+    accessToken: data.access_token,
+    refreshToken: data.refresh_token,
   }
 }
 
 /**
  * Register a new user with email and password.
  * Backend sets HttpOnly cookies automatically.
+ * Returns tokens for Supabase SDK initialization.
  */
 export async function register(email: string, password: string): Promise<AuthUser> {
   const response = await fetch(`${API_BASE}/register`, {
@@ -68,6 +75,8 @@ export async function register(email: string, password: string): Promise<AuthUse
   return {
     userId: data.user_id,
     email: data.email,
+    accessToken: data.access_token,
+    refreshToken: data.refresh_token,
   }
 }
 
@@ -88,7 +97,7 @@ export async function logout(): Promise<void> {
 
 /**
  * Check current session status.
- * Returns user info if authenticated.
+ * Returns user info and tokens for Supabase SDK initialization.
  */
 export async function getSession(): Promise<SessionResponse> {
   try {
@@ -113,6 +122,8 @@ export async function getSession(): Promise<SessionResponse> {
         userId: data.user_id,
         email: data.email,
       },
+      accessToken: data.access_token,
+      refreshToken: data.refresh_token,
     }
   } catch {
     return { authenticated: false }

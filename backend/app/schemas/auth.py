@@ -20,6 +20,9 @@ class AuthResponse(BaseModel):
     """Response model for successful authentication."""
     user_id: str
     email: str
+    # Tokens for frontend Supabase SDK initialization
+    access_token: Optional[str] = None
+    refresh_token: Optional[str] = None
 
 
 class SessionResponse(BaseModel):
@@ -27,6 +30,9 @@ class SessionResponse(BaseModel):
     authenticated: bool
     user_id: Optional[str] = None
     email: Optional[str] = None
+    # Tokens for frontend Supabase SDK initialization (on page reload)
+    access_token: Optional[str] = None
+    refresh_token: Optional[str] = None
 
 
 class RefreshResponse(BaseModel):
