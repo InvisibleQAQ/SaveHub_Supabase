@@ -97,7 +97,7 @@
 
 #### FastAPI 后端
 
-- [ ] **2.1** 创建 `backend/app/api/routers/feeds.py`
+- [x] **2.1** 创建 `backend/app/api/routers/feeds.py`
   ```
   GET    /api/feeds           - 获取所有 feeds
   POST   /api/feeds           - 创建/批量 upsert feeds
@@ -106,7 +106,7 @@
   DELETE /api/feeds/{id}      - 删除 feed + articles
   ```
 
-- [ ] **2.2** 创建 `backend/app/api/routers/folders.py`
+- [x] **2.2** 创建 `backend/app/api/routers/folders.py`
   ```
   GET    /api/folders         - 获取所有 folders
   POST   /api/folders         - 创建/批量 upsert
@@ -114,7 +114,7 @@
   DELETE /api/folders/{id}    - 删除 folder
   ```
 
-- [ ] **2.3** 注册 routers 到 main.py
+- [x] **2.3** 注册 routers 到 main.py (feeds + folders)
 
 #### Frontend 前端
 
@@ -292,10 +292,10 @@ Browser ↔ WebSocket /ws/realtime ↔ FastAPI ↔ Supabase Realtime
 | Phase | 状态 | 完成项 | 总项 |
 |-------|------|--------|------|
 | Phase 1: Auth | ✅ 已完成 | 9 | 12 |
-| Phase 2a: Feeds/Folders | 未开始 | 0 | 9 |
+| Phase 2a: Feeds/Folders | 进行中 | 3 | 9 |
 | Phase 2b: Articles/Settings | 未开始 | 0 | 12 |
 | Phase 3: Realtime | 未开始 | 0 | 9 |
-| **总计** | | **9** | **42** |
+| **总计** | | **12** | **42** |
 
 ---
 
@@ -308,4 +308,4 @@ Browser ↔ WebSocket /ws/realtime ↔ FastAPI ↔ Supabase Realtime
 
 ---
 
-*最后更新: 2025-12-07*
+*最后更新: 2025-12-08*
