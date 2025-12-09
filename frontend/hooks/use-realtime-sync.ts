@@ -1,7 +1,7 @@
 "use client"
 
 import { useEffect } from "react"
-import { realtimeManager } from "@/lib/realtime"
+import { realtimeWSManager } from "@/lib/realtime-ws"
 import { useRSSStore } from "@/lib/store"
 import type { Feed, Article, Folder } from "@/lib/types"
 
@@ -9,10 +9,10 @@ export function useRealtimeSync() {
   const store = useRSSStore()
 
   useEffect(() => {
-    console.log("[v0] Setting up real-time subscriptions")
+    console.log("[WS] Setting up real-time subscriptions")
 
     // Subscribe to feeds changes
-    realtimeManager.subscribeToFeeds(
+    realtimeWSManager.subscribeToFeeds(
       (feedRow) => {
         const feed: Feed = {
           id: feedRow.id,
@@ -28,7 +28,7 @@ export function useRealtimeSync() {
         }
         const result = store.addFeed(feed)
         if (!result.success) {
-          console.log("[v0] Realtime: Feed already exists, skipping:", feed.url)
+          console.log("[WS] Realtime: Feed already exists, skipping:", feed.url)
         }
       },
       (feedRow) => {
@@ -48,13 +48,13 @@ export function useRealtimeSync() {
       (id) => {
         // Fire-and-forget in realtime context
         store.removeFeed(id).catch((error) => {
-          console.error("[v0] Realtime: Failed to remove feed", error)
+          console.error("[WS] Realtime: Failed to remove feed", error)
         })
       },
     )
 
     // Subscribe to articles changes
-    realtimeManager.subscribeToArticles(
+    realtimeWSManager.subscribeToArticles(
       async (articleRow) => {
         const article: Article = {
           id: articleRow.id,
@@ -93,7 +93,7 @@ export function useRealtimeSync() {
     )
 
     // Subscribe to folders changes
-    realtimeManager.subscribeToFolders(
+    realtimeWSManager.subscribeToFolders(
       (folderRow) => {
         const folder: Folder = {
           id: folderRow.id,
@@ -112,8 +112,8 @@ export function useRealtimeSync() {
 
     // Cleanup on unmount
     return () => {
-      console.log("[v0] Cleaning up real-time subscriptions")
-      realtimeManager.unsubscribeAll()
+      console.log("[WS] Cleaning up real-time subscriptions")
+      realtimeWSManager.unsubscribeAll()
     }
   }, []) // Empty dependency array - only run once on mount
 

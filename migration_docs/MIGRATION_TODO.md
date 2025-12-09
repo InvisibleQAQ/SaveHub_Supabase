@@ -190,14 +190,14 @@
 
 ### Frontend 前端
 
-- [ ] **3.5** 创建 `frontend/lib/realtime-ws.ts`
+- [X] **3.5** 创建 `frontend/lib/realtime-ws.ts`
 
   - RealtimeWSManager 类
   - WebSocket 连接、重连、心跳
-- [ ] **3.6** 修改 `frontend/hooks/use-realtime-sync.ts`
+- [X] **3.6** 修改 `frontend/hooks/use-realtime-sync.ts`
 
   - 使用 RealtimeWSManager 替代 supabase-js Realtime
-- [ ] **3.7** 配置 WebSocket 代理 (或直接连接 FastAPI)
+- [X] **3.7** 配置 WebSocket 代理 (或直接连接 FastAPI)
 
 ### Phase 3 测试
 

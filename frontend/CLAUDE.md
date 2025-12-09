@@ -71,7 +71,15 @@ NEXT_PUBLIC_SUPABASE_ANON_KEY=your_supabase_anon_key
 ENCRYPTION_SECRET=your_secret_for_api_key_encryption  # For encrypting API configs
 ```
 
+Optional WebSocket configuration:
+```
+NEXT_PUBLIC_FASTAPI_WS_URL=ws://localhost:8000  # Full WebSocket base URL (production)
+NEXT_PUBLIC_WS_PORT=8000                         # WebSocket port only (development)
+```
+
 **Note on ENCRYPTION_SECRET**: Used by `lib/encryption.ts` to encrypt API keys/bases before storing in database. Currently uses fixed salt (security improvement needed - see Known Issues).
+
+**Note on WebSocket**: Development auto-connects to `ws://localhost:8000/api/ws/realtime`. Production requires either `NEXT_PUBLIC_FASTAPI_WS_URL` or a reverse proxy (nginx) to handle WebSocket upgrade.
 
 ## Architecture
 
@@ -141,11 +149,33 @@ ENCRYPTION_SECRET=your_secret_for_api_key_encryption  # For encrypting API confi
 
 ### Real-time Synchronization
 
-**Supabase Real-time** (`lib/realtime.ts` + `hooks/use-realtime-sync.ts`):
-- Subscribes to Postgres changes via Supabase real-time channels
+**Two implementations available**:
+
+1. **Supabase Real-time** (`lib/realtime.ts`) - DEPRECATED
+   - Direct connection to Supabase real-time channels
+   - Uses `supabase-js` client
+
+2. **WebSocket via FastAPI** (`lib/realtime-ws.ts`) - NEW
+   - Connects to FastAPI WebSocket endpoint `/api/ws/realtime`
+   - Cookie-based auth (HttpOnly `sb_access_token`)
+   - Auto-reconnect with exponential backoff (1s → 30s max)
+   - Heartbeat ping/pong every 30 seconds
+   - Drop-in replacement: `realtimeWSManager` has same interface as `realtimeManager`
+
+**Hook** (`hooks/use-realtime-sync.ts`):
 - Listens to INSERT/UPDATE/DELETE on feeds, articles, folders tables
 - Updates Zustand store when changes detected from other clients
 - Auto-unsubscribes on component unmount
+
+**Message format from server**:
+```json
+{
+  "type": "postgres_changes",
+  "table": "feeds" | "articles" | "folders",
+  "event": "INSERT" | "UPDATE" | "DELETE",
+  "payload": { "new": {...}, "old": {...} }
+}
+```
 
 ### RSS Feed Processing
 
