@@ -20,7 +20,7 @@ class FeedBase(BaseModel):
 
 class FeedCreate(FeedBase):
     """Request model for creating a feed."""
-    pass
+    id: Optional[UUID] = None
 
 
 class FeedUpdate(BaseModel):
