@@ -35,6 +35,8 @@ class FolderService:
             created_at = folder.get("created_at")
             if isinstance(created_at, datetime):
                 created_at = created_at.isoformat()
+            elif created_at is None:
+                created_at = datetime.utcnow().isoformat()
 
             db_rows.append({
                 "id": str(folder.get("id")) if folder.get("id") else None,
