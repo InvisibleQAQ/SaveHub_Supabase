@@ -49,27 +49,39 @@ function transformFeed(raw: Record<string, unknown>): Feed {
 
 /**
  * Transform frontend camelCase feed to backend snake_case.
+ * Includes strict type checking to prevent circular reference errors from DOM elements.
  */
 function toApiFormat(feed: Partial<Feed>): Record<string, unknown> {
   const result: Record<string, unknown> = {}
 
-  if (feed.id !== undefined) result.id = feed.id
-  if (feed.title !== undefined) result.title = feed.title
-  if (feed.url !== undefined) result.url = feed.url
-  if (feed.description !== undefined) result.description = feed.description
-  if (feed.category !== undefined) result.category = feed.category
-  if (feed.folderId !== undefined) result.folder_id = feed.folderId
-  if (feed.order !== undefined) result.order = feed.order
-  if (feed.unreadCount !== undefined) result.unread_count = feed.unreadCount
-  if (feed.lastFetched !== undefined) {
-    result.last_fetched = feed.lastFetched instanceof Date
-      ? feed.lastFetched.toISOString()
-      : feed.lastFetched
+  // Helper functions for strict type checking
+  const isString = (val: unknown): val is string => typeof val === "string"
+  const isNumber = (val: unknown): val is number => typeof val === "number" && !Number.isNaN(val)
+  const isBoolean = (val: unknown): val is boolean => typeof val === "boolean"
+  const isDate = (val: unknown): val is Date => val instanceof Date && !Number.isNaN(val.getTime())
+  const isValidStatus = (val: unknown): val is "success" | "failed" | null =>
+    val === "success" || val === "failed" || val === null
+
+  // Only include fields with correct primitive types
+  if (isString(feed.id)) result.id = feed.id
+  if (isString(feed.title)) result.title = feed.title
+  if (isString(feed.url)) result.url = feed.url
+  if (isString(feed.description)) result.description = feed.description
+  if (isString(feed.category)) result.category = feed.category
+  if (isString(feed.folderId)) result.folder_id = feed.folderId
+  if (isNumber(feed.order)) result.order = feed.order
+  if (isNumber(feed.unreadCount)) result.unread_count = feed.unreadCount
+  if (isDate(feed.lastFetched)) {
+    result.last_fetched = feed.lastFetched.toISOString()
+  } else if (isString(feed.lastFetched)) {
+    result.last_fetched = feed.lastFetched
   }
-  if (feed.refreshInterval !== undefined) result.refresh_interval = feed.refreshInterval
-  if (feed.lastFetchStatus !== undefined) result.last_fetch_status = feed.lastFetchStatus
-  if (feed.lastFetchError !== undefined) result.last_fetch_error = feed.lastFetchError
-  if (feed.enableDeduplication !== undefined) result.enable_deduplication = feed.enableDeduplication
+  if (isNumber(feed.refreshInterval)) result.refresh_interval = feed.refreshInterval
+  if (isValidStatus(feed.lastFetchStatus)) result.last_fetch_status = feed.lastFetchStatus
+  if (isString(feed.lastFetchError) || feed.lastFetchError === null) {
+    result.last_fetch_error = feed.lastFetchError
+  }
+  if (isBoolean(feed.enableDeduplication)) result.enable_deduplication = feed.enableDeduplication
 
   return result
 }

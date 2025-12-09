@@ -26,20 +26,34 @@ export const createFeedsSlice: StateCreator<
       return { success: false, reason: 'duplicate' as const }
     }
 
+    // Helper functions for strict type checking to prevent circular reference from DOM elements
+    const isString = (val: unknown): val is string => typeof val === "string"
+    const isNumber = (val: unknown): val is number => typeof val === "number" && !Number.isNaN(val)
+    const isBoolean = (val: unknown): val is boolean => typeof val === "boolean"
+    const isDate = (val: unknown): val is Date => val instanceof Date && !Number.isNaN(val.getTime())
+
     const sameFolderFeeds = state.feeds.filter((f: any) => (f.folderId || undefined) === (feed.folderId || undefined))
     const maxOrder = sameFolderFeeds.reduce((max: number, f: any) => Math.max(max, f.order ?? -1), -1)
 
     // Use provided refreshInterval, or fallback to global settings, or default to 60
     const defaultRefreshInterval = state.settings?.refreshInterval ?? 60
 
+    // Explicitly copy only known fields with strict type validation
+    // This prevents circular reference issues from DOM elements or React fiber references
     const newFeed: Feed = {
-      ...feed,
-      id: feed.id || crypto.randomUUID(),
-      url: feed.url || "",
-      title: feed.title || "",
+      id: isString(feed.id) ? feed.id : crypto.randomUUID(),
+      url: isString(feed.url) ? feed.url : "",
+      title: isString(feed.title) ? feed.title : "",
+      description: isString(feed.description) ? feed.description : undefined,
+      category: isString(feed.category) ? feed.category : undefined,
+      folderId: isString(feed.folderId) ? feed.folderId : undefined,
       order: maxOrder + 1,
-      unreadCount: 0,
-      refreshInterval: feed.refreshInterval ?? defaultRefreshInterval,
+      unreadCount: isNumber(feed.unreadCount) ? feed.unreadCount : 0,
+      lastFetched: isDate(feed.lastFetched) ? feed.lastFetched : undefined,
+      refreshInterval: isNumber(feed.refreshInterval) ? feed.refreshInterval : defaultRefreshInterval,
+      lastFetchStatus: feed.lastFetchStatus === "success" || feed.lastFetchStatus === "failed" ? feed.lastFetchStatus : undefined,
+      lastFetchError: isString(feed.lastFetchError) ? feed.lastFetchError : undefined,
+      enableDeduplication: isBoolean(feed.enableDeduplication) ? feed.enableDeduplication : false,
     }
 
     try {

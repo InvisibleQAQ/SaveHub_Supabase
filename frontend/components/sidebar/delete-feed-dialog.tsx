@@ -34,7 +34,8 @@ export function DeleteFeedDialog({ state, onOpenChange }: DeleteFeedDialogProps)
     onOpenChange(false)
   }
 
-  const handleConfirm = async () => {
+  const handleConfirm = async (event: React.MouseEvent<HTMLButtonElement>) => {
+    event.preventDefault() // Prevent AlertDialogAction from auto-closing dialog
     setIsPending(true)
     setError(null)
 
