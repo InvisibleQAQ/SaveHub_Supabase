@@ -141,7 +141,7 @@ class SupabaseRealtimeForwarder:
             else:
                 logger.info(f"Supabase Realtime subscription status: {status}")
 
-        self._channel.subscribe(on_subscribe)
+        await self._channel.subscribe(on_subscribe)
 
     async def stop(self) -> None:
         """Stop subscribing to Supabase postgres_changes."""
