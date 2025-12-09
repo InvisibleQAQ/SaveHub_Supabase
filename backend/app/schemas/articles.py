@@ -23,7 +23,7 @@ class ArticleBase(BaseModel):
 
 class ArticleCreate(ArticleBase):
     """Request model for creating an article."""
-    pass
+    id: UUID  # Client-generated UUID for upsert support
 
 
 class ArticleBulkCreate(BaseModel):

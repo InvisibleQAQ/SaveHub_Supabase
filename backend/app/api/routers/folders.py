@@ -3,9 +3,10 @@
 import logging
 from typing import List
 from uuid import UUID
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 
-from app.dependencies import verify_auth, supabase
+from app.dependencies import verify_auth, COOKIE_NAME_ACCESS
+from app.supabase_client import get_supabase_client
 from app.schemas.folders import (
     FolderCreate,
     FolderCreateWithId,
@@ -19,9 +20,11 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/folders", tags=["folders"])
 
 
-def get_folder_service(user=Depends(verify_auth)) -> FolderService:
-    """Create FolderService instance with authenticated user."""
-    return FolderService(supabase, user.user.id)
+def get_folder_service(request: Request, user=Depends(verify_auth)) -> FolderService:
+    """Create FolderService instance with authenticated user's session."""
+    access_token = request.cookies.get(COOKIE_NAME_ACCESS)
+    client = get_supabase_client(access_token)
+    return FolderService(client, user.user.id)
 
 
 @router.get("", response_model=List[FolderResponse])
