@@ -1,6 +1,6 @@
 "use client"
 
-import { usePathname, useRouter } from "next/navigation"
+import { usePathname } from "next/navigation"
 import { ChevronRight, BookOpen, Rss, Star, Settings, LogOut } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Separator } from "@/components/ui/separator"
@@ -8,7 +8,7 @@ import { ScrollArea } from "@/components/ui/scroll-area"
 import { ViewButton } from "./view-button"
 import { FeedItem } from "./feed-item"
 import { useRSSStore } from "@/lib/store"
-import { supabase } from "@/lib/supabase/client"
+import { useAuth } from "@/lib/context/auth-context"
 
 interface CollapsedViewProps {
   onExpand: () => void
@@ -19,13 +19,12 @@ interface CollapsedViewProps {
 
 export function CollapsedView({ onExpand, totalArticles, totalUnread, totalStarred }: CollapsedViewProps) {
   const pathname = usePathname()
-  const router = useRouter()
+  const { logout } = useAuth()
   const { feeds, getUnreadCount } = useRSSStore()
 
   const handleLogout = async (e: React.MouseEvent) => {
     e.stopPropagation()
-    await supabase.auth.signOut()
-    router.push('/login')
+    await logout()
   }
 
   return (

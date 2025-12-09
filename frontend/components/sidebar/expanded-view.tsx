@@ -2,7 +2,7 @@
 
 import React from "react"
 import Link from "next/link"
-import { usePathname, useRouter } from "next/navigation"
+import { usePathname } from "next/navigation"
 import { Search, BookOpen, Rss, Star, Plus, FolderPlus, ChevronLeft, Settings, LogOut, Pin, PinOff } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -14,7 +14,7 @@ import { FeedItem } from "./feed-item"
 import { HelpDialog } from "../help-dialog"
 import { FeedRefresh } from "../feed-refresh"
 import { useRSSStore } from "@/lib/store"
-import { supabase } from "@/lib/supabase/client"
+import { useAuth } from "@/lib/context/auth-context"
 import { cn } from "@/lib/utils"
 import type { Feed, Folder } from "@/lib/types"
 import type { RenameDialogState, MoveDialogState, DeleteFolderDialogState, DeleteFeedDialogState } from "./types"
@@ -57,13 +57,12 @@ export function ExpandedView({
   onTogglePin,
 }: ExpandedViewProps) {
   const pathname = usePathname()
-  const router = useRouter()
+  const { logout } = useAuth()
   const { folders, feeds, getUnreadCount, moveFeed } = useRSSStore()
   const [draggedFeedId, setDraggedFeedId] = React.useState<string | null>(null)
 
   const handleLogout = async () => {
-    await supabase.auth.signOut()
-    router.push('/login')
+    await logout()
   }
 
   const filteredFolders = folders.filter((folder) => folder.name.toLowerCase().includes(feedSearch.toLowerCase()))
