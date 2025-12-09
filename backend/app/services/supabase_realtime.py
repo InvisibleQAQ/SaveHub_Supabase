@@ -11,7 +11,7 @@ import os
 from typing import Any, Callable, Optional
 
 from realtime import RealtimeSubscribeStates
-from supabase import create_client, Client
+from supabase import acreate_client, AsyncClient
 
 from app.services.realtime import connection_manager
 
@@ -39,16 +39,16 @@ class SupabaseRealtimeForwarder:
         """
         self._url = supabase_url or os.environ.get("SUPABASE_URL", "")
         self._key = supabase_key or os.environ.get("SUPABASE_ANON_KEY", "")
-        self._client: Optional[Client] = None
+        self._client: Optional[AsyncClient] = None
         self._channel = None
         self._is_running = False
 
-    def _get_client(self) -> Client:
-        """Get or create Supabase client."""
+    async def _get_client(self) -> AsyncClient:
+        """Get or create async Supabase client."""
         if self._client is None:
             if not self._url or not self._key:
                 raise ValueError("SUPABASE_URL and SUPABASE_ANON_KEY must be set")
-            self._client = create_client(self._url, self._key)
+            self._client = await acreate_client(self._url, self._key)
         return self._client
 
     def _create_callback(self, table: str, event: str) -> Callable[[dict[str, Any]], None]:
@@ -115,7 +115,7 @@ class SupabaseRealtimeForwarder:
             logger.warning("SupabaseRealtimeForwarder is already running")
             return
 
-        client = self._get_client()
+        client = await self._get_client()
 
         # Create a channel for all postgres changes
         self._channel = client.channel("backend-realtime")
@@ -150,7 +150,7 @@ class SupabaseRealtimeForwarder:
 
         try:
             if self._channel and self._client:
-                self._client.remove_channel(self._channel)
+                await self._client.remove_channel(self._channel)
                 logger.info("Unsubscribed from Supabase Realtime")
         except Exception as e:
             logger.error(f"Error stopping realtime forwarder: {e}")
