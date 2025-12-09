@@ -3,9 +3,10 @@
 import logging
 from typing import List
 from uuid import UUID
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 
-from app.dependencies import verify_auth, supabase
+from app.dependencies import verify_auth, COOKIE_NAME_ACCESS
+from app.supabase_client import get_supabase_client
 from app.schemas.feeds import (
     FeedCreate,
     FeedUpdate,
@@ -19,9 +20,11 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/feeds", tags=["feeds"])
 
 
-def get_feed_service(user=Depends(verify_auth)) -> FeedService:
-    """Create FeedService instance with authenticated user."""
-    return FeedService(supabase, user.user.id)
+def get_feed_service(request: Request, user=Depends(verify_auth)) -> FeedService:
+    """Create FeedService instance with authenticated user's session."""
+    access_token = request.cookies.get(COOKIE_NAME_ACCESS)
+    client = get_supabase_client(access_token)
+    return FeedService(client, user.user.id)
 
 
 @router.get("", response_model=List[FeedResponse])
