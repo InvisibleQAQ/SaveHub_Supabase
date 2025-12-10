@@ -1,0 +1,54 @@
+"""
+Celery application configuration.
+
+Configures the Celery app with Redis broker, JSON serialization,
+UTC timezone, and multi-queue support for priority handling.
+"""
+
+import os
+from celery import Celery
+from dotenv import load_dotenv
+
+load_dotenv()
+
+REDIS_URL = os.environ.get("REDIS_URL", "redis://localhost:6379/0")
+
+app = Celery(
+    "savehub",
+    broker=REDIS_URL,
+    backend=REDIS_URL,
+    include=["app.celery_app.tasks"]
+)
+
+app.conf.update(
+    # Serialization
+    task_serializer="json",
+    accept_content=["json"],
+    result_serializer="json",
+
+    # Timezone - use UTC for consistency
+    timezone="UTC",
+    enable_utc=True,
+
+    # Worker configuration
+    worker_prefetch_multiplier=1,  # Fair scheduling
+    worker_concurrency=5,
+
+    # Task configuration
+    task_acks_late=True,
+    task_reject_on_worker_lost=True,
+    task_track_started=True,  # Track STARTED state
+
+    # Result expiration
+    result_expires=86400,  # 24h
+
+    # Multi-queue configuration (simulates priority)
+    task_default_queue="default",
+    task_queues={
+        "high": {},      # Manual refresh (high priority)
+        "default": {},   # Scheduled refresh (normal priority)
+    },
+    task_routes={
+        "app.celery_app.tasks.refresh_feed": {"queue": "default"},
+    },
+)
