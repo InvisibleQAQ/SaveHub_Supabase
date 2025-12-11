@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect, useCallback } from "react"
 import { RefreshCw, Loader2 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { useRSSStore } from "@/lib/store"
@@ -10,14 +10,16 @@ import { useToast } from "@/hooks/use-toast"
 interface FeedRefreshProps {
   feedId?: string
   className?: string
+  /** Listen to global refresh-feeds event (only one instance should set this to true) */
+  listenToGlobalEvent?: boolean
 }
 
-export function FeedRefresh({ feedId, className }: FeedRefreshProps) {
+export function FeedRefresh({ feedId, className, listenToGlobalEvent = false }: FeedRefreshProps) {
   const [isRefreshing, setIsRefreshing] = useState(false)
   const { feeds, addArticles, updateFeed } = useRSSStore()
   const { toast } = useToast()
 
-  const refreshFeed = async (feed: any) => {
+  const refreshFeed = useCallback(async (feed: any) => {
     try {
       const { articles } = await parseRSSFeed(feed.url, feed.id)
 
@@ -30,9 +32,11 @@ export function FeedRefresh({ feedId, className }: FeedRefreshProps) {
       console.error(`Error refreshing feed ${feed.title}:`, error)
       throw error
     }
-  }
+  }, [addArticles, updateFeed])
 
-  const handleRefresh = async () => {
+  const handleRefresh = useCallback(async () => {
+    if (isRefreshing) return
+
     setIsRefreshing(true)
 
     try {
@@ -95,7 +99,19 @@ export function FeedRefresh({ feedId, className }: FeedRefreshProps) {
     } finally {
       setIsRefreshing(false)
     }
-  }
+  }, [isRefreshing, feedId, feeds, refreshFeed, toast])
+
+  // Listen for global refresh-feeds event (triggered by Ctrl+R)
+  useEffect(() => {
+    if (!listenToGlobalEvent) return
+
+    const handleGlobalRefresh = () => {
+      handleRefresh()
+    }
+
+    document.addEventListener("refresh-feeds", handleGlobalRefresh)
+    return () => document.removeEventListener("refresh-feeds", handleGlobalRefresh)
+  }, [listenToGlobalEvent, handleRefresh])
 
   return (
     <Button variant="ghost" size="icon" onClick={handleRefresh} disabled={isRefreshing} className={className}>

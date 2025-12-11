@@ -173,7 +173,7 @@ export function ExpandedView({
               <ChevronLeft className="h-4 w-4" />
             </Button>
             <HelpDialog />
-            <FeedRefresh className="h-8 w-8 text-sidebar-foreground hover:bg-sidebar-accent" />
+            <FeedRefresh className="h-8 w-8 text-sidebar-foreground hover:bg-sidebar-accent" listenToGlobalEvent />
           </div>
         </div>
 

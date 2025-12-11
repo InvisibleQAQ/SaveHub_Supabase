@@ -65,14 +65,6 @@ export default function ReaderLayout({ children }: { children: React.ReactNode }
     }
   }, [isDatabaseReady, loadFromSupabase, setError])
 
-  useEffect(() => {
-    const handleRefresh = () => {
-      document.dispatchEvent(new CustomEvent("refresh-feeds"))
-    }
-
-    document.addEventListener("refresh-feeds", handleRefresh)
-    return () => document.removeEventListener("refresh-feeds", handleRefresh)
-  }, [])
 
   if (isAuthLoading) {
     return (
