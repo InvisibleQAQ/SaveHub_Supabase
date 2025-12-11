@@ -142,6 +142,8 @@ class FeedService:
         Returns:
             dict with success status and optional error
         """
+        logger.info(f"update_feed called: feed_id={feed_id}, updates={updates}")
+
         update_data = {}
 
         field_mapping = {
@@ -161,18 +163,26 @@ class FeedService:
 
         for key, db_key in field_mapping.items():
             if key in updates and updates[key] is not None:
-                update_data[db_key] = updates[key]
+                value = updates[key]
+                # Convert datetime to ISO string for Supabase
+                if isinstance(value, datetime):
+                    value = value.isoformat()
+                update_data[db_key] = value
 
-        logger.debug(f"Updating feed {feed_id}: {list(update_data.keys())}")
+        logger.info(f"Updating feed {feed_id} with data: {update_data}")
+
+        if not update_data:
+            logger.warning(f"No valid update data for feed {feed_id}")
+            return {"success": True, "message": "No fields to update"}
 
         try:
-            self.supabase.table("feeds") \
+            response = self.supabase.table("feeds") \
                 .update(update_data) \
                 .eq("id", feed_id) \
                 .eq("user_id", self.user_id) \
                 .execute()
 
-            logger.info(f"Updated feed {feed_id}")
+            logger.info(f"Updated feed {feed_id}, response data: {response.data}")
             return {"success": True}
         except Exception as e:
             logger.error(f"Failed to update feed {feed_id}: {e}")

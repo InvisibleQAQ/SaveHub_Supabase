@@ -25,7 +25,7 @@ export function FeedRefresh({ feedId, className, listenToGlobalEvent = false }: 
 
       const newArticlesCount = await addArticles(articles)
 
-      updateFeed(feed.id, { lastFetched: new Date() })
+      await updateFeed(feed.id, { lastFetched: new Date() })
 
       return newArticlesCount
     } catch (error) {
