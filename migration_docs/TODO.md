@@ -111,7 +111,7 @@
 
 ### 修改文件
 
-- [ ] `frontend/lib/rss-parser.ts`
+- [X] `frontend/lib/rss-parser.ts`
   - 删除 `import { supabase } from "./supabase/client"`
   - 删除 `getAccessToken()` 函数
   - 修改 `parseRSSFeed()` - 使用 `credentials: "include"`
@@ -119,8 +119,8 @@
 
 ### 后端检查
 
-- [ ] 确认 `backend/app/api/routers/rss.py` 使用 `verify_auth`（非 `verify_jwt`）
-  - 如果是 `verify_jwt`，需要改为 `verify_auth`
+- [X] 确认 `backend/app/api/routers/rss.py` 使用 `verify_auth`（非 `verify_jwt`）
+  - 已将 `verify_jwt` 改为 `verify_auth`
 
 ### 验证
 
@@ -133,7 +133,7 @@
 
 ### 修改文件
 
-- [ ] `frontend/lib/context/auth-context.tsx`
+- [X] `frontend/lib/context/auth-context.tsx`
   - 删除 `import { supabase } from "@/lib/supabase/client"`
   - 删除 `setSupabaseSession()` 函数
   - 删除 `clearSupabaseSession()` 函数
@@ -259,7 +259,7 @@ git commit -m "chore(frontend): remove Supabase client and lib/db"
 | 风险                | 状态      | 缓解措施                       |
 | ------------------- | --------- | ------------------------------ |
 | 加密算法不兼容      | ⬜ 未确认 | 使用相同的 PBKDF2+AES-GCM 参数 |
-| RSS Cookie 认证失败 | ⬜ 未确认 | 检查后端 `verify_auth` 依赖  |
+| RSS Cookie 认证失败 | ✅ 已解决 | 后端已改用 `verify_auth` 依赖  |
 | 数据导出/导入功能   | ✅ 已决策 | 暂时禁用，后续实现后端 API     |
 
 ---
@@ -270,9 +270,9 @@ git commit -m "chore(frontend): remove Supabase client and lib/db"
 - **批次 1**: 2/2 完成 ✅
 - **批次 2**: 2/5 完成 (代码已完成，待验证)
 - **批次 3**: 2/3 完成 (代码已完成，待验证)
-- **批次 4**: 0/4 完成
-- **批次 5**: 0/5 完成
+- **批次 4**: 2/4 完成 (代码已完成，待验证)
+- **批次 5**: 1/5 完成 (代码已完成，待验证)
 - **批次 6**: 0/4 完成
 - **批次 7**: 0/9 完成
 
-**总进度**: 11/35 完成 (31%)
+**总进度**: 14/35 完成 (40%)
