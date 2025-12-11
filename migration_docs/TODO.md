@@ -8,18 +8,19 @@
 
 ### 已存在的组件（无需新建）
 
-- [x] `backend/app/schemas/api_configs.py` - **已存在**（72行，包含6个模型类）
-- [x] `backend/app/services/db/api_configs.py` - **已存在**（226行，完整CRUD，无加密）
+- [X] `backend/app/schemas/api_configs.py` - **已存在**（72行，包含6个模型类）
+- [X] `backend/app/services/db/api_configs.py` - **已存在**（226行，完整CRUD，无加密）
 
 ### 新建文件
 
-- [ ] `backend/app/services/encryption.py`
+- [X] `backend/app/services/encryption.py`
+
   - 实现 `_derive_key()` - PBKDF2 密钥派生
   - 实现 `encrypt()` - AES-256-GCM 加密
   - 实现 `decrypt()` - AES-256-GCM 解密
   - 添加 `cryptography` 到 `requirements.txt`
+- [X] `backend/app/api/routers/api_configs.py`
 
-- [ ] `backend/app/api/routers/api_configs.py`
   - `GET /api/api-configs` - 获取配置列表（解密后返回）
   - `POST /api/api-configs` - 创建配置（加密后存储）
   - `PUT /api/api-configs/{id}` - 更新配置
@@ -28,14 +29,14 @@
 
 ### 修改文件
 
-- [ ] `backend/app/main.py`
+- [X] `backend/app/main.py`
   - 导入 `api_configs` router
   - 注册路由：`app.include_router(api_configs.router, prefix="/api")`
 
 ### 验证
 
-- [ ] 启动后端，测试所有端点
-- [ ] 确认加密/解密工作正常
+- [X] 启动后端，测试所有端点
+- [X] 确认加密/解密工作正常
 
 ---
 
@@ -43,7 +44,7 @@
 
 ### 新建文件
 
-- [ ] `frontend/lib/api/api-configs.ts`
+- [X] `frontend/lib/api/api-configs.ts`
   - `getApiConfigs()` - 获取配置列表
   - `createApiConfig()` - 创建配置
   - `updateApiConfig()` - 更新配置
@@ -53,7 +54,7 @@
 
 ### 验证
 
-- [ ] 在浏览器控制台测试 API 调用
+- [X] 在浏览器控制台测试 API 调用
 
 ---
 
@@ -62,6 +63,7 @@
 ### 修改文件
 
 - [ ] `frontend/lib/store/api-configs.slice.ts`
+
   - 删除 `import("../db")` 动态导入
   - 添加 `import { apiConfigsApi } from "../api/api-configs"`
   - 重写 `syncApiConfigsToSupabase()`
@@ -69,8 +71,8 @@
   - 重写 `deleteApiConfig()`
   - 重写 `addApiConfig()` - 调用 `apiConfigsApi.createApiConfig()`
   - 重写 `setDefaultApiConfig()` - 调用 `apiConfigsApi.setDefaultConfig()`
-
 - [ ] `frontend/lib/store/index.ts`
+
   - 删除 `import { defaultSettings } from "../db"`
   - 内联 `defaultSettings` 常量
 
@@ -87,11 +89,12 @@
 ### 修改文件
 
 - [ ] `frontend/components/edit-feed-form.tsx`
+
   - 删除 `import { dbManager } from "@/lib/db"`
   - 添加 `import { feedsApi } from "@/lib/api/feeds"`
   - 替换 `dbManager.updateFeed()` → `feedsApi.updateFeed()`
-
 - [ ] `frontend/app/(reader)/settings/storage/page.tsx`
+
   - 删除 `import { dbManager } from "@/lib/db"`
   - 禁用 export/import/clear 按钮
   - 添加"功能开发中"提示文字
@@ -181,7 +184,7 @@
 
 ### 保留文件
 
-- [x] `frontend/lib/supabase/types.ts` - TypeScript 类型定义
+- [X] `frontend/lib/supabase/types.ts` - TypeScript 类型定义
 
 ### 移除依赖
 
@@ -190,22 +193,24 @@
 ### 更新环境变量
 
 - [ ] `frontend/.env`
+
   - 删除 `NEXT_PUBLIC_SUPABASE_URL`
   - 删除 `NEXT_PUBLIC_SUPABASE_ANON_KEY`
   - 删除 `NEXT_PUBLIC_ENCRYPTION_SECRET`
   - 删除 `ENCRYPTION_SECRET`（前端不再需要）
-
 - [ ] `frontend/.env.example`
+
   - 同步更新
 
 ### 更新文档
 
 - [ ] `frontend/CLAUDE.md`
+
   - 移除 Supabase 客户端相关章节
   - 更新架构说明
   - 更新环境变量章节
-
 - [ ] `CLAUDE.md`（项目根目录）
+
   - 更新架构图
   - 移除 Supabase 直连相关说明
 
@@ -251,18 +256,18 @@ git commit -m "chore(frontend): remove Supabase client and lib/db"
 
 ## 风险追踪
 
-| 风险 | 状态 | 缓解措施 |
-|------|------|----------|
-| 加密算法不兼容 | ⬜ 未确认 | 使用相同的 PBKDF2+AES-GCM 参数 |
-| RSS Cookie 认证失败 | ⬜ 未确认 | 检查后端 `verify_auth` 依赖 |
-| 数据导出/导入功能 | ✅ 已决策 | 暂时禁用，后续实现后端 API |
+| 风险                | 状态      | 缓解措施                       |
+| ------------------- | --------- | ------------------------------ |
+| 加密算法不兼容      | ⬜ 未确认 | 使用相同的 PBKDF2+AES-GCM 参数 |
+| RSS Cookie 认证失败 | ⬜ 未确认 | 检查后端 `verify_auth` 依赖  |
+| 数据导出/导入功能   | ✅ 已决策 | 暂时禁用，后续实现后端 API     |
 
 ---
 
 ## 进度统计
 
-- **批次 0**: 2/5 完成 (schema和service已存在)
-- **批次 1**: 0/2 完成
+- **批次 0**: 5/5 完成 ✅
+- **批次 1**: 1/2 完成 (API client 已创建，待验证)
 - **批次 2**: 0/3 完成
 - **批次 3**: 0/3 完成
 - **批次 4**: 0/4 完成
@@ -270,4 +275,4 @@ git commit -m "chore(frontend): remove Supabase client and lib/db"
 - **批次 6**: 0/4 完成
 - **批次 7**: 0/9 完成
 
-**总进度**: 2/35 完成 (6%)
+**总进度**: 6/35 完成 (17%)
