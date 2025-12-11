@@ -301,7 +301,7 @@ export function ExpandedView({
                 <Button
                   variant="ghost"
                   size="sm"
-                  onClick={onShowAddFeed}
+                  onClick={() => onShowAddFeed()}
                   className="mt-2 text-sidebar-foreground hover:bg-sidebar-accent"
                 >
                   Add your first feed

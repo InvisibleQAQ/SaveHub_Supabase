@@ -75,8 +75,6 @@ cd backend
 celery -A app.celery_app flower --port=5555
 ```
 
-**Note**: BullMQ commands (`pnpm worker:dev`, `pnpm dashboard`, `pnpm dev:all`) are deprecated. Use Celery commands above.
-
 ## Environment Variables
 
 Required in `.env`:

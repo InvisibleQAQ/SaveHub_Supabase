@@ -6,11 +6,7 @@
     "build": "next build",
     "dev": "next dev",
     "lint": "next lint",
-    "start": "next start",
-    "worker": "tsx lib/queue/worker.ts",
-    "worker:dev": "tsx watch lib/queue/worker.ts",
-    "dashboard": "tsx lib/queue/dashboard.ts",
-    "dev:all": "concurrently -n next,worker,board -c blue,green,magenta \"pnpm dev\" \"pnpm worker:dev\" \"pnpm dashboard\""
+    "start": "next start"
   },
   "dependencies": {
     "@ai-sdk/openai": "^2.0.42",

@@ -5,7 +5,7 @@ import { logger } from "@/lib/logger"
 const parser = new Parser({
   customFields: {
     feed: ["image"],
-    item: ["media:thumbnail", "media:content", "enclosure", "description"],
+    item: ["media:thumbnail", "media:content", "enclosure", "description", "content:encoded"],
   },
 })
 
