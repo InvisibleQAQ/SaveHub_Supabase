@@ -4,7 +4,7 @@ import logging
 from fastapi import APIRouter, Depends, HTTPException
 import feedparser
 
-from app.dependencies import verify_jwt
+from app.dependencies import verify_auth
 from app.schemas.rss import (
     ValidateRequest,
     ValidateResponse,
@@ -19,7 +19,7 @@ router = APIRouter(prefix="/rss", tags=["rss"])
 
 
 @router.post("/validate", response_model=ValidateResponse)
-async def validate_rss(request: ValidateRequest, user=Depends(verify_jwt)):
+async def validate_rss(request: ValidateRequest, user=Depends(verify_auth)):
     """
     Validate if a URL points to a valid RSS/Atom feed.
 
@@ -38,7 +38,7 @@ async def validate_rss(request: ValidateRequest, user=Depends(verify_jwt)):
 
 
 @router.post("/parse", response_model=ParseResponse)
-async def parse_rss(request: ParseRequest, user=Depends(verify_jwt)):
+async def parse_rss(request: ParseRequest, user=Depends(verify_auth)):
     """
     Parse an RSS/Atom feed and return feed metadata with articles.
 

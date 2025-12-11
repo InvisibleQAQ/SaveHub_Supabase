@@ -1,5 +1,4 @@
 import type { Article } from "./types"
-import { supabase } from "./supabase/client"
 
 export interface ParsedFeed {
   title: string
@@ -8,27 +7,14 @@ export interface ParsedFeed {
   image?: string
 }
 
-/**
- * Get current user's access token for API authentication
- */
-async function getAccessToken(): Promise<string> {
-  const { data: { session }, error } = await supabase.auth.getSession()
-  if (error || !session?.access_token) {
-    throw new Error("Not authenticated. Please sign in to continue.")
-  }
-  return session.access_token
-}
-
 export async function parseRSSFeed(url: string, feedId: string): Promise<{ feed: ParsedFeed; articles: Article[] }> {
   try {
-    const accessToken = await getAccessToken()
-
     const response = await fetch("/api/backend/rss/parse", {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        "Authorization": `Bearer ${accessToken}`,
       },
+      credentials: "include",
       body: JSON.stringify({ url, feedId }),
     })
 
@@ -54,14 +40,12 @@ export async function parseRSSFeed(url: string, feedId: string): Promise<{ feed:
 
 export async function validateRSSUrl(url: string): Promise<boolean> {
   try {
-    const accessToken = await getAccessToken()
-
     const response = await fetch("/api/backend/rss/validate", {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        "Authorization": `Bearer ${accessToken}`,
       },
+      credentials: "include",
       body: JSON.stringify({ url }),
     })
 
