@@ -5,6 +5,11 @@
  * Body: { feed: Feed }
  *
  * This route runs on the server, so it can safely use BullMQ
+ *
+ * Phase 1 Migration: Dual-write to both BullMQ and Celery
+ * - BullMQ is the primary queue (must succeed)
+ * - Celery is async dual-write (fire-and-forget, failures are silent)
+ * - Controlled by ENABLE_CELERY_DUAL_WRITE env var
  */
 
 import { type NextRequest, NextResponse } from "next/server"
@@ -13,6 +18,13 @@ import { Redis } from "ioredis"
 import { createClient } from "@/lib/supabase/server"
 import { logger } from "@/lib/logger"
 import { z } from "zod"
+
+// ============================================================================
+// Celery Dual-Write Configuration
+// ============================================================================
+
+const ENABLE_CELERY_DUAL_WRITE = process.env.ENABLE_CELERY_DUAL_WRITE === "true"
+const BACKEND_URL = process.env.BACKEND_URL || "http://localhost:8000"
 
 // ============================================================================
 // Redis & Queue (lazy initialization)
@@ -98,13 +110,61 @@ function calculatePriority(
   return { priority: "normal", numericPriority: 5 }
 }
 
+/**
+ * Dual-write to Celery backend (async, non-blocking)
+ *
+ * This function is fire-and-forget:
+ * - Does not block the main BullMQ flow
+ * - Failures are logged but don't affect the response
+ * - Used during Phase 1 migration to validate Celery correctness
+ */
+async function scheduleFeedViaCelery(
+  feedId: string,
+  forceImmediate: boolean,
+  accessToken: string
+): Promise<void> {
+  try {
+    const response = await fetch(`${BACKEND_URL}/api/queue/schedule-feed`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${accessToken}`,
+      },
+      body: JSON.stringify({
+        feed_id: feedId,
+        force_immediate: forceImmediate,
+      }),
+    })
+
+    if (!response.ok) {
+      const errorText = await response.text()
+      logger.warn(
+        { feedId, status: response.status, error: errorText },
+        "[Celery Dual-Write] API request failed"
+      )
+      return
+    }
+
+    const result = await response.json()
+    logger.info(
+      { feedId, taskId: result.task_id, status: result.status },
+      "[Celery Dual-Write] Task scheduled"
+    )
+  } catch (error) {
+    logger.warn(
+      { feedId, error: String(error) },
+      "[Celery Dual-Write] Unexpected error"
+    )
+  }
+}
+
 // ============================================================================
 // Route Handler
 // ============================================================================
 
 export async function POST(request: NextRequest) {
   try {
-    // Get authenticated user
+    // Get authenticated user and session
     const supabase = await createClient()
     const {
       data: { user },
@@ -114,6 +174,11 @@ export async function POST(request: NextRequest) {
     if (authError || !user) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
     }
+
+    // Get session for Celery dual-write (need access_token)
+    const {
+      data: { session },
+    } = await supabase.auth.getSession()
 
     // Parse and validate request
     const body = await request.json()
@@ -174,6 +239,16 @@ export async function POST(request: NextRequest) {
       },
       `Scheduled feed refresh in ${delaySeconds}s`
     )
+
+    // === Phase 1: Celery Dual-Write (async, non-blocking) ===
+    if (ENABLE_CELERY_DUAL_WRITE && session?.access_token) {
+      // Fire-and-forget: don't await, errors are logged but don't affect response
+      scheduleFeedViaCelery(feed.id, forceImmediate, session.access_token).catch(
+        (error) => {
+          logger.warn({ feedId: feed.id, error }, "Celery dual-write failed")
+        }
+      )
+    }
 
     return NextResponse.json({
       success: true,
