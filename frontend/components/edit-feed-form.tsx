@@ -11,7 +11,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Switch } from "@/components/ui/switch"
 import { useRSSStore } from "@/lib/store"
 import { useToast } from "@/hooks/use-toast"
-import { dbManager } from "@/lib/db"
+import { feedsApi } from "@/lib/api/feeds"
 import { validateRSSUrl } from "@/lib/rss-parser"
 
 interface EditFeedFormProps {
@@ -117,22 +117,8 @@ export function EditFeedForm({ feedId }: EditFeedFormProps) {
       // Update in store
       updateFeed(feedId, updates)
 
-      // Update in database
-      const result = await dbManager.updateFeed(feedId, updates)
-
-      if (!result.success) {
-        if (result.error === 'duplicate') {
-          toast({
-            title: "Duplicate Feed",
-            description: "A feed with this URL already exists",
-            variant: "destructive",
-          })
-        } else {
-          throw new Error(result.error || 'Failed to update feed')
-        }
-        setIsLoading(false)
-        return
-      }
+      // Update in database via HTTP API
+      await feedsApi.updateFeed(feedId, updates)
 
       toast({
         title: "Success",
@@ -143,11 +129,20 @@ export function EditFeedForm({ feedId }: EditFeedFormProps) {
       router.push(`/feed/${feedId}`)
     } catch (error) {
       console.error("Error updating feed:", error)
-      toast({
-        title: "Error",
-        description: error instanceof Error ? error.message : "Failed to update feed",
-        variant: "destructive",
-      })
+      // Handle duplicate URL error
+      if (error instanceof Error && error.message === "duplicate") {
+        toast({
+          title: "Duplicate Feed",
+          description: "A feed with this URL already exists",
+          variant: "destructive",
+        })
+      } else {
+        toast({
+          title: "Error",
+          description: error instanceof Error ? error.message : "Failed to update feed",
+          variant: "destructive",
+        })
+      }
     } finally {
       setIsLoading(false)
     }

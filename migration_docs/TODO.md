@@ -78,9 +78,9 @@
 
 ### 验证
 
-- [ ] `/settings/api` 页面加载配置列表
-- [ ] 添加/删除/编辑配置
-- [ ] 刷新页面后数据持久化
+- [X] `/settings/api` 页面加载配置列表
+- [X] 添加/删除/编辑配置
+- [X] 刷新页面后数据持久化
 
 ---
 
@@ -88,12 +88,12 @@
 
 ### 修改文件
 
-- [ ] `frontend/components/edit-feed-form.tsx`
+- [X] `frontend/components/edit-feed-form.tsx`
 
   - 删除 `import { dbManager } from "@/lib/db"`
   - 添加 `import { feedsApi } from "@/lib/api/feeds"`
   - 替换 `dbManager.updateFeed()` → `feedsApi.updateFeed()`
-- [ ] `frontend/app/(reader)/settings/storage/page.tsx`
+- [X] `frontend/app/(reader)/settings/storage/page.tsx`
 
   - 删除 `import { dbManager } from "@/lib/db"`
   - 禁用 export/import/clear 按钮
@@ -269,10 +269,10 @@ git commit -m "chore(frontend): remove Supabase client and lib/db"
 - **批次 0**: 5/5 完成 ✅
 - **批次 1**: 2/2 完成 ✅
 - **批次 2**: 2/5 完成 (代码已完成，待验证)
-- **批次 3**: 0/3 完成
+- **批次 3**: 2/3 完成 (代码已完成，待验证)
 - **批次 4**: 0/4 完成
 - **批次 5**: 0/5 完成
 - **批次 6**: 0/4 完成
 - **批次 7**: 0/9 完成
 
-**总进度**: 9/35 完成 (26%)
+**总进度**: 11/35 完成 (31%)
