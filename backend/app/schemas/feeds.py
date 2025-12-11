@@ -21,6 +21,10 @@ class FeedBase(BaseModel):
 class FeedCreate(FeedBase):
     """Request model for creating a feed."""
     id: Optional[UUID] = None
+    unread_count: int = 0
+    last_fetched: Optional[datetime] = None
+    last_fetch_status: Optional[str] = None
+    last_fetch_error: Optional[str] = None
 
 
 class FeedUpdate(BaseModel):
