@@ -1,8 +1,8 @@
 import type { StateCreator } from "zustand"
 import type { Feed } from "../types"
 import { feedsApi } from "../api/feeds"
-// Client-side scheduler API (calls server-side BullMQ via API routes)
-import { scheduleFeedRefresh, cancelFeedRefresh } from "../scheduler-client"
+// Client-side queue API (calls FastAPI Celery backend)
+import { scheduleFeedRefresh, cancelFeedRefresh } from "../queue-client"
 
 export interface FeedsSlice {
   addFeed: (feed: Partial<Feed>) => Promise<{ success: boolean; reason: 'created' | 'duplicate' | 'error'; error?: string }>
@@ -66,7 +66,7 @@ export const createFeedsSlice: StateCreator<
       }))
 
       // Schedule automatic refresh for new feed (async, fire-and-forget)
-      scheduleFeedRefresh(newFeed).catch((err) => {
+      scheduleFeedRefresh(newFeed.id).catch((err) => {
         console.error("Failed to schedule feed refresh:", err)
       })
 
@@ -135,13 +135,10 @@ export const createFeedsSlice: StateCreator<
         updates.lastFetched !== undefined
 
       if (needsReschedule) {
-        const updatedFeed = get().feeds.find((f: any) => f.id === feedId)
-        if (updatedFeed) {
-          // This will cancel old schedule and create new one with updated data (async, fire-and-forget)
-          scheduleFeedRefresh(updatedFeed).catch((err) => {
-            console.error("Failed to reschedule feed refresh:", err)
-          })
-        }
+        // Reschedule with feedId - Celery backend fetches latest data from database
+        scheduleFeedRefresh(feedId).catch((err) => {
+          console.error("Failed to reschedule feed refresh:", err)
+        })
       }
 
       return { success: true }

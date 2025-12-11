@@ -46,21 +46,36 @@ RSS Reader built with Next.js 14, React 18, Supabase for data persistence, and Z
 ```bash
 # Development
 pnpm dev          # Start Next.js dev server only (localhost:3000)
-pnpm dev:all      # Start all services: Next.js + BullMQ worker + Bull Dashboard (recommended)
 pnpm build        # Build for production
 pnpm start        # Start production server
 pnpm lint         # Run Next.js linter
-
-# Background Job Queue (BullMQ)
-pnpm worker       # Start BullMQ worker (production)
-pnpm worker:dev   # Start BullMQ worker with hot reload (development)
-pnpm dashboard    # Start Bull Dashboard for queue monitoring
 
 # Database
 # Run scripts/001_create_tables.sql in Supabase SQL editor to initialize database
 ```
 
-**Note**: `pnpm dev:all` uses `concurrently` to run Next.js, worker, and dashboard in parallel. This is the recommended way to develop locally when working with scheduled feed refreshes.
+### Background Job Queue (Celery)
+
+Feed refresh tasks are processed by Celery workers in the FastAPI backend:
+
+```bash
+# Terminal 1: FastAPI backend
+cd backend
+uvicorn app.main:app --reload --port 8000
+
+# Terminal 2: Celery Worker
+cd backend
+# Windows:
+celery -A app.celery_app worker --loglevel=info --queues=high,default --pool=solo
+# Linux/Mac:
+celery -A app.celery_app worker --loglevel=info --queues=high,default --concurrency=5
+
+# Terminal 3 (optional): Flower monitoring dashboard
+cd backend
+celery -A app.celery_app flower --port=5555
+```
+
+**Note**: BullMQ commands (`pnpm worker:dev`, `pnpm dashboard`, `pnpm dev:all`) are deprecated. Use Celery commands above.
 
 ## Environment Variables
 
@@ -188,6 +203,29 @@ NEXT_PUBLIC_WS_PORT=8000                         # WebSocket port only (developm
 - `parseRSSFeed()`: Fetches and parses feed, returns typed data
 - `validateRSSUrl()`: Pre-validates URL format
 - `discoverRSSFeeds()`: Generates common RSS feed URL patterns
+
+### Background Job Queue (Celery)
+
+**Architecture**: Feed refresh tasks are processed by Celery workers in the FastAPI backend.
+
+**API Endpoints** (via `/api/backend/*` rewrite):
+- `POST /api/backend/queue/schedule-feed` - Schedule a feed refresh
+- `GET /api/backend/queue-health` - Queue health status
+- `GET /api/backend/queue/task/{task_id}` - Task status
+
+**Client** (`lib/queue-client.ts`):
+- `scheduleFeedRefresh(feedId, forceImmediate)` - Schedule refresh
+- `cancelFeedRefresh(feedId)` - No-op (Celery uses locks for deduplication)
+- `getQueueHealth()` - Check queue status
+
+**Celery Features**:
+- Task deduplication via Redis locks (3 min TTL)
+- Domain rate limiting (1 req/sec per domain)
+- Automatic retry with exponential backoff (3 retries)
+- Priority queues: `high` (manual refresh), `default` (scheduled)
+- Self-rescheduling: tasks automatically schedule next refresh after completion
+
+**Note**: BullMQ code in `lib/queue/` is deprecated and will be removed in Phase 3 of the migration.
 
 ### Type System
 
