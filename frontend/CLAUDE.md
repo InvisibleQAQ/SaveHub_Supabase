@@ -192,12 +192,12 @@ NEXT_PUBLIC_WS_PORT=8000                         # WebSocket port only (developm
 
 ### RSS Feed Processing
 
-**API Routes** (`app/api/rss/`):
-- `POST /api/rss/validate`: Validates RSS URL before adding
-- `POST /api/rss/parse`: Parses RSS feed using `rss-parser` library, returns feed metadata + articles
+**Backend API** (via `/api/backend/*` rewrite to FastAPI):
+- `POST /api/backend/rss/validate`: Validates RSS URL before adding
+- `POST /api/backend/rss/parse`: Parses RSS feed, returns feed metadata + articles
 
 **Parser** (`lib/rss-parser.ts`):
-- Client-side wrapper for RSS API routes
+- Client-side wrapper for FastAPI RSS endpoints (uses `credentials: "include"` for cookie auth)
 - `parseRSSFeed()`: Fetches and parses feed, returns typed data
 - `validateRSSUrl()`: Pre-validates URL format
 - `discoverRSSFeeds()`: Generates common RSS feed URL patterns

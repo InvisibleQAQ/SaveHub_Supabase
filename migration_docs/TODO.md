@@ -155,13 +155,13 @@
 
 ### 删除文件
 
-- [ ] `frontend/app/api/rss/validate/route.ts`
-- [ ] `frontend/app/api/rss/parse/route.ts`
-- [ ] `frontend/app/api/rss/` 目录
+- [X] `frontend/app/api/rss/validate/route.ts`
+- [X] `frontend/app/api/rss/parse/route.ts`
+- [X] `frontend/app/api/rss/` 目录
 
 ### 验证
 
-- [ ] `pnpm build` 成功
+- [X] `pnpm build` 成功
 - [ ] RSS 相关功能仍然正常（通过 FastAPI）
 
 ---
@@ -272,7 +272,7 @@ git commit -m "chore(frontend): remove Supabase client and lib/db"
 - **批次 3**: 2/3 完成 (代码已完成，待验证)
 - **批次 4**: 2/4 完成 (代码已完成，待验证)
 - **批次 5**: 1/5 完成 (代码已完成，待验证)
-- **批次 6**: 0/4 完成
+- **批次 6**: 4/5 完成 (删除完成，待功能验证)
 - **批次 7**: 0/9 完成
 
-**总进度**: 14/35 完成 (40%)
+**总进度**: 18/35 完成 (51%)
