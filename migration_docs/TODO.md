@@ -62,7 +62,7 @@
 
 ### 修改文件
 
-- [ ] `frontend/lib/store/api-configs.slice.ts`
+- [X] `frontend/lib/store/api-configs.slice.ts`
 
   - 删除 `import("../db")` 动态导入
   - 添加 `import { apiConfigsApi } from "../api/api-configs"`
@@ -71,7 +71,7 @@
   - 重写 `deleteApiConfig()`
   - 重写 `addApiConfig()` - 调用 `apiConfigsApi.createApiConfig()`
   - 重写 `setDefaultApiConfig()` - 调用 `apiConfigsApi.setDefaultConfig()`
-- [ ] `frontend/lib/store/index.ts`
+- [X] `frontend/lib/store/index.ts`
 
   - 删除 `import { defaultSettings } from "../db"`
   - 内联 `defaultSettings` 常量
@@ -267,12 +267,12 @@ git commit -m "chore(frontend): remove Supabase client and lib/db"
 ## 进度统计
 
 - **批次 0**: 5/5 完成 ✅
-- **批次 1**: 1/2 完成 (API client 已创建，待验证)
-- **批次 2**: 0/3 完成
+- **批次 1**: 2/2 完成 ✅
+- **批次 2**: 2/5 完成 (代码已完成，待验证)
 - **批次 3**: 0/3 完成
 - **批次 4**: 0/4 完成
 - **批次 5**: 0/5 完成
 - **批次 6**: 0/4 完成
 - **批次 7**: 0/9 完成
 
-**总进度**: 6/35 完成 (17%)
+**总进度**: 9/35 完成 (26%)

@@ -1,6 +1,5 @@
 import { create } from "zustand"
 import type { RSSReaderState } from "../types"
-import { defaultSettings } from "../db"
 import { createFoldersSlice, type FoldersSlice } from "./folders.slice"
 import { createFeedsSlice, type FeedsSlice } from "./feeds.slice"
 import { createArticlesSlice, type ArticlesSlice } from "./articles.slice"
@@ -17,6 +16,21 @@ export type RSSReaderStore = RSSReaderState &
   SettingsSlice &
   DatabaseSlice &
   ApiConfigsSlice
+
+/**
+ * Default settings - inlined to avoid dependency on lib/db
+ */
+const defaultSettings = {
+  id: "app-settings",
+  theme: "system" as const,
+  fontSize: 16,
+  autoRefresh: true,
+  refreshInterval: 30,
+  articlesRetentionDays: 30,
+  markAsReadOnScroll: false,
+  showThumbnails: true,
+  sidebarPinned: false,
+}
 
 export const useRSSStore = create<RSSReaderStore>()((...a) => ({
   ...createDatabaseSlice(...a),
