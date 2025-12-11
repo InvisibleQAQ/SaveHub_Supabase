@@ -223,8 +223,6 @@ NEXT_PUBLIC_WS_PORT=8000                         # WebSocket port only (developm
 - Priority queues: `high` (manual refresh), `default` (scheduled)
 - Self-rescheduling: tasks automatically schedule next refresh after completion
 
-**Note**: BullMQ code in `lib/queue/` is deprecated and will be removed in Phase 3 of the migration.
-
 ### Type System
 
 **Types** (`lib/types.ts`):
