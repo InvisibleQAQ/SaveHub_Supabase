@@ -48,12 +48,14 @@ app.add_middleware(
 # Import and register routers
 from app.api.routers import rss, auth, feeds, folders, articles, settings, websocket
 from app.api.routers import queue, health as queue_health
+from app.api.routers import api_configs
 app.include_router(rss.router, prefix="/api")
 app.include_router(auth.router, prefix="/api")
 app.include_router(feeds.router, prefix="/api")
 app.include_router(folders.router, prefix="/api")
 app.include_router(articles.router, prefix="/api")
 app.include_router(settings.router, prefix="/api")
+app.include_router(api_configs.router, prefix="/api")
 app.include_router(websocket.router, prefix="/api")
 app.include_router(queue.router, prefix="/api")
 app.include_router(queue_health.router, prefix="/api")

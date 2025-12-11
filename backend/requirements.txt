@@ -26,3 +26,6 @@ redis>=5.0.0
 flower>=2.0.0
 
 email-validator>=2.0.0
+
+# Encryption
+cryptography>=41.0.0
