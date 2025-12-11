@@ -6,16 +6,19 @@ export interface Database {
         Row: {
           id: string
           name: string
+          order: number
           created_at: string
         }
         Insert: {
           id?: string
           name: string
+          order?: number
           created_at?: string
         }
         Update: {
           id?: string
           name?: string
+          order?: number
           created_at?: string
         }
       }
@@ -27,9 +30,13 @@ export interface Database {
           description: string | null
           category: string | null
           folder_id: string | null
+          order: number
           unread_count: number
           refresh_interval: number
           last_fetched: string | null
+          last_fetch_status: string | null
+          last_fetch_error: string | null
+          enable_deduplication: boolean
           created_at: string
         }
         Insert: {
@@ -39,9 +46,13 @@ export interface Database {
           description?: string | null
           category?: string | null
           folder_id?: string | null
+          order?: number
           unread_count?: number
           refresh_interval?: number
           last_fetched?: string | null
+          last_fetch_status?: string | null
+          last_fetch_error?: string | null
+          enable_deduplication?: boolean
           created_at?: string
         }
         Update: {
@@ -51,9 +62,13 @@ export interface Database {
           description?: string | null
           category?: string | null
           folder_id?: string | null
+          order?: number
           unread_count?: number
           refresh_interval?: number
           last_fetched?: string | null
+          last_fetch_status?: string | null
+          last_fetch_error?: string | null
+          enable_deduplication?: boolean
           created_at?: string
         }
       }
@@ -70,6 +85,7 @@ export interface Database {
           is_read: boolean
           is_starred: boolean
           thumbnail: string | null
+          content_hash: string | null
           created_at: string
         }
         Insert: {
@@ -84,6 +100,7 @@ export interface Database {
           is_read?: boolean
           is_starred?: boolean
           thumbnail?: string | null
+          content_hash?: string | null
           created_at?: string
         }
         Update: {
@@ -98,6 +115,7 @@ export interface Database {
           is_read?: boolean
           is_starred?: boolean
           thumbnail?: string | null
+          content_hash?: string | null
           created_at?: string
         }
       }

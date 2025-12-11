@@ -65,7 +65,7 @@ export async function POST(request: NextRequest) {
         content: content,
         summary: summary.length > 200 ? summary.substring(0, 200) + "..." : summary,
         url: item.link || "",
-        author: item.creator || item.author || item["dc:creator"],
+        author: item.creator || (item as any).author,
         publishedAt: new Date(item.pubDate || item.isoDate || Date.now()),
         isRead: false,
         isStarred: false,

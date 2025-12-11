@@ -47,7 +47,7 @@ class SupabaseManager {
   }
 
   async deleteFeed(feedId: string): Promise<void> {
-    return deleteFeed(feedId)
+    await deleteFeed(feedId)
   }
 
   async updateFeed(feedId: string, updates: Partial<Feed>): Promise<{ success: boolean; error?: string }> {

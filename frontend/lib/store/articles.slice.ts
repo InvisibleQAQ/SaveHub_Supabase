@@ -25,7 +25,7 @@ export const createArticlesSlice: StateCreator<
     const enrichedArticles = await Promise.all(
       articles.map(async (article) => {
         const contentHash = await computeContentHash(article.title, article.content)
-        return { ...article, contentHash }
+        return { ...article, contentHash: contentHash ?? undefined }
       })
     )
 

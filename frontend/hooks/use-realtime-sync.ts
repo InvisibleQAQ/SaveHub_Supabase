@@ -13,7 +13,7 @@ export function useRealtimeSync() {
 
     // Subscribe to feeds changes
     realtimeWSManager.subscribeToFeeds(
-      (feedRow) => {
+      async (feedRow) => {
         const feed: Feed = {
           id: feedRow.id,
           title: feedRow.title,
@@ -25,8 +25,9 @@ export function useRealtimeSync() {
           unreadCount: feedRow.unread_count,
           refreshInterval: feedRow.refresh_interval,
           lastFetched: feedRow.last_fetched ? new Date(feedRow.last_fetched) : undefined,
+          enableDeduplication: feedRow.enable_deduplication ?? false,
         }
-        const result = store.addFeed(feed)
+        const result = await store.addFeed(feed)
         if (!result.success) {
           console.log("[WS] Realtime: Feed already exists, skipping:", feed.url)
         }
@@ -98,6 +99,7 @@ export function useRealtimeSync() {
         const folder: Folder = {
           id: folderRow.id,
           name: folderRow.name,
+          order: folderRow.order ?? 0,
           createdAt: new Date(folderRow.created_at),
         }
         store.addFolder(folder)

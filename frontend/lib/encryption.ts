@@ -27,10 +27,15 @@ function getEncryptionKey(): string {
 }
 
 /**
- * Convert string to Uint8Array
+ * Convert string to Uint8Array (with proper ArrayBuffer type for crypto APIs)
  */
-function stringToUint8Array(str: string): Uint8Array {
-  return new TextEncoder().encode(str)
+function stringToUint8Array(str: string): Uint8Array<ArrayBuffer> {
+  const encoded = new TextEncoder().encode(str)
+  // Create a new ArrayBuffer and copy data to ensure proper type
+  const buffer = new ArrayBuffer(encoded.byteLength)
+  const view = new Uint8Array(buffer)
+  view.set(encoded)
+  return view
 }
 
 /**
