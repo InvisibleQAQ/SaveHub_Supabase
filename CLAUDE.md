@@ -51,10 +51,8 @@ SaveHub_Supabase/
 │   ├── app/           # App Router pages
 │   ├── components/    # React components
 │   ├── lib/           # Business logic
-│   │   ├── db/        # Supabase CRUD operations
 │   │   ├── store/     # Zustand slices (7 slices)
-│   │   ├── queue/     # BullMQ job queue
-│   │   └── supabase/  # Supabase client
+│   │   └── queue/     # BullMQ job queue
 │   └── CLAUDE.md      # Detailed frontend docs
 ├── backend/           # FastAPI application
 │   └── app/
@@ -66,9 +64,9 @@ SaveHub_Supabase/
 
 ### Key Data Flow
 
-1. **Frontend State**: Zustand store (7 slices) → `syncToSupabase()` → Supabase
+1. **Frontend State**: Zustand store (7 slices) → HTTP API calls → Backend
 2. **Backend API**: FastAPI routes → Pydantic validation → Supabase SDK
-3. **Real-time**: Supabase real-time channels → `use-realtime-sync.ts` → Zustand
+3. **Real-time**: WebSocket via FastAPI → `use-realtime-sync.ts` → Zustand
 
 ### URL-Driven Navigation (Frontend)
 
@@ -89,7 +87,6 @@ Both frontend and backend use Supabase JWT:
 ```
 NEXT_PUBLIC_SUPABASE_URL=
 NEXT_PUBLIC_SUPABASE_ANON_KEY=
-ENCRYPTION_SECRET=           # For API key encryption
 ```
 
 ### Backend (`.env`)
@@ -110,15 +107,9 @@ SUPABASE_SERVICE_ROLE_KEY=   # For background tasks (bypasses RLS)
 ### Adding Features
 
 1. **New Zustand action**: Add to relevant slice in `frontend/lib/store/*.slice.ts`
-2. **New DB operation**: Add to `frontend/lib/db/*.ts` or `backend/app/services/db/*.ts`
+2. **New DB operation**: Add to `backend/app/services/db/*.ts`
 3. **New API endpoint**: Add router in `backend/app/api/routers/`, register in `main.py`
 4. **New page**: Use `ArticlePageLayout` wrapper for article list pages
-
-### Encryption (Frontend)
-
-API keys are encrypted with AES-256-GCM before storage:
-- `lib/encryption.ts` handles encrypt/decrypt
-- `lib/db/api-configs.ts` applies encryption transparently
 
 ## Module-Specific Documentation
 

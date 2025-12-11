@@ -81,7 +81,6 @@ Required in `.env`:
 ```
 NEXT_PUBLIC_SUPABASE_URL=your_supabase_project_url
 NEXT_PUBLIC_SUPABASE_ANON_KEY=your_supabase_anon_key
-ENCRYPTION_SECRET=your_secret_for_api_key_encryption  # For encrypting API configs
 ```
 
 Optional WebSocket configuration:
@@ -89,8 +88,6 @@ Optional WebSocket configuration:
 NEXT_PUBLIC_FASTAPI_WS_URL=ws://localhost:8000  # Full WebSocket base URL (production)
 NEXT_PUBLIC_WS_PORT=8000                         # WebSocket port only (development)
 ```
-
-**Note on ENCRYPTION_SECRET**: Used by `lib/encryption.ts` to encrypt API keys/bases before storing in database. Currently uses fixed salt (security improvement needed - see Known Issues).
 
 **Note on WebSocket**: Development auto-connects to `ws://localhost:8000/api/ws/realtime`. Production requires either `NEXT_PUBLIC_FASTAPI_WS_URL` or a reverse proxy (nginx) to handle WebSocket upgrade.
 
@@ -115,7 +112,7 @@ NEXT_PUBLIC_WS_PORT=8000                         # WebSocket port only (developm
 
 **Shared Layout** (`app/(reader)/layout.tsx`):
 - Handles database initialization
-- Loads data via `loadFromSupabase()`
+- Loads data via HTTP API calls to backend
 - Renders `<Sidebar />` + route-specific content
 
 **Navigation**:
@@ -126,32 +123,20 @@ NEXT_PUBLIC_WS_PORT=8000                         # WebSocket port only (developm
 - Browser back/forward buttons work natively
 - URLs are shareable/bookmarkable
 
-### State Management (Zustand + Supabase)
+### State Management (Zustand + HTTP API)
 
-**Critical Pattern**: Two-layer persistence architecture
+**Critical Pattern**: Frontend calls backend HTTP API for all data operations
 
 1. **Zustand Store** (`lib/store/index.ts`): Modular slice-based architecture
    - **7 Slices**: DatabaseSlice, FoldersSlice, FeedsSlice, ArticlesSlice, UISlice, SettingsSlice, ApiConfigsSlice
-   - Holds: folders, feeds, articles, **apiConfigs** (NEW)
+   - Holds: folders, feeds, articles, **apiConfigs**
    - **Does NOT hold**: viewMode, selectedFeedId (moved to URL)
    - No localStorage persistence (URL is the persistence for view state)
-   - All data mutations go through store actions
-
-2. **Supabase Client** (`lib/supabase/client.ts`): **Singleton pattern** (refactored from factory function)
-   - **NEW usage**: `import { supabase } from '@/lib/supabase/client'`
-   - **DEPRECATED**: `const supabase = createClient()` (still works but logs warning in dev)
-   - Maintains connection pooling efficiency
-
-3. **Database Manager** (`lib/db/*.ts`): Modular persistence layer
-   - Split into: `feeds.ts`, `articles.ts`, `folders.ts`, `api-configs.ts`
-   - Handles CRUD operations for Postgres
-   - Transforms between app types (Date objects) and DB types (ISO strings)
-   - **Encryption**: API keys/bases encrypted via `lib/encryption.ts` before storage
-   - Called by store actions via `syncToSupabase()` and `loadFromSupabase()`
+   - All data mutations go through store actions → HTTP API → Backend → Supabase
 
 **Data Flow**:
-- User action → Zustand action → Update Zustand state → `syncToSupabase()` → Supabase
-- App load → Check `isDatabaseReady` → `loadFromSupabase()` → Populate Zustand state
+- User action → Zustand action → HTTP API call → Backend → Supabase
+- App load → Check `isDatabaseReady` → Load data via API → Populate Zustand state
 
 **Database Initialization**:
 - App checks `isDatabaseReady` state before rendering main UI
@@ -162,18 +147,11 @@ NEXT_PUBLIC_WS_PORT=8000                         # WebSocket port only (developm
 
 ### Real-time Synchronization
 
-**Two implementations available**:
-
-1. **Supabase Real-time** (`lib/realtime.ts`) - DEPRECATED
-   - Direct connection to Supabase real-time channels
-   - Uses `supabase-js` client
-
-2. **WebSocket via FastAPI** (`lib/realtime-ws.ts`) - NEW
-   - Connects to FastAPI WebSocket endpoint `/api/ws/realtime`
-   - Cookie-based auth (HttpOnly `sb_access_token`)
-   - Auto-reconnect with exponential backoff (1s → 30s max)
-   - Heartbeat ping/pong every 30 seconds
-   - Drop-in replacement: `realtimeWSManager` has same interface as `realtimeManager`
+**WebSocket via FastAPI** (`lib/realtime-ws.ts`):
+- Connects to FastAPI WebSocket endpoint `/api/ws/realtime`
+- Cookie-based auth (HttpOnly `sb_access_token`)
+- Auto-reconnect with exponential backoff (1s → 30s max)
+- Heartbeat ping/pong every 30 seconds
 
 **Hook** (`hooks/use-realtime-sync.ts`):
 - Listens to INSERT/UPDATE/DELETE on feeds, articles, folders tables
@@ -247,8 +225,7 @@ NEXT_PUBLIC_WS_PORT=8000                         # WebSocket port only (developm
 **Database Types** (`lib/supabase/types.ts`):
 - Auto-generated from Supabase schema
 - Snake_case DB columns (e.g., `feed_id`, `is_read`, `api_key`, `api_base`)
-- Transformation functions in `lib/db/*.ts` convert between camelCase app types and snake_case DB types
-- Encryption/decryption handled transparently in `lib/db/api-configs.ts`
+- Backend handles transformation between camelCase app types and snake_case DB types
 
 ### Component Structure
 
@@ -299,8 +276,7 @@ NEXT_PUBLIC_WS_PORT=8000                         # WebSocket port only (developm
 ### Date Handling
 - **App**: Uses `Date` objects everywhere
 - **Database**: Stores as ISO strings (TIMESTAMPTZ in Postgres)
-- **Transform**: `toISOString()` helper in `lib/db.ts` safely converts Date → string for DB writes
-- **Parse**: DB rows converted back to Date objects in `dbRowTo*()` functions
+- **Transform**: Backend handles conversion between Date and ISO strings
 
 ### Feed Refresh Pattern
 ```typescript
@@ -330,26 +306,22 @@ updateFeed(feedId, { title, url, description, category, folderId })
 // → User-scoped (eq("user_id", userId) ensures security)
 ```
 
-**Implementation**: `lib/db/feeds.ts:updateFeed()` + `lib/store/feeds.slice.ts:updateFeed()`
+**Implementation**: `lib/store/feeds.slice.ts:updateFeed()` → HTTP API → Backend
 
-### API Configuration Management (NEW)
+### API Configuration Management
 **Data Flow**:
 1. User adds API config (name, apiKey, apiBase)
 2. Validates config by calling `{apiBase}/models` endpoint
 3. Fetches available models → user selects model
-4. Encrypts apiKey + apiBase via AES-GCM (`lib/encryption.ts`)
-5. Stores encrypted data in `api_configs` table
+4. Stores data via HTTP API → Backend encrypts and saves
 
 **Key Features**:
-- Encryption: PBKDF2 (100k iterations) + AES-256-GCM
-- Auto-migration: Legacy unencrypted configs auto-upgraded on load
+- Backend handles encryption (AES-256-GCM)
 - Default config: Mark one config as default for AI features
 - Validation: Real-time API validation with model discovery
 
 **Files**:
-- `lib/encryption.ts`: AES-GCM encryption/decryption
 - `lib/api-validation.ts`: OpenAI-compatible API validation
-- `lib/db/api-configs.ts`: Encrypted persistence
 - `lib/store/api-configs.slice.ts`: Store actions
 
 > **📖 For implementation examples and code patterns, see [Common Tasks](./docs/06-common-tasks.md) for basic features and [Advanced Tasks](./docs/06-advanced-tasks.md) for complex functionality**
@@ -378,15 +350,15 @@ updateFeed(feedId, { title, url, description, category, folderId })
 1. Identify the relevant slice in `lib/store/` (e.g., `feeds.slice.ts`, `api-configs.slice.ts`)
 2. Add action signature to the slice's interface (e.g., `FeedsSlice`)
 3. Implement action in the slice definition
-4. Call appropriate `sync*ToSupabase()` method if data should persist
-5. Add corresponding method in `lib/db/*.ts` if new DB operation needed
+4. Call appropriate HTTP API endpoint if data should persist
+5. Add corresponding endpoint in `backend/app/api/routers/` if new API needed
 6. Update `lib/store/index.ts` to export new action if needed
 
 ### Adding Database Column
 1. Update Supabase schema via SQL editor
 2. Run `supabase gen types typescript` to regenerate `lib/supabase/types.ts` (if using Supabase CLI)
 3. Update Zod schema in `lib/types.ts`
-4. Update transform functions in `lib/db.ts` (`dbRowTo*` and insert/upsert mappers)
+4. Update backend Pydantic schemas and services
 5. Update store actions if column affects state
 
 ### Creating New Dialog Component
@@ -457,29 +429,22 @@ logger.info({ duration, operationType: 'rss_parse' }, 'Operation completed')
 
 2. **Feed Edit Optimistic Update Has No Rollback** (`components/edit-feed-form.tsx`)
    - Store updates immediately via `updateFeed()`
-   - If DB operation fails, store and DB are inconsistent
+   - If API call fails, store and DB are inconsistent
    - **Fix**: Implement rollback on error or use pessimistic updates.
-
-3. **Encryption Uses Fixed Salt** (`lib/encryption.ts:61`)
-   ```typescript
-   const salt = new TextEncoder().encode("rssreader-salt")  // ❌ Hardcoded
-   ```
-   **Impact**: Weakens PBKDF2 protection against rainbow table attacks.
-   **Fix**: Generate random salt per user, store in `user_metadata` table.
 
 ### Medium Priority
 
-4. **Concurrent Feed Edits Cause Overwrites** (`components/edit-feed-form.tsx`)
+3. **Concurrent Feed Edits Cause Overwrites** (`components/edit-feed-form.tsx`)
    - No version/ETag checking
    - If User A and User B edit same feed, last write wins
    - **Fix**: Add `updated_at` column, check version before update.
 
-5. **API Validation Doesn't Distinguish Error Types** (`lib/api-validation.ts`)
+4. **API Validation Doesn't Distinguish Error Types** (`lib/api-validation.ts`)
    - `getAvailableModels()` returns empty array for both "invalid API" and "network error"
    - Users can't tell if they should retry or fix config
    - **Fix**: Return `{ success: boolean; models?: string[]; error?: 'network' | 'invalid_api' }`.
 
-6. **~~Legacy API Config Migration is Fire-and-Forget~~** ✅ **IMPROVED** (commit 80d9a8f)
+5. **~~Legacy API Config Migration is Fire-and-Forget~~** ✅ **IMPROVED** (commit 80d9a8f)
    - Now has error logging via Pino structured logger
    - Migration failures are logged with context (configId, userId, error details)
    - Still uses `setTimeout(0)` pattern but no longer silent on failures
@@ -487,7 +452,7 @@ logger.info({ duration, operationType: 'rss_parse' }, 'Operation completed')
 
 ### Low Priority
 
-7. **`any` Types in Store Actions** (`lib/store/feeds.slice.ts`)
+6. **`any` Types in Store Actions** (`lib/store/feeds.slice.ts`)
    ```typescript
    set((state: any) => ({ ... }))  // ❌ Defeats TypeScript
    ```
@@ -499,12 +464,11 @@ logger.info({ duration, operationType: 'rss_parse' }, 'Operation completed')
 **Good Taste** (keep doing this):
 - User-scoped queries: `eq("user_id", userId)` on all DB operations
 - Partial updates: Only defined fields updated in `updateFeed()`
-- Singleton pattern: Supabase client as module-level export
+- HTTP API layer: Frontend communicates via backend API, not direct DB access
 
 **Bad Patterns** (avoid these):
 - Fire-and-forget async operations without error handling
 - Optimistic updates without rollback mechanisms
-- Fixed salts or secrets in encryption
 
 ---
 

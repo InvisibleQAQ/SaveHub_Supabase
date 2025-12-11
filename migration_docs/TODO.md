@@ -170,17 +170,17 @@
 
 ### 删除文件
 
-- [ ] `frontend/lib/db/core.ts`
-- [ ] `frontend/lib/db/feeds.ts`
-- [ ] `frontend/lib/db/articles.ts`
-- [ ] `frontend/lib/db/folders.ts`
-- [ ] `frontend/lib/db/api-configs.ts`
-- [ ] `frontend/lib/db/settings.ts`
-- [ ] `frontend/lib/db/index.ts`
-- [ ] `frontend/lib/db/` 目录
-- [ ] `frontend/lib/supabase/client.ts`
-- [ ] `frontend/lib/encryption.ts`
-- [ ] `frontend/lib/realtime.ts`
+- [X] `frontend/lib/db/core.ts`
+- [X] `frontend/lib/db/feeds.ts`
+- [X] `frontend/lib/db/articles.ts`
+- [X] `frontend/lib/db/folders.ts`
+- [X] `frontend/lib/db/api-configs.ts`
+- [X] `frontend/lib/db/settings.ts`
+- [X] `frontend/lib/db/index.ts`
+- [X] `frontend/lib/db/` 目录
+- [X] `frontend/lib/supabase/client.ts`
+- [X] `frontend/lib/encryption.ts`
+- [X] `frontend/lib/realtime.ts` (已不存在)
 
 ### 保留文件
 
@@ -188,28 +188,28 @@
 
 ### 移除依赖
 
-- [ ] `cd frontend && pnpm remove @supabase/ssr @supabase/supabase-js`
+- [X] `cd frontend && pnpm remove @supabase/ssr @supabase/supabase-js`
 
 ### 更新环境变量
 
-- [ ] `frontend/.env`
+- [X] `frontend/.env`
 
   - 删除 `NEXT_PUBLIC_SUPABASE_URL`
   - 删除 `NEXT_PUBLIC_SUPABASE_ANON_KEY`
   - 删除 `NEXT_PUBLIC_ENCRYPTION_SECRET`
   - 删除 `ENCRYPTION_SECRET`（前端不再需要）
-- [ ] `frontend/.env.example`
+- [X] `frontend/.env.example`
 
   - 同步更新
 
 ### 更新文档
 
-- [ ] `frontend/CLAUDE.md`
+- [X] `frontend/CLAUDE.md`
 
   - 移除 Supabase 客户端相关章节
   - 更新架构说明
   - 更新环境变量章节
-- [ ] `CLAUDE.md`（项目根目录）
+- [X] `CLAUDE.md`（项目根目录）
 
   - 更新架构图
   - 移除 Supabase 直连相关说明
@@ -273,6 +273,6 @@ git commit -m "chore(frontend): remove Supabase client and lib/db"
 - **批次 4**: 2/4 完成 (代码已完成，待验证)
 - **批次 5**: 1/5 完成 (代码已完成，待验证)
 - **批次 6**: 4/5 完成 (删除完成，待功能验证)
-- **批次 7**: 0/9 完成
+- **批次 7**: 16/18 完成 (文件删除+依赖移除+环境变量+文档更新完成，待最终验证)
 
-**总进度**: 18/35 完成 (51%)
+**总进度**: 34/49 完成 (69%)
