@@ -12,6 +12,9 @@ _ = load_dotenv(find_dotenv())
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
+# Suppress noisy heartbeat logs from Supabase Realtime SDK
+logging.getLogger("realtime").setLevel(logging.WARNING)
+
 # Import realtime forwarder for lifecycle management
 from app.services.supabase_realtime import realtime_forwarder
 
