@@ -2,7 +2,6 @@
  * Celery Queue Client
  *
  * Calls FastAPI backend endpoints to schedule/cancel feed refreshes.
- * Replaces BullMQ-based scheduler-client.ts after Phase 2 migration.
  *
  * API Endpoints (via /api/backend/* rewrite):
  * - POST /api/backend/queue/schedule-feed
@@ -77,17 +76,14 @@ export async function scheduleFeedRefresh(
 /**
  * Cancel scheduled refresh for a feed
  *
- * Note: Celery doesn't have native job cancellation like BullMQ.
- * This is a no-op in Celery - tasks with locks will naturally skip.
- * Kept for API compatibility with existing code.
+ * Note: Celery uses Redis locks for deduplication, not job cancellation.
+ * This is a no-op - tasks with locks will naturally skip.
+ * Kept for API compatibility.
  */
 export async function cancelFeedRefresh(feedId: string): Promise<void> {
-  // Celery task deduplication uses Redis locks, not job cancellation.
-  // When a feed is deleted, the lock expires naturally (3 min TTL).
-  // No API call needed - this is intentionally a no-op.
-  console.debug(
-    `[queue-client] Cancel request for feed ${feedId} (no-op in Celery)`
-  )
+  // Celery task deduplication uses Redis locks (3 min TTL).
+  // When a feed is deleted, the lock expires naturally.
+  console.debug(`[queue-client] Cancel request for feed ${feedId} (no-op)`)
 }
 
 /**

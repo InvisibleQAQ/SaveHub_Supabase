@@ -4,13 +4,13 @@ Queue management API endpoints.
 Provides endpoints for scheduling feed refresh tasks and querying task status.
 """
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel
 from datetime import datetime, timezone, timedelta
 from typing import Optional
 from uuid import UUID
 
-from app.dependencies import verify_auth
+from app.dependencies import verify_auth, COOKIE_NAME_ACCESS
 from app.supabase_client import get_supabase_client
 from app.celery_app.tasks import refresh_feed, schedule_all_feeds
 from app.celery_app.task_lock import get_task_lock
@@ -33,7 +33,8 @@ class ScheduleFeedResponse(BaseModel):
 
 @router.post("/schedule-feed", response_model=ScheduleFeedResponse)
 async def schedule_feed_refresh(
-    request: ScheduleFeedRequest,
+    request_data: ScheduleFeedRequest,
+    request: Request,
     auth_response=Depends(verify_auth),
 ):
     """
@@ -45,10 +46,10 @@ async def schedule_feed_refresh(
     """
     user = auth_response.user
     user_id = user.id
-    feed_id = str(request.feed_id)
+    feed_id = str(request_data.feed_id)
 
-    # Get Supabase client with user token
-    access_token = auth_response.session.access_token if auth_response.session else None
+    # Get Supabase client with user token from cookie
+    access_token = request.cookies.get(COOKIE_NAME_ACCESS)
     supabase = get_supabase_client(access_token)
 
     # Get feed data
@@ -71,7 +72,7 @@ async def schedule_feed_refresh(
             delay_seconds=remaining
         )
 
-    if request.force_immediate:
+    if request_data.force_immediate:
         # Immediate refresh (high priority queue)
         task = refresh_feed.apply_async(
             kwargs={

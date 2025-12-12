@@ -25,11 +25,8 @@ SaveHub is an RSS reader application with a **monorepo architecture**:
 ```bash
 cd frontend
 pnpm dev          # Next.js dev server (localhost:3000)
-pnpm dev:all      # Recommended: Next.js + BullMQ worker + Bull Dashboard
 pnpm build        # Production build
 pnpm lint         # ESLint
-pnpm worker:dev   # BullMQ worker with hot reload
-pnpm dashboard    # Bull Dashboard (localhost:5555)
 ```
 
 ### Backend (pip + requirements.txt)
@@ -39,6 +36,10 @@ cd backend
 pip install -r requirements.txt             # Install dependencies (base environment)
 uvicorn app.main:app --reload               # Dev server (localhost:8000)
 # API docs: http://localhost:8000/docs
+
+# Celery Worker (background feed refresh)
+celery -A app.celery_app worker --loglevel=info --pool=solo  # Windows
+celery -A app.celery_app flower --port=5555                  # Monitoring (optional)
 ```
 
 ## Architecture
@@ -52,7 +53,7 @@ SaveHub_Supabase/
 │   ├── components/    # React components
 │   ├── lib/           # Business logic
 │   │   ├── store/     # Zustand slices (7 slices)
-│   │   └── queue/     # BullMQ job queue
+│   │   └── queue-client.ts  # Celery API client (calls backend)
 │   └── CLAUDE.md      # Detailed frontend docs
 ├── backend/           # FastAPI application
 │   └── app/
