@@ -102,15 +102,20 @@ class FeedService:
 
     def get_feed(self, feed_id: str) -> Optional[dict]:
         """Get a single feed by ID."""
-        response = self.supabase.table("feeds") \
-            .select("*") \
-            .eq("id", feed_id) \
-            .eq("user_id", self.user_id) \
-            .single() \
-            .execute()
+        try:
+            # Use limit(1) instead of single() to avoid exception when no data found
+            response = self.supabase.table("feeds") \
+                .select("*") \
+                .eq("id", feed_id) \
+                .eq("user_id", self.user_id) \
+                .limit(1) \
+                .execute()
+        except Exception as e:
+            logger.error(f"Database error getting feed {feed_id}: {e}")
+            return None
 
-        if response.data:
-            row = response.data
+        if response.data and len(response.data) > 0:
+            row = response.data[0]
             return {
                 "id": row["id"],
                 "title": row["title"],

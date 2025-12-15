@@ -17,15 +17,10 @@
     "celery": "cd backend && celery -A app.celery_app worker --pool=solo --loglevel=info --queues=high,default",
     "flower": "cd backend && celery -A app.celery_app flower --port=5555",
 
-    "---BULLMQ (Legacy)---": "========================================",
-    "bullmq:worker": "cd frontend && pnpm worker:dev",
-    "bullmq:dashboard": "cd frontend && pnpm dashboard",
-
     "---COMBINED---": "========================================",
     "dev": "concurrently -n next,api -c blue,green \"pnpm frontend\" \"pnpm backend\"",
     "dev:celery": "concurrently -n next,api,celery -c blue,green,yellow \"pnpm frontend\" \"pnpm backend\" \"pnpm celery\"",
     "dev:all": "concurrently -n next,api,celery,flower -c blue,green,yellow,magenta \"pnpm frontend\" \"pnpm backend\" \"pnpm celery\" \"pnpm flower\"",
-    "dev:bullmq": "concurrently -n next,api,worker,board -c blue,green,yellow,magenta \"pnpm frontend\" \"pnpm backend\" \"pnpm bullmq:worker\" \"pnpm bullmq:dashboard\"",
 
     "---UTILITIES---": "========================================",
     "install:all": "pnpm install && cd frontend && pnpm install && cd ../backend && pip install -r requirements.txt",
