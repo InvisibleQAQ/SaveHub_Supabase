@@ -192,8 +192,15 @@ def refresh_feed(
     max_attempts = self.max_retries + 1
 
     logger.info(
-        f"[{task_id}] Processing: {feed_title} ({feed_id}), "
-        f"attempt={attempt}/{max_attempts}, priority={priority}"
+        f"Processing: attempt={attempt}/{max_attempts}, priority={priority}",
+        extra={
+            'task_id': task_id,
+            'feed_id': feed_id,
+            'user_id': user_id,
+            'feed_url': feed_url,
+            'feed_title': feed_title,
+            'refresh_interval': refresh_interval,
+        }
     )
 
     start_time = datetime.now(timezone.utc)
@@ -222,8 +229,18 @@ def refresh_feed(
 
         duration_ms = int((datetime.now(timezone.utc) - start_time).total_seconds() * 1000)
         logger.info(
-            f"[{task_id}] Completed: {feed_title}, "
-            f"articles={result['article_count']}, duration={duration_ms}ms"
+            "Completed successfully",
+            extra={
+                'task_id': task_id,
+                'feed_id': feed_id,
+                'user_id': user_id,
+                'feed_url': feed_url,
+                'feed_title': feed_title,
+                'success': 'true',
+                'duration_ms': duration_ms,
+                'articles_count': result['article_count'],
+                'refresh_interval': refresh_interval,
+            }
         )
 
         # Schedule next refresh
@@ -239,7 +256,18 @@ def refresh_feed(
     except RetryableError as e:
         duration_ms = int((datetime.now(timezone.utc) - start_time).total_seconds() * 1000)
         logger.warning(
-            f"[{task_id}] Retryable error: {feed_title}, error={e}, duration={duration_ms}ms"
+            f"Retryable error: {e}",
+            extra={
+                'task_id': task_id,
+                'feed_id': feed_id,
+                'user_id': user_id,
+                'feed_url': feed_url,
+                'feed_title': feed_title,
+                'success': 'false',
+                'error': str(e),
+                'duration_ms': duration_ms,
+                'refresh_interval': refresh_interval,
+            }
         )
 
         update_feed_status(feed_id, user_id, "failed", str(e))
@@ -253,7 +281,18 @@ def refresh_feed(
     except NonRetryableError as e:
         duration_ms = int((datetime.now(timezone.utc) - start_time).total_seconds() * 1000)
         logger.error(
-            f"[{task_id}] Non-retryable error: {feed_title}, error={e}, duration={duration_ms}ms"
+            f"Non-retryable error: {e}",
+            extra={
+                'task_id': task_id,
+                'feed_id': feed_id,
+                'user_id': user_id,
+                'feed_url': feed_url,
+                'feed_title': feed_title,
+                'success': 'false',
+                'error': str(e),
+                'duration_ms': duration_ms,
+                'refresh_interval': refresh_interval,
+            }
         )
 
         update_feed_status(feed_id, user_id, "failed", str(e))
@@ -270,7 +309,21 @@ def refresh_feed(
 
     except Exception as e:
         # Unexpected error
-        logger.exception(f"[{task_id}] Unexpected error: {feed_title}")
+        duration_ms = int((datetime.now(timezone.utc) - start_time).total_seconds() * 1000)
+        logger.exception(
+            f"Unexpected error: {e}",
+            extra={
+                'task_id': task_id,
+                'feed_id': feed_id,
+                'user_id': user_id,
+                'feed_url': feed_url,
+                'feed_title': feed_title,
+                'success': 'false',
+                'error': str(e),
+                'duration_ms': duration_ms,
+                'refresh_interval': refresh_interval,
+            }
+        )
         update_feed_status(feed_id, user_id, "failed", str(e))
         raise
 

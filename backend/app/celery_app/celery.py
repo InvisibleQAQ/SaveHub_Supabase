@@ -7,9 +7,18 @@ UTC timezone, and multi-queue support for priority handling.
 
 import os
 from celery import Celery
+from celery.signals import after_setup_logger, after_setup_task_logger
 from dotenv import load_dotenv
 
 load_dotenv()
+
+
+@after_setup_logger.connect
+@after_setup_task_logger.connect
+def setup_celery_logging(logger, *args, **kwargs):
+    """Configure Celery worker logging via signal."""
+    from app.core.logging_config import setup_logging
+    setup_logging()
 
 REDIS_URL = os.environ.get("REDIS_URL", "redis://localhost:6379/0")
 
@@ -33,6 +42,7 @@ app.conf.update(
     # Worker configuration
     worker_prefetch_multiplier=1,  # Fair scheduling
     worker_concurrency=5,
+    worker_hijack_root_logger=False,  # Don't hijack root logger
 
     # Task configuration
     task_acks_late=True,

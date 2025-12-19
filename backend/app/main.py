@@ -8,12 +8,11 @@ from dotenv import load_dotenv, find_dotenv
 # Load environment variables
 _ = load_dotenv(find_dotenv())
 
-# Configure logging
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
+# Configure logging (file + console, daily rotation)
+from app.core.logging_config import setup_logging
+setup_logging()
 
-# Suppress noisy heartbeat logs from Supabase Realtime SDK
-logging.getLogger("realtime").setLevel(logging.WARNING)
+logger = logging.getLogger(__name__)
 
 # Import realtime forwarder for lifecycle management
 from app.services.supabase_realtime import realtime_forwarder

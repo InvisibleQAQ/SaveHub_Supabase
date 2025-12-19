@@ -99,6 +99,7 @@ doc/source/
 
 # FastAPI
 log/
+logs/
 instance/
 .pytest_cache/
 .cache/
