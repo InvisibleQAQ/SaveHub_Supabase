@@ -30,10 +30,16 @@ async def validate_rss(request: ValidateRequest, user=Depends(verify_auth)):
         parsed = feedparser.parse(str(request.url))
         # A feed is valid if it has entries or at least a title
         valid = bool(parsed.entries) or bool(parsed.feed.get("title"))
-        logger.info(f"RSS validation: url={request.url}, valid={valid}, user={user.user.id}")
+        logger.info(
+            f"RSS validation: url={request.url}, valid={valid}",
+            extra={'user_id': user.user.id}
+        )
         return ValidateResponse(valid=valid)
     except Exception as e:
-        logger.error(f"RSS validation failed: url={request.url}, error={e}, user={user.user.id}")
+        logger.error(
+            f"RSS validation failed: url={request.url}",
+            extra={'user_id': user.user.id, 'error': str(e)}
+        )
         return ValidateResponse(valid=False)
 
 
@@ -48,16 +54,21 @@ async def parse_rss(request: ParseRequest, user=Depends(verify_auth)):
     try:
         result = parse_rss_feed(str(request.url), str(request.feedId))
         logger.info(
-            f"RSS parsed: url={request.url}, "
-            f"articles={len(result['articles'])}, "
-            f"user={user.user.id}"
+            f"RSS parsed: url={request.url}, articles={len(result['articles'])}",
+            extra={'user_id': user.user.id}
         )
         return ParseResponse(**result)
     except ValueError as e:
         # Parse error - client issue
-        logger.warning(f"RSS parse failed (ValueError): url={request.url}, error={e}")
+        logger.warning(
+            f"RSS parse failed (ValueError): url={request.url}",
+            extra={'user_id': user.user.id, 'error': str(e)}
+        )
         raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
         # Unexpected error - server issue
-        logger.error(f"RSS parse failed: url={request.url}, error={e}, user={user.user.id}")
+        logger.error(
+            f"RSS parse failed: url={request.url}",
+            extra={'user_id': user.user.id, 'error': str(e)}
+        )
         raise HTTPException(status_code=500, detail=str(e))

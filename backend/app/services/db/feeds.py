@@ -49,17 +49,26 @@ class FeedService:
                 "enable_deduplication": feed.get("enable_deduplication", False),
             })
 
-        logger.debug(f"Saving {len(feeds)} feeds for user {self.user_id}")
+        logger.debug(
+            f"Saving {len(feeds)} feeds",
+            extra={'user_id': self.user_id}
+        )
 
         try:
             response = self.supabase.table("feeds").upsert(db_rows).execute()
 
             if response.data:
-                logger.info(f"Saved {len(response.data)} feeds for user {self.user_id}")
+                logger.info(
+                    f"Saved {len(response.data)} feeds",
+                    extra={'user_id': self.user_id}
+                )
                 return {"success": True}
             return {"success": True}
         except Exception as e:
-            logger.error(f"Failed to save feeds: {e}")
+            logger.error(
+                "Failed to save feeds",
+                extra={'user_id': self.user_id, 'error': str(e)}
+            )
             if "23505" in str(e):
                 return {"success": False, "error": "duplicate"}
             raise
@@ -69,7 +78,7 @@ class FeedService:
         Load all feeds for current user.
         Returns feeds ordered by order field.
         """
-        logger.debug(f"Loading feeds for user {self.user_id}")
+        logger.debug("Loading feeds", extra={'user_id': self.user_id})
 
         response = self.supabase.table("feeds") \
             .select("*") \
@@ -97,7 +106,7 @@ class FeedService:
                 "created_at": row.get("created_at"),
             })
 
-        logger.debug(f"Loaded {len(feeds)} feeds for user {self.user_id}")
+        logger.debug(f"Loaded {len(feeds)} feeds", extra={'user_id': self.user_id})
         return feeds
 
     def get_feed(self, feed_id: str) -> Optional[dict]:
@@ -111,7 +120,10 @@ class FeedService:
                 .limit(1) \
                 .execute()
         except Exception as e:
-            logger.error(f"Database error getting feed {feed_id}: {e}")
+            logger.error(
+                f"Database error getting feed {feed_id}",
+                extra={'user_id': self.user_id, 'error': str(e)}
+            )
             return None
 
         if response.data and len(response.data) > 0:
@@ -147,7 +159,10 @@ class FeedService:
         Returns:
             dict with success status and optional error
         """
-        logger.info(f"update_feed called: feed_id={feed_id}, updates={updates}")
+        logger.info(
+            f"update_feed called: feed_id={feed_id}, updates={updates}",
+            extra={'user_id': self.user_id}
+        )
 
         update_data = {}
 
@@ -174,10 +189,16 @@ class FeedService:
                     value = value.isoformat()
                 update_data[db_key] = value
 
-        logger.info(f"Updating feed {feed_id} with data: {update_data}")
+        logger.info(
+            f"Updating feed {feed_id} with data: {update_data}",
+            extra={'user_id': self.user_id}
+        )
 
         if not update_data:
-            logger.warning(f"No valid update data for feed {feed_id}")
+            logger.warning(
+                f"No valid update data for feed {feed_id}",
+                extra={'user_id': self.user_id}
+            )
             return {"success": True, "message": "No fields to update"}
 
         try:
@@ -187,10 +208,16 @@ class FeedService:
                 .eq("user_id", self.user_id) \
                 .execute()
 
-            logger.info(f"Updated feed {feed_id}, response data: {response.data}")
+            logger.info(
+                f"Updated feed {feed_id}, response data: {response.data}",
+                extra={'user_id': self.user_id}
+            )
             return {"success": True}
         except Exception as e:
-            logger.error(f"Failed to update feed {feed_id}: {e}")
+            logger.error(
+                f"Failed to update feed {feed_id}",
+                extra={'user_id': self.user_id, 'error': str(e)}
+            )
             if "23505" in str(e):
                 return {"success": False, "error": "duplicate"}
             raise
@@ -206,7 +233,10 @@ class FeedService:
         Returns:
             dict with articles_deleted and feed_deleted
         """
-        logger.debug(f"Starting feed deletion: {feed_id}")
+        logger.debug(
+            f"Starting feed deletion: {feed_id}",
+            extra={'user_id': self.user_id}
+        )
 
         # Step 1: Count and delete articles
         articles_response = self.supabase.table("articles") \
@@ -216,7 +246,10 @@ class FeedService:
             .execute()
 
         article_count = len(articles_response.data or [])
-        logger.debug(f"Found {article_count} articles to delete for feed {feed_id}")
+        logger.debug(
+            f"Found {article_count} articles to delete for feed {feed_id}",
+            extra={'user_id': self.user_id}
+        )
 
         articles_deleted = 0
         if article_count > 0:
@@ -226,7 +259,10 @@ class FeedService:
                 .eq("user_id", self.user_id) \
                 .execute()
             articles_deleted = article_count
-            logger.info(f"Deleted {articles_deleted} articles for feed {feed_id}")
+            logger.info(
+                f"Deleted {articles_deleted} articles for feed {feed_id}",
+                extra={'user_id': self.user_id}
+            )
 
         # Step 2: Delete the feed
         self.supabase.table("feeds") \
@@ -235,5 +271,8 @@ class FeedService:
             .eq("user_id", self.user_id) \
             .execute()
 
-        logger.info(f"Deleted feed {feed_id} with {articles_deleted} articles")
+        logger.info(
+            f"Deleted feed {feed_id} with {articles_deleted} articles",
+            extra={'user_id': self.user_id}
+        )
         return {"articles_deleted": articles_deleted, "feed_deleted": True}
