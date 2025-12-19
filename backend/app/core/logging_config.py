@@ -11,6 +11,7 @@ import csv
 import io
 import logging
 import os
+from datetime import datetime
 from logging.handlers import TimedRotatingFileHandler
 from pathlib import Path
 
@@ -21,13 +22,8 @@ LOG_DIR = Path(__file__).parent.parent.parent / "logs"
 CONSOLE_FORMAT = "%(asctime)s | %(levelname)-8s | %(name)s | %(message)s"
 DATE_FORMAT = "%Y-%m-%d %H:%M:%S"
 
-# CSV fields (15 columns) - first 4 columns match console format
-CSV_FIELDS = [
-    'timestamp', 'level', 'module', 'message',
-    'task_id', 'feed_id', 'user_id', 'feed_url', 'feed_title',
-    'success', 'error', 'duration_ms', 'articles_count',
-    'refresh_interval', 'last_fetched'
-]
+# CSV fields (6 columns) - core logging fields only
+CSV_FIELDS = ['timestamp', 'level', 'module', 'message', 'user_id', 'error']
 
 
 class CsvFormatter(logging.Formatter):
@@ -35,7 +31,7 @@ class CsvFormatter(logging.Formatter):
     CSV format logger - auto-handles quotes and commas.
 
     Usage:
-        logger.info("message", extra={'task_id': 'xxx', 'feed_id': 'yyy'})
+        logger.info("message", extra={'user_id': 'xxx', 'error': 'yyy'})
     """
 
     def format(self, record):
@@ -47,17 +43,8 @@ class CsvFormatter(logging.Formatter):
             record.levelname,                         # level
             record.name,                              # module
             record.getMessage(),                      # message
-            getattr(record, 'task_id', ''),           # task_id
-            getattr(record, 'feed_id', ''),           # feed_id
             getattr(record, 'user_id', ''),           # user_id
-            getattr(record, 'feed_url', ''),          # feed_url
-            getattr(record, 'feed_title', ''),        # feed_title
-            getattr(record, 'success', ''),           # success
             getattr(record, 'error', ''),             # error
-            getattr(record, 'duration_ms', ''),       # duration_ms
-            getattr(record, 'articles_count', ''),    # articles_count
-            getattr(record, 'refresh_interval', ''),  # refresh_interval
-            getattr(record, 'last_fetched', ''),      # last_fetched
         ]
         writer.writerow(row)
         return output.getvalue().strip()
@@ -109,9 +96,11 @@ def setup_logging(level: int = logging.INFO) -> None:
     root_logger.addHandler(console_handler)
 
     # Handler 2: CSV file output (for analysis in Excel/Numbers)
+    # Filename includes date: rss_refresh_2025_12_19.csv
     # Daily rotation at midnight, keep 30 days
+    today = datetime.now().strftime("%Y_%m_%d")
     csv_handler = CsvRotatingFileHandler(
-        filename=LOG_DIR / "rss_refresh.csv",
+        filename=LOG_DIR / f"rss_refresh_{today}.csv",
         when="midnight",
         interval=1,
         backupCount=30,
