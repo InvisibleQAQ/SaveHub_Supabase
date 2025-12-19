@@ -118,10 +118,10 @@ def do_refresh_feed(
                 "thumbnail": article.get("thumbnail"),
             })
 
-        # Upsert (dedupe by url + user_id)
+        # Upsert (dedupe by feed_id + url, matches articles_feed_url_unique constraint)
         supabase.table("articles").upsert(
             db_articles,
-            on_conflict="url,user_id",
+            on_conflict="feed_id,url",
             ignore_duplicates=True
         ).execute()
 
