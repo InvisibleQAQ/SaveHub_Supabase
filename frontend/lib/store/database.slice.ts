@@ -91,7 +91,7 @@ export const createDatabaseSlice: StateCreator<
         feeds: feeds || [],
         articles: articles || [],
         settings: settings || defaultSettings,
-        apiConfigs: [], // API configs not yet migrated to FastAPI
+        apiConfigsGrouped: { chat: [], embedding: [], rerank: [] },
         isLoading: false,
       } as any)
 

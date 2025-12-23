@@ -1,9 +1,17 @@
-"""API Config Pydantic schemas for request/response validation."""
+"""API Config Pydantic schemas for request/response validation.
+
+Supports three API types: chat, embedding, rerank.
+Each type can have multiple configs but only one active per user.
+"""
 
 from pydantic import BaseModel
-from typing import Optional, List
+from typing import Optional, List, Literal
 from datetime import datetime
 from uuid import UUID
+
+
+# Type definition for API config types
+ApiConfigType = Literal["chat", "embedding", "rerank"]
 
 
 class ApiConfigBase(BaseModel):
@@ -12,7 +20,7 @@ class ApiConfigBase(BaseModel):
     api_key: str
     api_base: str
     model: str
-    is_default: bool = False
+    type: ApiConfigType = "chat"
     is_active: bool = True
 
 
@@ -21,23 +29,13 @@ class ApiConfigCreate(ApiConfigBase):
     pass
 
 
-class ApiConfigBulkCreate(BaseModel):
-    """Request model for bulk creating/updating API configs."""
-    configs: List["ApiConfigCreateWithId"]
-
-
-class ApiConfigCreateWithId(ApiConfigBase):
-    """API config with optional ID for upsert operations."""
-    id: Optional[UUID] = None
-
-
 class ApiConfigUpdate(BaseModel):
     """Request model for updating an API config (all fields optional)."""
     name: Optional[str] = None
     api_key: Optional[str] = None
     api_base: Optional[str] = None
     model: Optional[str] = None
-    is_default: Optional[bool] = None
+    type: Optional[ApiConfigType] = None
     is_active: Optional[bool] = None
 
 
@@ -46,26 +44,20 @@ class ApiConfigResponse(BaseModel):
     id: UUID
     user_id: UUID
     name: str
-    api_key: str  # Will be decrypted
-    api_base: str  # Will be decrypted
+    api_key: str  # Will be decrypted before response
+    api_base: str  # Will be decrypted before response
     model: str
-    is_default: bool
+    type: ApiConfigType
     is_active: bool
     created_at: datetime
+    updated_at: datetime
 
     class Config:
         from_attributes = True
 
 
-class ApiConfigPublicResponse(BaseModel):
-    """Response model for API config without sensitive data."""
-    id: UUID
-    name: str
-    api_base: str  # Show base URL but not key
-    model: str
-    is_default: bool
-    is_active: bool
-    created_at: datetime
-
-    class Config:
-        from_attributes = True
+class ApiConfigsGroupedResponse(BaseModel):
+    """Response model for API configs grouped by type."""
+    chat: List[ApiConfigResponse]
+    embedding: List[ApiConfigResponse]
+    rerank: List[ApiConfigResponse]

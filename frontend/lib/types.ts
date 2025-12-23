@@ -45,6 +45,9 @@ export const ArticleSchema = z.object({
   contentHash: z.string().optional(), // SHA-256 hash of (title + content), used for deduplication
 })
 
+// API Configuration types
+export type ApiConfigType = "chat" | "embedding" | "rerank"
+
 // API Configuration schema
 export const ApiConfigSchema = z.object({
   id: z.string(),
@@ -52,10 +55,18 @@ export const ApiConfigSchema = z.object({
   apiKey: z.string(), // Will be encrypted in database
   apiBase: z.string(), // Will be encrypted in database
   model: z.string(),
-  isDefault: z.boolean().default(false),
+  type: z.enum(["chat", "embedding", "rerank"]).default("chat"),
   isActive: z.boolean().default(true),
   createdAt: z.date().default(() => new Date()),
+  updatedAt: z.date().default(() => new Date()),
 })
+
+// Grouped API configs for Tab UI
+export interface ApiConfigsGrouped {
+  chat: ApiConfig[]
+  embedding: ApiConfig[]
+  rerank: ApiConfig[]
+}
 
 export type Feed = z.infer<typeof FeedSchema>
 export type Article = z.infer<typeof ArticleSchema>
@@ -66,7 +77,7 @@ export interface RSSReaderState {
   folders: Folder[]
   feeds: Feed[]
   articles: Article[]
-  apiConfigs: ApiConfig[]
+  apiConfigsGrouped: ApiConfigsGrouped
   selectedFeedId: string | null
   selectedArticleId: string | null
   viewMode: "all" | "unread" | "starred"

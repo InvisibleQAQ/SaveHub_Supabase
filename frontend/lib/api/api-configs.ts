@@ -1,22 +1,16 @@
 /**
  * API Configs HTTP Client for FastAPI backend.
+ *
+ * Supports three API types: chat, embedding, rerank.
  * Uses HttpOnly cookies for authentication.
  */
 
-import type { ApiConfig } from "../types"
+import type { ApiConfig, ApiConfigType, ApiConfigsGrouped } from "../types"
 
 const API_BASE = "/api/backend/api-configs"
 
 export interface ApiError {
   detail: string
-}
-
-export interface ApiConfigDeleteResponse {
-  success: boolean
-}
-
-export interface SetDefaultResponse {
-  success: boolean
 }
 
 /**
@@ -29,9 +23,19 @@ interface ApiConfigResponse {
   api_key: string
   api_base: string
   model: string
-  is_default: boolean
+  type: ApiConfigType
   is_active: boolean
   created_at: string
+  updated_at: string
+}
+
+/**
+ * Backend grouped response type.
+ */
+interface ApiConfigsGroupedResponse {
+  chat: ApiConfigResponse[]
+  embedding: ApiConfigResponse[]
+  rerank: ApiConfigResponse[]
 }
 
 /**
@@ -44,15 +48,15 @@ function transformApiConfig(raw: ApiConfigResponse): ApiConfig {
     apiKey: raw.api_key,
     apiBase: raw.api_base,
     model: raw.model,
-    isDefault: raw.is_default,
+    type: raw.type,
     isActive: raw.is_active,
     createdAt: new Date(raw.created_at),
+    updatedAt: new Date(raw.updated_at),
   }
 }
 
 /**
  * Transform frontend camelCase ApiConfig to backend snake_case format.
- * Includes strict type checking to prevent serialization errors.
  */
 function toApiFormat(config: Partial<ApiConfig>): Record<string, unknown> {
   const result: Record<string, unknown> = {}
@@ -64,17 +68,18 @@ function toApiFormat(config: Partial<ApiConfig>): Record<string, unknown> {
   if (isString(config.apiKey)) result.api_key = config.apiKey
   if (isString(config.apiBase)) result.api_base = config.apiBase
   if (isString(config.model)) result.model = config.model
-  if (isBoolean(config.isDefault)) result.is_default = config.isDefault
+  if (isString(config.type)) result.type = config.type
   if (isBoolean(config.isActive)) result.is_active = config.isActive
 
   return result
 }
 
 /**
- * Get all API configs for the authenticated user.
+ * Get all API configs, optionally filtered by type.
  */
-export async function getApiConfigs(): Promise<ApiConfig[]> {
-  const response = await fetch(API_BASE, {
+export async function getApiConfigs(type?: ApiConfigType): Promise<ApiConfig[]> {
+  const url = type ? `${API_BASE}?type=${type}` : API_BASE
+  const response = await fetch(url, {
     method: "GET",
     credentials: "include",
   })
@@ -89,10 +94,53 @@ export async function getApiConfigs(): Promise<ApiConfig[]> {
 }
 
 /**
+ * Get all API configs grouped by type.
+ * Returns: { chat: [...], embedding: [...], rerank: [...] }
+ */
+export async function getApiConfigsGrouped(): Promise<ApiConfigsGrouped> {
+  const response = await fetch(`${API_BASE}/grouped`, {
+    method: "GET",
+    credentials: "include",
+  })
+
+  if (!response.ok) {
+    const error: ApiError = await response.json()
+    throw new Error(error.detail || "Failed to get grouped API configs")
+  }
+
+  const data: ApiConfigsGroupedResponse = await response.json()
+  return {
+    chat: data.chat.map(transformApiConfig),
+    embedding: data.embedding.map(transformApiConfig),
+    rerank: data.rerank.map(transformApiConfig),
+  }
+}
+
+/**
+ * Get the active config for a specific type.
+ * Returns null if no active config exists.
+ */
+export async function getActiveConfig(type: ApiConfigType): Promise<ApiConfig | null> {
+  const response = await fetch(`${API_BASE}/active/${type}`, {
+    method: "GET",
+    credentials: "include",
+  })
+
+  if (!response.ok) {
+    const error: ApiError = await response.json()
+    throw new Error(error.detail || "Failed to get active config")
+  }
+
+  const data: ApiConfigResponse | null = await response.json()
+  return data ? transformApiConfig(data) : null
+}
+
+/**
  * Create a new API config.
+ * If is_active=true, deactivates other configs of same type.
  */
 export async function createApiConfig(
-  config: Omit<ApiConfig, "id" | "createdAt">
+  config: Omit<ApiConfig, "id" | "createdAt" | "updatedAt">
 ): Promise<ApiConfig> {
   const response = await fetch(API_BASE, {
     method: "POST",
@@ -112,7 +160,7 @@ export async function createApiConfig(
 
 /**
  * Update an API config by ID.
- * Supports partial updates - only provided fields will be updated.
+ * If is_active=true, deactivates others of same type.
  */
 export async function updateApiConfig(
   id: string,
@@ -150,18 +198,17 @@ export async function deleteApiConfig(id: string): Promise<void> {
 }
 
 /**
- * Set an API config as the default.
- * Unsets any previously default config for this user.
+ * Activate a config, auto-deactivating others of same type.
  */
-export async function setDefaultConfig(id: string): Promise<void> {
-  const response = await fetch(`${API_BASE}/${id}/set-default`, {
+export async function activateConfig(id: string): Promise<void> {
+  const response = await fetch(`${API_BASE}/${id}/activate`, {
     method: "POST",
     credentials: "include",
   })
 
   if (!response.ok) {
     const error: ApiError = await response.json()
-    throw new Error(error.detail || "Failed to set default config")
+    throw new Error(error.detail || "Failed to activate config")
   }
 }
 
@@ -169,9 +216,11 @@ export async function setDefaultConfig(id: string): Promise<void> {
  * API Configs API namespace for easy import.
  */
 export const apiConfigsApi = {
-  getApiConfigs,
-  createApiConfig,
-  updateApiConfig,
-  deleteApiConfig,
-  setDefaultConfig,
+  getAll: getApiConfigs,
+  getGrouped: getApiConfigsGrouped,
+  getActive: getActiveConfig,
+  create: createApiConfig,
+  update: updateApiConfig,
+  delete: deleteApiConfig,
+  activate: activateConfig,
 }

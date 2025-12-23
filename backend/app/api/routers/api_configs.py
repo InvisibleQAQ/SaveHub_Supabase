@@ -1,9 +1,13 @@
-"""API Configs router for CRUD operations with encryption."""
+"""API Configs router for CRUD operations with encryption.
+
+Supports three API types: chat, embedding, rerank.
+Each type can have multiple configs but only one active per user.
+"""
 
 import logging
-from typing import List
+from typing import List, Optional
 from uuid import UUID
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 
 from app.dependencies import verify_auth, COOKIE_NAME_ACCESS
 from app.supabase_client import get_supabase_client
@@ -11,6 +15,7 @@ from app.schemas.api_configs import (
     ApiConfigCreate,
     ApiConfigUpdate,
     ApiConfigResponse,
+    ApiConfigsGroupedResponse,
 )
 from app.services.db.api_configs import ApiConfigService
 from app.services.encryption import encrypt, decrypt
@@ -58,21 +63,85 @@ def _encrypt_sensitive_fields(data: dict) -> dict:
 
 
 @router.get("", response_model=List[ApiConfigResponse])
-async def get_api_configs(service: ApiConfigService = Depends(get_api_config_service)):
+async def get_api_configs(
+    type: Optional[str] = Query(None, description="Filter by type: chat, embedding, rerank"),
+    service: ApiConfigService = Depends(get_api_config_service),
+):
     """
     Get all API configs for the authenticated user.
 
-    Returns configs with decrypted api_key and api_base fields.
+    Optionally filter by type. Returns configs with decrypted fields.
     """
     try:
-        configs = service.load_api_configs()
-        # Decrypt sensitive fields before returning
+        if type and type not in ("chat", "embedding", "rerank"):
+            raise HTTPException(status_code=400, detail="Invalid config type")
+
+        configs = service.load_api_configs(config_type=type)
         decrypted_configs = [_decrypt_config(config) for config in configs]
-        logger.debug(f"Retrieved {len(decrypted_configs)} API configs")
+        logger.debug(f"Retrieved {len(decrypted_configs)} API configs (type={type})")
         return decrypted_configs
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"Failed to get API configs: {e}")
         raise HTTPException(status_code=500, detail="Failed to retrieve API configs")
+
+
+@router.get("/grouped", response_model=ApiConfigsGroupedResponse)
+async def get_api_configs_grouped(
+    service: ApiConfigService = Depends(get_api_config_service),
+):
+    """
+    Get all API configs grouped by type.
+
+    Returns: {chat: [...], embedding: [...], rerank: [...]}
+    """
+    try:
+        logger.debug(f"get_api_configs_grouped called for user {service.user_id}")
+        all_configs = service.load_api_configs()
+        logger.debug(f"Loaded {len(all_configs)} configs, decrypting...")
+        decrypted = [_decrypt_config(c) for c in all_configs]
+        logger.debug(f"Decrypted {len(decrypted)} configs")
+
+        grouped = {
+            "chat": [c for c in decrypted if c.get("type") == "chat"],
+            "embedding": [c for c in decrypted if c.get("type") == "embedding"],
+            "rerank": [c for c in decrypted if c.get("type") == "rerank"],
+        }
+
+        logger.debug(f"Retrieved grouped configs: chat={len(grouped['chat'])}, "
+                     f"embedding={len(grouped['embedding'])}, rerank={len(grouped['rerank'])}")
+        return grouped
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to get grouped API configs: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Failed to retrieve grouped API configs: {str(e)}")
+
+
+@router.get("/active/{config_type}", response_model=Optional[ApiConfigResponse])
+async def get_active_config(
+    config_type: str,
+    service: ApiConfigService = Depends(get_api_config_service),
+):
+    """
+    Get the active config for a specific type.
+
+    Returns null if no active config exists for that type.
+    """
+    try:
+        if config_type not in ("chat", "embedding", "rerank"):
+            raise HTTPException(status_code=400, detail="Invalid config type")
+
+        config = service.get_active_config(config_type)
+        if config:
+            return _decrypt_config(config)
+        return None
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to get active {config_type} config: {e}")
+        raise HTTPException(status_code=500, detail="Failed to retrieve active config")
 
 
 @router.post("", response_model=ApiConfigResponse)
@@ -84,29 +153,15 @@ async def create_api_config(
     Create a new API config.
 
     Encrypts api_key and api_base before storing.
+    If is_active=True, deactivates other configs of same type.
     """
     try:
-        # Convert to dict and encrypt sensitive fields
         config_data = data.model_dump()
         encrypted_data = _encrypt_sensitive_fields(config_data)
 
-        # Save using upsert (single item list)
-        result = service.save_api_configs([encrypted_data])
-
-        if not result.get("success"):
-            raise HTTPException(
-                status_code=400, detail=result.get("error", "Failed to create config")
-            )
-
-        # Reload to get the created config with ID
-        configs = service.load_api_configs()
-        if configs:
-            # Return the most recently created one (sorted by created_at desc)
-            created_config = _decrypt_config(configs[0])
-            logger.info(f"Created API config: {created_config.get('id')}")
-            return created_config
-
-        raise HTTPException(status_code=500, detail="Config created but not found")
+        created = service.create_api_config(encrypted_data)
+        logger.info(f"Created API config: {created.get('id')} (type={created.get('type')})")
+        return _decrypt_config(created)
 
     except HTTPException:
         raise
@@ -120,11 +175,7 @@ async def get_api_config(
     config_id: UUID,
     service: ApiConfigService = Depends(get_api_config_service),
 ):
-    """
-    Get a single API config by ID.
-
-    Returns config with decrypted api_key and api_base fields.
-    """
+    """Get a single API config by ID."""
     try:
         config = service.get_api_config(str(config_id))
         if not config:
@@ -146,41 +197,28 @@ async def update_api_config(
     """
     Update an API config by ID.
 
-    Supports partial updates. Encrypts api_key and api_base if provided.
+    Supports partial updates. If is_active=True, deactivates others of same type.
     """
     try:
-        # First check if config exists
         existing = service.get_api_config(str(config_id))
         if not existing:
             raise HTTPException(status_code=404, detail="API config not found")
 
-        # Filter out None values for partial update
         update_data = {k: v for k, v in data.model_dump().items() if v is not None}
 
         if not update_data:
-            # No fields to update, return existing config
             return _decrypt_config(existing)
 
-        # Encrypt sensitive fields if provided
         encrypted_data = _encrypt_sensitive_fields(update_data)
+        updated = service.update_api_config(str(config_id), encrypted_data)
 
-        result = service.update_api_config(str(config_id), encrypted_data)
-
-        if not result.get("success"):
-            raise HTTPException(
-                status_code=400, detail=result.get("error", "Failed to update config")
-            )
-
-        # Reload to return updated config
-        updated_config = service.get_api_config(str(config_id))
-        if updated_config:
-            logger.info(f"Updated API config: {config_id}")
-            return _decrypt_config(updated_config)
-
-        raise HTTPException(status_code=500, detail="Config updated but not found")
+        logger.info(f"Updated API config: {config_id}")
+        return _decrypt_config(updated)
 
     except HTTPException:
         raise
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
     except Exception as e:
         logger.error(f"Failed to update API config {config_id}: {e}")
         raise HTTPException(status_code=500, detail="Failed to update API config")
@@ -193,7 +231,6 @@ async def delete_api_config(
 ):
     """Delete an API config by ID."""
     try:
-        # First check if config exists
         existing = service.get_api_config(str(config_id))
         if not existing:
             raise HTTPException(status_code=404, detail="API config not found")
@@ -209,28 +246,29 @@ async def delete_api_config(
         raise HTTPException(status_code=500, detail="Failed to delete API config")
 
 
-@router.post("/{config_id}/set-default")
-async def set_default_config(
+@router.post("/{config_id}/activate")
+async def activate_config(
     config_id: UUID,
     service: ApiConfigService = Depends(get_api_config_service),
 ):
     """
-    Set an API config as the default.
+    Activate a config, auto-deactivating others of same type.
 
-    Unsets any previously default config for this user.
+    This is the preferred way to change active config.
     """
     try:
-        # First check if config exists
         existing = service.get_api_config(str(config_id))
         if not existing:
             raise HTTPException(status_code=404, detail="API config not found")
 
-        service.set_default_config(str(config_id))
-        logger.info(f"Set API config {config_id} as default")
+        service.set_active_config(str(config_id))
+        logger.info(f"Activated API config {config_id} (type={existing.get('type')})")
         return {"success": True}
 
     except HTTPException:
         raise
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
     except Exception as e:
-        logger.error(f"Failed to set default API config {config_id}: {e}")
-        raise HTTPException(status_code=500, detail="Failed to set default config")
+        logger.error(f"Failed to activate API config {config_id}: {e}")
+        raise HTTPException(status_code=500, detail="Failed to activate config")

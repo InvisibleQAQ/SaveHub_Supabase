@@ -1,17 +1,31 @@
 import type { StateCreator } from "zustand"
-import type { ApiConfig } from "../types"
+import type { ApiConfig, ApiConfigType, ApiConfigsGrouped } from "../types"
 import type { RSSReaderStore } from "./index"
 import { logger } from "../logger"
 import { apiConfigsApi } from "../api/api-configs"
 
 export interface ApiConfigsSlice {
   // Actions
-  addApiConfig: (config: Omit<ApiConfig, "id" | "createdAt">) => void
-  updateApiConfig: (id: string, updates: Partial<ApiConfig>) => void
-  deleteApiConfig: (id: string) => void
-  setDefaultApiConfig: (id: string) => void
-  syncApiConfigsToSupabase: () => Promise<void>
+  addApiConfig: (config: Omit<ApiConfig, "id" | "createdAt" | "updatedAt">) => Promise<void>
+  updateApiConfig: (id: string, updates: Partial<ApiConfig>) => Promise<void>
+  deleteApiConfig: (id: string) => Promise<void>
+  activateApiConfig: (id: string) => Promise<void>
   loadApiConfigsFromSupabase: () => Promise<void>
+
+  // Selectors
+  getActiveConfig: (type: ApiConfigType) => ApiConfig | undefined
+}
+
+/**
+ * Find which type a config belongs to.
+ */
+function findConfigType(grouped: ApiConfigsGrouped, configId: string): ApiConfigType | null {
+  for (const type of ["chat", "embedding", "rerank"] as ApiConfigType[]) {
+    if (grouped[type].some((c) => c.id === configId)) {
+      return type
+    }
+  }
+  return null
 }
 
 export const createApiConfigsSlice: StateCreator<
@@ -20,108 +34,141 @@ export const createApiConfigsSlice: StateCreator<
   [],
   ApiConfigsSlice
 > = (set, get) => ({
-  addApiConfig: (config) => {
-    const createConfig = async () => {
-      try {
-        logger.debug({ configName: config.name }, 'Creating API config via backend')
-        const newConfig = await apiConfigsApi.createApiConfig(config)
+  addApiConfig: async (config) => {
+    try {
+      logger.debug({ configName: config.name, type: config.type }, "Creating API config")
+      const newConfig = await apiConfigsApi.create(config)
 
-        set((state) => ({
-          apiConfigs: [...state.apiConfigs, newConfig],
-        }))
+      set((state) => {
+        const grouped = { ...state.apiConfigsGrouped }
+        const type = newConfig.type
 
-        logger.info({ configId: newConfig.id, configName: newConfig.name }, 'API config created')
-      } catch (error) {
-        logger.error({ error, configName: config.name }, 'Failed to create API config')
-        set({ error: error instanceof Error ? error.message : "Unknown error" })
-      }
+        // If new config is active, deactivate others of same type in local state
+        if (newConfig.isActive) {
+          grouped[type] = grouped[type].map((c) => ({ ...c, isActive: false }))
+        }
+        grouped[type] = [...grouped[type], newConfig]
+
+        return { apiConfigsGrouped: grouped }
+      })
+
+      logger.info({ configId: newConfig.id, type: newConfig.type }, "API config created")
+    } catch (error) {
+      logger.error({ error, configName: config.name }, "Failed to create API config")
+      set({ error: error instanceof Error ? error.message : "Unknown error" })
+      throw error
     }
-    createConfig()
   },
 
-  updateApiConfig: (id, updates) => {
-    const updateConfig = async () => {
-      try {
-        logger.debug({ configId: id }, 'Updating API config via backend')
-        const updatedConfig = await apiConfigsApi.updateApiConfig(id, updates)
+  updateApiConfig: async (id, updates) => {
+    try {
+      logger.debug({ configId: id }, "Updating API config")
+      const updatedConfig = await apiConfigsApi.update(id, updates)
 
-        set((state) => ({
-          apiConfigs: state.apiConfigs.map((config) =>
-            config.id === id ? updatedConfig : config
-          ),
-        }))
+      set((state) => {
+        const grouped = { ...state.apiConfigsGrouped }
+        const type = updatedConfig.type
 
-        logger.info({ configId: id }, 'API config updated')
-      } catch (error) {
-        logger.error({ error, configId: id }, 'Failed to update API config')
-        set({ error: error instanceof Error ? error.message : "Unknown error" })
-      }
+        // If activating, deactivate others of same type
+        if (updatedConfig.isActive) {
+          grouped[type] = grouped[type].map((c) =>
+            c.id === id ? updatedConfig : { ...c, isActive: false }
+          )
+        } else {
+          grouped[type] = grouped[type].map((c) =>
+            c.id === id ? updatedConfig : c
+          )
+        }
+
+        return { apiConfigsGrouped: grouped }
+      })
+
+      logger.info({ configId: id }, "API config updated")
+    } catch (error) {
+      logger.error({ error, configId: id }, "Failed to update API config")
+      set({ error: error instanceof Error ? error.message : "Unknown error" })
+      throw error
     }
-    updateConfig()
   },
 
-  deleteApiConfig: (id) => {
-    const deleteFromBackend = async () => {
-      try {
-        logger.debug({ configId: id }, 'Deleting API config via backend')
-        await apiConfigsApi.deleteApiConfig(id)
+  deleteApiConfig: async (id) => {
+    try {
+      logger.debug({ configId: id }, "Deleting API config")
+      await apiConfigsApi.delete(id)
 
-        // Only update store if backend delete succeeded
-        set((state) => ({
-          apiConfigs: state.apiConfigs.filter((config) => config.id !== id),
-        }))
+      set((state) => {
+        const grouped = { ...state.apiConfigsGrouped }
 
-        logger.info({ configId: id }, 'API config deleted')
-      } catch (error) {
-        logger.error({ error, configId: id }, 'Failed to delete API config')
-        set({ error: error instanceof Error ? error.message : "Unknown error" })
-      }
+        // Remove from whichever type it belongs to
+        for (const type of ["chat", "embedding", "rerank"] as ApiConfigType[]) {
+          grouped[type] = grouped[type].filter((c) => c.id !== id)
+        }
+
+        return { apiConfigsGrouped: grouped }
+      })
+
+      logger.info({ configId: id }, "API config deleted")
+    } catch (error) {
+      logger.error({ error, configId: id }, "Failed to delete API config")
+      set({ error: error instanceof Error ? error.message : "Unknown error" })
+      throw error
     }
-    deleteFromBackend()
   },
 
-  setDefaultApiConfig: (id) => {
-    const setDefault = async () => {
-      try {
-        logger.debug({ configId: id }, 'Setting default API config via backend')
-        await apiConfigsApi.setDefaultConfig(id)
+  activateApiConfig: async (id) => {
+    try {
+      logger.debug({ configId: id }, "Activating API config")
+      await apiConfigsApi.activate(id)
 
-        // Update store to reflect new default
-        set((state) => ({
-          apiConfigs: state.apiConfigs.map((config) => ({
-            ...config,
-            isDefault: config.id === id,
-          })),
-        }))
+      set((state) => {
+        const grouped = { ...state.apiConfigsGrouped }
+        const type = findConfigType(grouped, id)
 
-        logger.info({ configId: id }, 'Default API config set')
-      } catch (error) {
-        logger.error({ error, configId: id }, 'Failed to set default API config')
-        set({ error: error instanceof Error ? error.message : "Unknown error" })
-      }
+        if (type) {
+          // Deactivate all, activate target
+          grouped[type] = grouped[type].map((c) => ({
+            ...c,
+            isActive: c.id === id,
+          }))
+        }
+
+        return { apiConfigsGrouped: grouped }
+      })
+
+      logger.info({ configId: id }, "API config activated")
+    } catch (error) {
+      logger.error({ error, configId: id }, "Failed to activate API config")
+      set({ error: error instanceof Error ? error.message : "Unknown error" })
+      throw error
     }
-    setDefault()
-  },
-
-  syncApiConfigsToSupabase: async () => {
-    // No-op: Each operation now calls the backend API directly.
-    // This function is kept for interface compatibility.
-    logger.debug('syncApiConfigsToSupabase called (no-op - using direct API calls)')
   },
 
   loadApiConfigsFromSupabase: async () => {
     try {
-      set({ isLoading: true, error: null })
-      logger.debug('Loading API configs from backend')
-      const apiConfigs = await apiConfigsApi.getApiConfigs()
-      set({ apiConfigs, isLoading: false })
-      logger.debug({ loadedCount: apiConfigs.length }, 'API configs loaded from backend')
+      // Note: Don't set global isLoading here - it causes infinite loop
+      // because reader layout unmounts children when isLoading is true
+      logger.debug("Loading API configs from backend")
+
+      const grouped = await apiConfigsApi.getGrouped()
+      set({ apiConfigsGrouped: grouped })
+
+      const totalCount = grouped.chat.length + grouped.embedding.length + grouped.rerank.length
+      logger.debug(
+        { chat: grouped.chat.length, embedding: grouped.embedding.length, rerank: grouped.rerank.length },
+        `Loaded ${totalCount} API configs`
+      )
     } catch (error) {
-      logger.error({ error }, 'Failed to load API configs from backend')
+      logger.error({ error }, "Failed to load API configs")
+      // Don't set global error - API config loading failure shouldn't block the whole app
+      // Settings page will handle empty state gracefully
       set({
-        error: error instanceof Error ? error.message : "Unknown error",
-        isLoading: false,
+        apiConfigsGrouped: { chat: [], embedding: [], rerank: [] },
       })
     }
+  },
+
+  getActiveConfig: (type) => {
+    const grouped = get().apiConfigsGrouped
+    return grouped[type].find((c) => c.isActive)
   },
 })

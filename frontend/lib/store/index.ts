@@ -44,7 +44,7 @@ export const useRSSStore = create<RSSReaderStore>()((...a) => ({
   folders: [],
   feeds: [],
   articles: [],
-  apiConfigs: [],
+  apiConfigsGrouped: { chat: [], embedding: [], rerank: [] },
   selectedFeedId: null,
   selectedArticleId: null,
   isLoading: false,
