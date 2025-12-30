@@ -15,7 +15,7 @@ import {
 } from "@/components/ui/dropdown-menu"
 import { useRSSStore } from "@/lib/store"
 import { cn } from "@/lib/utils"
-import { formatDistanceToNow, estimateReadingTime } from "@/lib/utils"
+import { formatDistanceToNow, estimateReadingTime, getProxiedImageUrl } from "@/lib/utils"
 
 type SortOption = "date" | "title" | "feed" | "readTime"
 type SortDirection = "asc" | "desc"
@@ -203,7 +203,7 @@ export function ArticleList({ viewMode = "all", feedId = null }: ArticleListProp
                     {article.thumbnail && (
                       <div className="flex-shrink-0">
                         <img
-                          src={article.thumbnail || "/placeholder.svg"}
+                          src={getProxiedImageUrl(article.thumbnail) || "/placeholder.svg"}
                           alt=""
                           className="w-16 h-16 rounded-md object-cover bg-muted"
                           onError={(e) => {

@@ -12,7 +12,7 @@ import {
 } from "@/components/ui/dropdown-menu"
 import { useRSSStore } from "@/lib/store"
 import { cn } from "@/lib/utils"
-import { formatDistanceToNow, formatFullDate, sanitizeHTML, estimateReadingTime } from "@/lib/utils"
+import { formatDistanceToNow, formatFullDate, sanitizeHTML, estimateReadingTime, getProxiedImageUrl } from "@/lib/utils"
 import { useToast } from "@/hooks/use-toast"
 
 export function ArticleContent() {
@@ -223,7 +223,7 @@ export function ArticleContent() {
             {selectedArticle.thumbnail && (
               <div className="mb-6">
                 <img
-                  src={selectedArticle.thumbnail || "/placeholder.svg"}
+                  src={getProxiedImageUrl(selectedArticle.thumbnail) || "/placeholder.svg"}
                   alt=""
                   className="w-full max-w-2xl mx-auto rounded-lg shadow-sm"
                   onError={(e) => {
