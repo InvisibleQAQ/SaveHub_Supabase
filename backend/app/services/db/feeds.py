@@ -32,6 +32,11 @@ class FeedService:
         """
         db_rows = []
         for feed in feeds:
+            # Convert datetime to ISO string for JSON serialization
+            last_fetched = feed.get("last_fetched")
+            if isinstance(last_fetched, datetime):
+                last_fetched = last_fetched.isoformat()
+
             db_rows.append({
                 "id": str(feed.get("id")) if feed.get("id") else None,
                 "title": feed["title"],
@@ -43,7 +48,7 @@ class FeedService:
                 "unread_count": feed.get("unread_count", 0),
                 "refresh_interval": feed.get("refresh_interval", 60),
                 "user_id": self.user_id,
-                "last_fetched": feed.get("last_fetched"),
+                "last_fetched": last_fetched,
                 "last_fetch_status": feed.get("last_fetch_status"),
                 "last_fetch_error": feed.get("last_fetch_error"),
                 "enable_deduplication": feed.get("enable_deduplication", False),
