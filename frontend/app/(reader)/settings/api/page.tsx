@@ -26,21 +26,21 @@ const TAB_CONFIG: {
     label: "Chat API",
     description: "用于AI对话和文章摘要",
     placeholder: "https://api.openai.com/v1/chat/completions",
-    hint: "请填写完整的 Chat API 端点地址",
+    hint: "请填写完整的 Chat API 端点地址, 请求方式为openai兼容格式",
   },
   {
     type: "embedding",
     label: "Embedding API",
     description: "用于文本向量化和语义搜索",
     placeholder: "https://api.openai.com/v1/embeddings",
-    hint: "请填写完整的 Embedding API 端点地址",
+    hint: "请填写完整的 Embedding API 端点地址, 请求方式为openai兼容格式",
   },
   {
     type: "rerank",
     label: "Rerank API",
-    description: "用于搜索结果重排序",
-    placeholder: "https://api.jina.ai/v1/rerank",
-    hint: "请填写完整的 Rerank API 端点地址",
+    description: "用于搜索结果重排序（支持阿里云DashScope）",
+    placeholder: "dashscope",
+    hint: "支持阿里云DashScope, 请填写 'dashscope'，模型选项: gte-rerank-v2, qwen3-rerank",
   },
 ]
 

@@ -121,15 +121,26 @@ async def validate_rerank_api(
     model: str,
 ) -> Tuple[bool, Optional[str], Optional[int]]:
     """
-    Validate rerank API by sending a test request to the full endpoint URL.
+    Validate rerank API by sending a test request.
+
+    Supports two modes:
+    1. DashScope SDK (api_base == "dashscope"): Uses dashscope.TextReRank.call()
+    2. HTTP API (other api_base values): Standard HTTP POST request
 
     Args:
-        api_key: API key
-        api_base: Full endpoint URL (e.g., https://api.example.com/v1/rerank)
-        model: Model name
+        api_key: API key (DashScope API key for mode 1, Bearer token for mode 2)
+        api_base: "dashscope" for DashScope SDK, or full endpoint URL for HTTP API
+        model: Model name (e.g., "gte-rerank-v2" for DashScope)
 
     Returns: (success, error_message, latency_ms)
+
+    Reference: https://www.alibabacloud.com/help/tc/model-studio/text-rerank-api
     """
+    # DashScope SDK mode
+    if api_base.lower() == "dashscope":
+        return await _validate_dashscope_rerank(api_key, model)
+
+    # HTTP API mode (Jina, etc.)
     try:
         start_time = time.time()
 
@@ -163,6 +174,62 @@ async def validate_rerank_api(
         error_msg = _parse_error(e, "rerank")
         logger.warning(f"Rerank API validation failed: {e}")
         return False, error_msg, None
+
+
+async def _validate_dashscope_rerank(
+    api_key: str,
+    model: str,
+) -> Tuple[bool, Optional[str], Optional[int]]:
+    """
+    Validate DashScope rerank API using the dashscope SDK.
+
+    Args:
+        api_key: DashScope API key
+        model: Model name (e.g., "gte-rerank-v2")
+
+    Returns: (success, error_message, latency_ms)
+    """
+    import asyncio
+
+    try:
+        from dashscope import TextReRank
+    except ImportError:
+        return False, "dashscope库未安装，请运行: pip install dashscope", None
+
+    try:
+        start_time = time.time()
+
+        # DashScope SDK is synchronous, run in executor
+        def sync_call():
+            return TextReRank.call(
+                model=model,
+                query="测试查询",
+                documents=["测试文档"],
+                top_n=1,
+                return_documents=False,
+                api_key=api_key,
+            )
+
+        loop = asyncio.get_event_loop()
+        resp = await loop.run_in_executor(None, sync_call)
+
+        latency = int((time.time() - start_time) * 1000)
+
+        # Check response status
+        if resp.status_code == 200:
+            return True, None, latency
+        else:
+            error_msg = resp.message if hasattr(resp, 'message') else f"错误码: {resp.status_code}"
+            return False, f"DashScope验证失败: {error_msg}", None
+
+    except Exception as e:
+        error_str = str(e).lower()
+        if "invalid api-key" in error_str or "unauthorized" in error_str:
+            return False, "DashScope API Key无效", None
+        if "model not found" in error_str or "does not exist" in error_str:
+            return False, f"模型 {model} 不存在，请检查模型名称", None
+        logger.warning(f"DashScope rerank validation failed: {e}")
+        return False, f"DashScope验证失败: {str(e)[:100]}", None
 
 
 async def validate_api(

@@ -92,10 +92,16 @@ export async function validateApiConfig(config: ApiValidationRequest): Promise<A
 
 /**
  * Validate API endpoint URL format (client-side only)
+ * Special case: "dashscope" is valid for DashScope rerank API
  */
 export function validateApiBaseUrl(apiBase: string): { valid: boolean; error?: string } {
   if (!apiBase || apiBase.trim() === '') {
     return { valid: false, error: 'API 端点 URL不能为空' }
+  }
+
+  // Special case: DashScope SDK identifier
+  if (apiBase.trim().toLowerCase() === 'dashscope') {
+    return { valid: true }
   }
 
   try {
