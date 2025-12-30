@@ -10,15 +10,38 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Badge } from "@/components/ui/badge"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { Combobox } from "@/components/ui/combobox"
 import { Trash2, Edit, Plus, CheckCircle, XCircle, Loader2, Power } from "lucide-react"
-import { validateApiCredentials, validateApiBaseUrl } from "@/lib/api-validation"
+import { validateApiConfig, validateApiBaseUrl } from "@/lib/api-validation"
 import { useToast } from "@/hooks/use-toast"
 
-const TAB_CONFIG: { type: ApiConfigType; label: string; description: string }[] = [
-  { type: "chat", label: "Chat API", description: "用于AI对话和文章摘要" },
-  { type: "embedding", label: "Embedding API", description: "用于文本向量化和语义搜索" },
-  { type: "rerank", label: "Rerank API", description: "用于搜索结果重排序" },
+const TAB_CONFIG: {
+  type: ApiConfigType
+  label: string
+  description: string
+  placeholder: string
+  hint: string
+}[] = [
+  {
+    type: "chat",
+    label: "Chat API",
+    description: "用于AI对话和文章摘要",
+    placeholder: "https://api.openai.com/v1/chat/completions",
+    hint: "请填写完整的 Chat API 端点地址",
+  },
+  {
+    type: "embedding",
+    label: "Embedding API",
+    description: "用于文本向量化和语义搜索",
+    placeholder: "https://api.openai.com/v1/embeddings",
+    hint: "请填写完整的 Embedding API 端点地址",
+  },
+  {
+    type: "rerank",
+    label: "Rerank API",
+    description: "用于搜索结果重排序",
+    placeholder: "https://api.jina.ai/v1/rerank",
+    hint: "请填写完整的 Rerank API 端点地址",
+  },
 ]
 
 interface FormData {
@@ -58,7 +81,6 @@ export default function ApiConfigPage() {
     success: boolean
     error?: string
     latency?: number
-    models?: string[]
   } | null>(null)
 
   const { toast } = useToast()
@@ -78,20 +100,30 @@ export default function ApiConfigPage() {
     setValidationResult(null)
   }
 
+  // Trim all form fields
+  const getTrimmedFormData = () => ({
+    name: formData.name.trim(),
+    apiKey: formData.apiKey.trim(),
+    apiBase: formData.apiBase.trim(),
+    model: formData.model.trim(),
+  })
+
   const handleValidate = async () => {
-    if (!formData.apiKey || !formData.apiBase) {
+    const trimmed = getTrimmedFormData()
+
+    if (!trimmed.apiKey || !trimmed.apiBase || !trimmed.model) {
       toast({
         title: "错误",
-        description: "请填写API Key和API Base URL后再验证",
+        description: "请填写API Key、API 端点 URL和模型名称后再验证",
         variant: "destructive",
       })
       return
     }
 
-    const urlValidation = validateApiBaseUrl(formData.apiBase)
+    const urlValidation = validateApiBaseUrl(trimmed.apiBase)
     if (!urlValidation.valid) {
       toast({
-        title: "API Base URL错误",
+        title: "API 端点 URL错误",
         description: urlValidation.error,
         variant: "destructive",
       })
@@ -102,29 +134,30 @@ export default function ApiConfigPage() {
     setValidationResult(null)
 
     try {
-      const result = await validateApiCredentials({
-        apiKey: formData.apiKey,
-        apiBase: formData.apiBase,
+      const result = await validateApiConfig({
+        apiKey: trimmed.apiKey,
+        apiBase: trimmed.apiBase,
+        model: trimmed.model,
+        type: activeTab,
       })
 
       setValidationResult({
         success: result.success,
         error: result.error,
         latency: result.details?.latency,
-        models: result.models,
       })
 
       if (result.success) {
         toast({
           title: "验证成功",
           description: result.details?.latency
-            ? `API配置有效，响应时间: ${result.details.latency}ms${result.models ? `，找到${result.models.length}个可用模型` : ""}`
-            : "API配置验证成功",
+            ? `模型 ${trimmed.model} 可用，响应时间: ${result.details.latency}ms`
+            : "模型验证成功",
         })
       } else {
         toast({
           title: "验证失败",
-          description: result.error || "API配置验证失败",
+          description: result.error || "模型验证失败",
           variant: "destructive",
         })
       }
@@ -145,7 +178,9 @@ export default function ApiConfigPage() {
   }
 
   const handleAdd = async () => {
-    if (!formData.name || !formData.apiKey || !formData.apiBase || !formData.model) {
+    const trimmed = getTrimmedFormData()
+
+    if (!trimmed.name || !trimmed.apiKey || !trimmed.apiBase || !trimmed.model) {
       toast({
         title: "错误",
         description: "请填写所有必填字段",
@@ -165,10 +200,10 @@ export default function ApiConfigPage() {
 
     try {
       await addApiConfig({
-        name: formData.name,
-        apiKey: formData.apiKey,
-        apiBase: formData.apiBase,
-        model: formData.model,
+        name: trimmed.name,
+        apiKey: trimmed.apiKey,
+        apiBase: trimmed.apiBase,
+        model: trimmed.model,
         type: activeTab,
         isActive: apiConfigsGrouped[activeTab].length === 0, // First config is auto-active
       })
@@ -189,7 +224,9 @@ export default function ApiConfigPage() {
   const handleEdit = async () => {
     if (!editingConfig) return
 
-    if (!formData.name || !formData.apiKey || !formData.apiBase || !formData.model) {
+    const trimmed = getTrimmedFormData()
+
+    if (!trimmed.name || !trimmed.apiKey || !trimmed.apiBase || !trimmed.model) {
       toast({
         title: "错误",
         description: "请填写所有必填字段",
@@ -209,10 +246,10 @@ export default function ApiConfigPage() {
 
     try {
       await updateApiConfig(editingConfig.id, {
-        name: formData.name,
-        apiKey: formData.apiKey,
-        apiBase: formData.apiBase,
-        model: formData.model,
+        name: trimmed.name,
+        apiKey: trimmed.apiKey,
+        apiBase: trimmed.apiBase,
+        model: trimmed.model,
       })
       resetForm()
       setEditingConfig(null)
@@ -277,14 +314,14 @@ export default function ApiConfigPage() {
   const renderValidationSection = () => (
     <div className="space-y-3">
       <div className="flex items-center justify-between">
-        <Label>验证API配置</Label>
+        <Label>验证模型</Label>
         <div className="flex flex-col items-end gap-2">
           <Button
             type="button"
             variant="outline"
             size="sm"
             onClick={handleValidate}
-            disabled={isValidating || !formData.apiKey || !formData.apiBase}
+            disabled={isValidating || !formData.apiKey || !formData.apiBase || !formData.model}
           >
             {isValidating ? (
               <>
@@ -294,12 +331,12 @@ export default function ApiConfigPage() {
             ) : (
               <>
                 <CheckCircle className="h-4 w-4 mr-2" />
-                验证配置
+                验证模型
               </>
             )}
           </Button>
-          {(!formData.apiKey || !formData.apiBase) && (
-            <p className="text-xs text-muted-foreground">请填写API Key和API Base URL后验证</p>
+          {(!formData.apiKey || !formData.apiBase || !formData.model) && (
+            <p className="text-xs text-muted-foreground">请填写API Key、API 端点 URL和模型名称后验证</p>
           )}
         </div>
       </div>
@@ -336,42 +373,24 @@ export default function ApiConfigPage() {
     </div>
   )
 
-  const renderModelField = (idPrefix: string) => {
-    if (!validationResult?.success) return null
-
-    return (
-      <div className="space-y-2">
-        <Label htmlFor={`${idPrefix}-model`}>
-          模型 <span className="text-red-500">*</span>
-        </Label>
-        {validationResult.models && validationResult.models.length > 0 ? (
-          <>
-            <Combobox
-              options={validationResult.models.map((model) => ({
-                value: model,
-                label: model,
-              }))}
-              value={formData.model}
-              onValueChange={(value) => setFormData((prev) => ({ ...prev, model: value }))}
-              placeholder="输入或选择模型"
-              searchPlaceholder="搜索或输入模型名称..."
-              emptyText="未找到匹配的模型，直接输入即可"
-            />
-            <p className="text-xs text-muted-foreground">
-              从验证的API中找到 {validationResult.models.length} 个可用模型，您也可以输入自定义模型名称
-            </p>
-          </>
-        ) : (
-          <Input
-            id={`${idPrefix}-model`}
-            value={formData.model}
-            onChange={(e) => setFormData((prev) => ({ ...prev, model: e.target.value }))}
-            placeholder="gpt-3.5-turbo"
-          />
-        )}
-      </div>
-    )
-  }
+  const renderModelField = (idPrefix: string) => (
+    <div className="space-y-2">
+      <Label htmlFor={`${idPrefix}-model`}>
+        模型 <span className="text-red-500">*</span>
+      </Label>
+      <Input
+        id={`${idPrefix}-model`}
+        value={formData.model}
+        onChange={(e) => {
+          setFormData((prev) => ({ ...prev, model: e.target.value }))
+          // 模型变更时清除验证结果
+          if (validationResult) setValidationResult(null)
+        }}
+        placeholder="gpt-3.5-turbo, text-embedding-ada-002, etc."
+      />
+      <p className="text-xs text-muted-foreground">输入要使用的模型名称</p>
+    </div>
+  )
 
   const renderConfigList = (type: ApiConfigType) => {
     const configs = apiConfigsGrouped[type]
@@ -421,7 +440,7 @@ export default function ApiConfigPage() {
                   <span className="text-muted-foreground">{config.model}</span>
                 </div>
                 <div>
-                  <span className="font-medium">API Base: </span>
+                  <span className="font-medium">API 端点: </span>
                   <span className="text-muted-foreground">{config.apiBase}</span>
                 </div>
               </div>
@@ -492,18 +511,19 @@ export default function ApiConfigPage() {
 
                 <div className="space-y-2">
                   <Label htmlFor={`add-${tab.type}-apiBase`}>
-                    API Base URL <span className="text-red-500">*</span>
+                    API 端点 URL <span className="text-red-500">*</span>
                   </Label>
                   <Input
                     id={`add-${tab.type}-apiBase`}
                     value={formData.apiBase}
                     onChange={(e) => setFormData((prev) => ({ ...prev, apiBase: e.target.value }))}
-                    placeholder="https://api.openai.com/v1"
+                    placeholder={tab.placeholder}
                   />
+                  <p className="text-xs text-muted-foreground">{tab.hint}</p>
                 </div>
 
-                {renderValidationSection()}
                 {renderModelField(`add-${tab.type}`)}
+                {renderValidationSection()}
 
                 <div className="flex justify-end gap-2 pt-2">
                   <Button variant="outline" onClick={resetForm}>
@@ -573,18 +593,21 @@ export default function ApiConfigPage() {
             </div>
             <div className="space-y-2">
               <Label htmlFor="edit-apiBase">
-                API Base URL <span className="text-red-500">*</span>
+                API 端点 URL <span className="text-red-500">*</span>
               </Label>
               <Input
                 id="edit-apiBase"
                 value={formData.apiBase}
                 onChange={(e) => setFormData((prev) => ({ ...prev, apiBase: e.target.value }))}
-                placeholder="https://api.openai.com/v1"
+                placeholder={TAB_CONFIG.find((t) => t.type === editingConfig?.type)?.placeholder || "https://api.openai.com/v1/chat/completions"}
               />
+              <p className="text-xs text-muted-foreground">
+                {TAB_CONFIG.find((t) => t.type === editingConfig?.type)?.hint || "请填写完整的 API 端点地址"}
+              </p>
             </div>
 
-            {renderValidationSection()}
             {renderModelField("edit")}
+            {renderValidationSection()}
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setIsEditDialogOpen(false)}>

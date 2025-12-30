@@ -16,9 +16,13 @@ from app.schemas.api_configs import (
     ApiConfigUpdate,
     ApiConfigResponse,
     ApiConfigsGroupedResponse,
+    ApiValidationRequest,
+    ApiValidationResponse,
+    ApiValidationDetails,
 )
 from app.services.db.api_configs import ApiConfigService
 from app.services.encryption import encrypt, decrypt
+from app.services.api_validation import validate_api
 
 logger = logging.getLogger(__name__)
 
@@ -272,3 +276,48 @@ async def activate_config(
     except Exception as e:
         logger.error(f"Failed to activate API config {config_id}: {e}")
         raise HTTPException(status_code=500, detail="Failed to activate config")
+
+
+@router.post("/validate", response_model=ApiValidationResponse)
+async def validate_api_config(
+    data: ApiValidationRequest,
+    _user=Depends(verify_auth),
+):
+    """
+    Validate API credentials and model using LangChain.
+
+    Supports chat, embedding, and rerank API types.
+    Makes a test request to verify the configuration works.
+    """
+    try:
+        logger.info(f"Validating {data.type} API: model={data.model}, base={data.api_base}")
+
+        success, error, latency = await validate_api(
+            api_key=data.api_key,
+            api_base=data.api_base,
+            model=data.model,
+            api_type=data.type,
+        )
+
+        if success:
+            logger.info(f"API validation successful: {data.type}/{data.model} ({latency}ms)")
+            return ApiValidationResponse(
+                success=True,
+                details=ApiValidationDetails(
+                    latency=latency,
+                    model_supported=True,
+                ),
+            )
+        else:
+            logger.warning(f"API validation failed: {data.type}/{data.model} - {error}")
+            return ApiValidationResponse(
+                success=False,
+                error=error,
+            )
+
+    except Exception as e:
+        logger.error(f"Unexpected error during API validation: {e}", exc_info=True)
+        return ApiValidationResponse(
+            success=False,
+            error=f"验证过程中发生未知错误: {str(e)[:100]}",
+        )
