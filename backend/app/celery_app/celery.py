@@ -26,7 +26,7 @@ app = Celery(
     "savehub",
     broker=REDIS_URL,
     backend=REDIS_URL,
-    include=["app.celery_app.tasks"]
+    include=["app.celery_app.tasks", "app.celery_app.image_processor"]
 )
 
 app.conf.update(
@@ -60,5 +60,7 @@ app.conf.update(
     },
     task_routes={
         "app.celery_app.tasks.refresh_feed": {"queue": "default"},
+        "process_article_images": {"queue": "default"},
+        "schedule_image_processing": {"queue": "default"},
     },
 )

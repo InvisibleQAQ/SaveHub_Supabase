@@ -119,11 +119,18 @@ def do_refresh_feed(
             })
 
         # Upsert (dedupe by feed_id + url, matches articles_feed_url_unique constraint)
-        supabase.table("articles").upsert(
+        # Note: Don't use ignore_duplicates=True, as it prevents returning updated rows
+        upsert_result = supabase.table("articles").upsert(
             db_articles,
-            on_conflict="feed_id,url",
-            ignore_duplicates=True
+            on_conflict="feed_id,url"
         ).execute()
+
+        # Schedule image processing for articles that need it
+        # (process_article_images will skip already-processed articles)
+        if upsert_result.data:
+            from .image_processor import schedule_image_processing
+            article_ids = [a["id"] for a in upsert_result.data]
+            schedule_image_processing.delay(article_ids)
 
     return {"success": True, "article_count": len(articles)}
 

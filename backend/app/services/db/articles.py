@@ -114,11 +114,11 @@ class ArticleService:
             .select("*") \
             .eq("id", article_id) \
             .eq("user_id", self.user_id) \
-            .single() \
+            .limit(1) \
             .execute()
 
-        if response.data:
-            row = response.data
+        if response.data and len(response.data) > 0:
+            row = response.data[0]
             return {
                 "id": row["id"],
                 "feed_id": row["feed_id"],
