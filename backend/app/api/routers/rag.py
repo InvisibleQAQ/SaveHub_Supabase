@@ -1,0 +1,325 @@
+"""
+RAG API 路由。
+
+提供 RAG 查询、重新索引和状态查询接口。
+"""
+
+import logging
+from typing import Optional
+from uuid import UUID
+
+from fastapi import APIRouter, Depends, HTTPException, Request
+from openai import OpenAI
+
+from app.dependencies import verify_auth, COOKIE_NAME_ACCESS
+from app.supabase_client import get_supabase_client
+from app.services.db.rag import RagService
+from app.services.db.api_configs import ApiConfigService
+from app.services.encryption import decrypt
+from app.services.rag.embedder import embed_text
+from app.services.rag.retriever import get_context_for_answer
+from app.schemas.rag import (
+    RagQueryRequest,
+    RagQueryResponse,
+    RagHit,
+    RagStatusResponse,
+    RagReindexRequest,
+    RagReindexResponse,
+    ArticleEmbeddingsResponse,
+    EmbeddingItem,
+)
+
+logger = logging.getLogger(__name__)
+
+router = APIRouter(prefix="/rag", tags=["rag"])
+
+
+# =============================================================================
+# Dependencies
+# =============================================================================
+
+def get_rag_service(
+    request: Request,
+    auth_response=Depends(verify_auth),
+) -> RagService:
+    """获取 RagService 依赖"""
+    access_token = request.cookies.get(COOKIE_NAME_ACCESS)
+    supabase = get_supabase_client(access_token)
+    return RagService(supabase, auth_response.user.id)
+
+
+def get_api_config_service(
+    request: Request,
+    auth_response=Depends(verify_auth),
+) -> ApiConfigService:
+    """获取 ApiConfigService 依赖"""
+    access_token = request.cookies.get(COOKIE_NAME_ACCESS)
+    supabase = get_supabase_client(access_token)
+    return ApiConfigService(supabase, auth_response.user.id)
+
+
+def get_active_configs(
+    api_service: ApiConfigService,
+) -> dict:
+    """
+    获取用户的活跃 API 配置。
+
+    Returns:
+        {"chat": {...}, "embedding": {...}}
+
+    Raises:
+        HTTPException: 配置不存在
+    """
+    configs = {}
+
+    for config_type in ["chat", "embedding"]:
+        config = api_service.get_active_config(config_type)
+        if not config:
+            raise HTTPException(
+                status_code=400,
+                detail=f"请先配置 {config_type} 类型的 API"
+            )
+
+        # 解密 API Key
+        try:
+            api_key = decrypt(config["api_key"])
+        except Exception:
+            api_key = config["api_key"]
+
+        configs[config_type] = {
+            "api_key": api_key,
+            "api_base": config["api_base"],
+            "model": config["model"],
+        }
+
+    return configs
+
+
+# =============================================================================
+# Endpoints
+# =============================================================================
+
+@router.post("/query", response_model=RagQueryResponse)
+async def query_rag(
+    request: RagQueryRequest,
+    rag_service: RagService = Depends(get_rag_service),
+    api_service: ApiConfigService = Depends(get_api_config_service),
+):
+    """
+    RAG 查询接口。
+
+    1. 将查询转为 embedding
+    2. pgvector 相似度搜索
+    3. 可选：使用 LLM 生成答案
+    """
+    try:
+        # 获取配置
+        configs = get_active_configs(api_service)
+        embedding_config = configs["embedding"]
+        chat_config = configs["chat"]
+
+        # 生成查询 embedding
+        query_embedding = embed_text(
+            request.query,
+            embedding_config["api_key"],
+            embedding_config["api_base"],
+            embedding_config["model"],
+        )
+
+        # 向量搜索
+        hits = rag_service.search(
+            query_embedding=query_embedding,
+            top_k=request.top_k,
+            feed_id=str(request.feed_id) if request.feed_id else None,
+            min_score=request.min_score,
+        )
+
+        # 转换为响应模型
+        hit_items = [
+            RagHit(
+                id=h["id"],
+                article_id=h["article_id"],
+                chunk_index=h["chunk_index"],
+                content=h["content"],
+                score=h.get("score", 0),
+                article_title=h.get("article_title", ""),
+                article_url=h.get("article_url", ""),
+            )
+            for h in hits
+        ]
+
+        # 可选：生成答案
+        answer = None
+        if request.generate_answer and hits:
+            answer = generate_answer(
+                query=request.query,
+                hits=hits,
+                api_key=chat_config["api_key"],
+                api_base=chat_config["api_base"],
+                model=chat_config["model"],
+            )
+
+        return RagQueryResponse(
+            query=request.query,
+            hits=hit_items,
+            answer=answer,
+            total_hits=len(hit_items),
+        )
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.exception(f"RAG query failed: {e}")
+        raise HTTPException(status_code=500, detail=f"查询失败: {str(e)}")
+
+
+@router.get("/status", response_model=RagStatusResponse)
+async def get_rag_status(
+    rag_service: RagService = Depends(get_rag_service),
+):
+    """获取 RAG 索引状态"""
+    try:
+        stats = rag_service.get_rag_stats()
+        return RagStatusResponse(**stats)
+    except Exception as e:
+        logger.exception(f"Failed to get RAG status: {e}")
+        raise HTTPException(status_code=500, detail="获取状态失败")
+
+
+@router.post("/reindex/{article_id}", response_model=RagReindexResponse)
+async def reindex_article(
+    article_id: UUID,
+    request: RagReindexRequest = RagReindexRequest(),
+    rag_service: RagService = Depends(get_rag_service),
+    auth_response=Depends(verify_auth),
+):
+    """
+    手动触发单篇文章重新索引。
+
+    如果 force=True，会删除现有 embeddings 并重新处理。
+    """
+    from app.celery_app.rag_processor import process_article_rag
+
+    user_id = auth_response.user.id
+    article_id_str = str(article_id)
+
+    try:
+        if request.force:
+            # 重置状态，允许重新处理
+            rag_service.reset_article_rag_status(article_id_str)
+            rag_service.delete_article_embeddings(article_id_str)
+
+        # 创建处理任务
+        task = process_article_rag.apply_async(
+            kwargs={
+                "article_id": article_id_str,
+                "user_id": user_id,
+            },
+            queue="default",
+        )
+
+        return RagReindexResponse(
+            success=True,
+            article_id=article_id,
+            message="重新索引任务已创建",
+            task_id=task.id,
+        )
+
+    except Exception as e:
+        logger.exception(f"Failed to reindex article {article_id}: {e}")
+        raise HTTPException(status_code=500, detail=f"重新索引失败: {str(e)}")
+
+
+@router.get("/embeddings/{article_id}", response_model=ArticleEmbeddingsResponse)
+async def get_article_embeddings(
+    article_id: UUID,
+    rag_service: RagService = Depends(get_rag_service),
+):
+    """获取文章的所有 embeddings（不含向量数据）"""
+    try:
+        embeddings = rag_service.get_article_embeddings(str(article_id))
+
+        items = [
+            EmbeddingItem(
+                id=e["id"],
+                chunk_index=e["chunk_index"],
+                content=e["content"],
+                created_at=e["created_at"],
+            )
+            for e in embeddings
+        ]
+
+        return ArticleEmbeddingsResponse(
+            article_id=article_id,
+            embeddings=items,
+            count=len(items),
+        )
+
+    except Exception as e:
+        logger.exception(f"Failed to get embeddings for {article_id}: {e}")
+        raise HTTPException(status_code=500, detail="获取 embeddings 失败")
+
+
+# =============================================================================
+# Helper Functions
+# =============================================================================
+
+def generate_answer(
+    query: str,
+    hits: list,
+    api_key: str,
+    api_base: str,
+    model: str,
+    max_tokens: int = 1000,
+) -> Optional[str]:
+    """
+    使用 LLM 根据检索结果生成答案。
+
+    Args:
+        query: 用户查询
+        hits: 检索结果
+        api_key: API Key
+        api_base: API Base URL
+        model: 模型名称
+        max_tokens: 最大生成 token 数
+
+    Returns:
+        生成的答案，失败时返回 None
+    """
+    try:
+        context = get_context_for_answer(hits)
+
+        if not context:
+            return None
+
+        system_prompt = """你是一个精准的问答助手。请基于提供的内容片段回答用户问题。
+
+要求：
+1. 只使用提供的内容片段中的信息
+2. 引用来源时使用 [来源 N] 格式
+3. 如果内容片段中没有相关信息，请明确说明
+4. 回答要简洁、准确"""
+
+        user_prompt = f"""问题：{query}
+
+相关内容：
+{context}
+
+请基于以上内容回答问题。"""
+
+        client = OpenAI(api_key=api_key, base_url=api_base)
+
+        response = client.chat.completions.create(
+            model=model,
+            messages=[
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_prompt},
+            ],
+            max_tokens=max_tokens,
+        )
+
+        return response.choices[0].message.content
+
+    except Exception as e:
+        logger.warning(f"Failed to generate answer: {e}")
+        return None

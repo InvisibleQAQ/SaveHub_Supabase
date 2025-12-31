@@ -1,12 +1,20 @@
-import logging
 import os
+from dotenv import load_dotenv, find_dotenv
+
+# Load environment variables FIRST
+_ = load_dotenv(find_dotenv())
+
+# IMPORTANT: Monkey-patch httpx default timeout BEFORE importing any supabase modules
+# This fixes SSL handshake timeout in slow network environments (e.g., China mainland)
+# See: https://github.com/supabase/supabase-py/issues/487
+import httpx
+_HTTPX_TIMEOUT = float(os.environ.get("HTTPX_TIMEOUT", "30"))
+httpx._config.DEFAULT_TIMEOUT_CONFIG = httpx.Timeout(_HTTPX_TIMEOUT)
+
+import logging
 from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from dotenv import load_dotenv, find_dotenv
-
-# Load environment variables
-_ = load_dotenv(find_dotenv())
 
 # Configure logging (file + console, daily rotation)
 from app.core.logging_config import setup_logging
@@ -50,7 +58,7 @@ app.add_middleware(
 # Import and register routers
 from app.api.routers import rss, auth, feeds, folders, articles, settings, websocket
 from app.api.routers import queue, health as queue_health
-from app.api.routers import api_configs, proxy
+from app.api.routers import api_configs, proxy, rag
 app.include_router(rss.router, prefix="/api")
 app.include_router(auth.router, prefix="/api")
 app.include_router(feeds.router, prefix="/api")
@@ -62,6 +70,7 @@ app.include_router(websocket.router, prefix="/api")
 app.include_router(queue.router, prefix="/api")
 app.include_router(queue_health.router, prefix="/api")
 app.include_router(proxy.router, prefix="/api")
+app.include_router(rag.router, prefix="/api")
 
 
 @app.get("/health")

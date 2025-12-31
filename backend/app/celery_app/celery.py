@@ -8,6 +8,7 @@ UTC timezone, and multi-queue support for priority handling.
 import os
 from celery import Celery
 from celery.signals import after_setup_logger, after_setup_task_logger
+from celery.schedules import crontab
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -26,7 +27,11 @@ app = Celery(
     "savehub",
     broker=REDIS_URL,
     backend=REDIS_URL,
-    include=["app.celery_app.tasks", "app.celery_app.image_processor"]
+    include=[
+        "app.celery_app.tasks",
+        "app.celery_app.image_processor",
+        "app.celery_app.rag_processor",
+    ]
 )
 
 app.conf.update(
@@ -62,5 +67,15 @@ app.conf.update(
         "app.celery_app.tasks.refresh_feed": {"queue": "default"},
         "process_article_images": {"queue": "default"},
         "schedule_image_processing": {"queue": "default"},
+        "process_article_rag": {"queue": "default"},
+        "scan_pending_rag_articles": {"queue": "default"},
+    },
+
+    # Celery Beat schedule
+    beat_schedule={
+        "scan-rag-every-30-minutes": {
+            "task": "scan_pending_rag_articles",
+            "schedule": crontab(minute="*/30"),
+        },
     },
 )

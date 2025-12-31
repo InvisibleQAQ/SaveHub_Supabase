@@ -9,6 +9,8 @@ gotrue>=2.0.0
 # LLM
 langchain>=0.2.14
 langchain-openai>=0.1.22
+langchain-experimental>=0.0.47
+tiktoken>=0.5.0
 dashscope>=1.25.5
 
 # 数据验证

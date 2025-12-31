@@ -13,8 +13,8 @@ from PIL import Image
 logger = logging.getLogger(__name__)
 
 # Constants
-MAX_DIMENSION = 1920  # Max width or height
-WEBP_QUALITY = 85     # WebP quality (0-100)
+MAX_DIMENSION = 1080  # Max width or height (optimized for mobile)
+WEBP_QUALITY = 70     # WebP quality (0-100, balanced compression)
 
 
 def compress_image(
