@@ -12,6 +12,15 @@ from supabase import Client
 logger = logging.getLogger(__name__)
 
 
+def _cancel_feed_task(feed_id: str):
+    """Cancel Celery refresh task for a feed (lazy import to avoid circular deps)."""
+    try:
+        from app.celery_app.tasks import cancel_feed_refresh
+        cancel_feed_refresh(feed_id)
+    except Exception as e:
+        logger.warning(f"Failed to cancel feed task {feed_id}: {e}")
+
+
 class FeedService:
     """Service for feed database operations."""
 
@@ -242,6 +251,9 @@ class FeedService:
             f"Starting feed deletion: {feed_id}",
             extra={'user_id': self.user_id}
         )
+
+        # Step 0: Cancel scheduled Celery refresh task
+        _cancel_feed_task(feed_id)
 
         # Step 1: Count and delete articles
         articles_response = self.supabase.table("articles") \

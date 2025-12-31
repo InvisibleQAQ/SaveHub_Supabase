@@ -128,11 +128,20 @@ def do_refresh_feed(
 
         # Schedule image processing for new articles
         # (process_article_images checks images_processed status, safe to call for all)
-        from .image_processor import schedule_image_processing
-        article_ids = [a["id"] for a in db_articles]
-        logger.info(f"[IMAGE_DEBUG] About to schedule image processing for {len(article_ids)} articles")
-        schedule_image_processing.delay(article_ids)
-        logger.info(f"[IMAGE_DEBUG] Scheduled image processing for {len(article_ids)} articles")
+        try:
+            from .image_processor import schedule_image_processing
+            article_ids = [a["id"] for a in db_articles]
+            logger.info(f"[IMAGE_DEBUG] About to schedule image processing for {len(article_ids)} articles")
+            logger.info(f"[IMAGE_DEBUG] Article IDs: {article_ids[:5]}...")  # Show first 5 IDs
+
+            # Call the task
+            result = schedule_image_processing.delay(article_ids)
+            logger.info(f"[IMAGE_DEBUG] Scheduled image processing task, task_id={result.id}")
+        except Exception as e:
+            logger.error(f"[IMAGE_DEBUG] Failed to schedule image processing: {e}", exc_info=True)
+            # Don't fail the entire refresh_feed task if image processing scheduling fails
+    else:
+        logger.warning(f"[IMAGE_DEBUG] No articles parsed from feed {feed_id}, skipping image processing")
 
     return {"success": True, "article_count": len(articles)}
 
@@ -399,7 +408,7 @@ def schedule_next_refresh(feed_id: str, user_id: str, refresh_interval: int):
         feed = result.data
 
         # Schedule task
-        refresh_feed.apply_async(
+        task = refresh_feed.apply_async(
             kwargs={
                 "feed_id": feed_id,
                 "feed_url": feed["url"],
@@ -412,7 +421,12 @@ def schedule_next_refresh(feed_id: str, user_id: str, refresh_interval: int):
             queue="default"
         )
 
-        logger.debug(f"Scheduled next refresh for {feed['title']} in {delay_seconds}s")
+        # Store task ID in Redis for later revocation if feed is deleted
+        task_id_key = f"feed_task:{feed_id}"
+        task_ttl = delay_seconds + 300  # TTL = delay + 5 minutes buffer
+        task_lock.redis_client.setex(task_id_key, task_ttl, task.id)
+
+        logger.debug(f"Scheduled next refresh for {feed['title']} in {delay_seconds}s (task_id={task.id})")
 
     except Exception as e:
         logger.error(f"Failed to schedule next refresh: {e}")
