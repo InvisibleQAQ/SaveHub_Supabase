@@ -95,6 +95,7 @@ def do_refresh_feed(
             raise NonRetryableError(error_msg)
 
     # 3. Save articles to database
+    logger.info(f"[IMAGE_DEBUG] Parsed {len(articles)} articles from feed {feed_id}")
     if articles:
         db_articles = []
         for article in articles:
@@ -125,12 +126,13 @@ def do_refresh_feed(
             on_conflict="feed_id,url"
         ).execute()
 
-        # Schedule image processing for articles that need it
-        # (process_article_images will skip already-processed articles)
-        if upsert_result.data:
-            from .image_processor import schedule_image_processing
-            article_ids = [a["id"] for a in upsert_result.data]
-            schedule_image_processing.delay(article_ids)
+        # Schedule image processing for new articles
+        # (process_article_images checks images_processed status, safe to call for all)
+        from .image_processor import schedule_image_processing
+        article_ids = [a["id"] for a in db_articles]
+        logger.info(f"[IMAGE_DEBUG] About to schedule image processing for {len(article_ids)} articles")
+        schedule_image_processing.delay(article_ids)
+        logger.info(f"[IMAGE_DEBUG] Scheduled image processing for {len(article_ids)} articles")
 
     return {"success": True, "article_count": len(articles)}
 
@@ -228,6 +230,29 @@ def refresh_feed(
             raise Reject(f"Feed {feed_id} is locked", requeue=False)
 
     try:
+        # Check if feed still exists (may have been deleted while task was queued)
+        supabase = get_supabase_service()
+        feed_check = supabase.table("feeds").select("id").eq(
+            "id", feed_id
+        ).eq("user_id", user_id).execute()
+
+        if not feed_check.data:
+            logger.info(
+                f"Feed {feed_id} no longer exists, skipping refresh",
+                extra={
+                    'task_id': task_id,
+                    'feed_id': feed_id,
+                    'user_id': user_id,
+                    'reason': 'feed_deleted'
+                }
+            )
+            return {
+                "success": True,
+                "feed_id": feed_id,
+                "skipped": True,
+                "reason": "feed_deleted"
+            }
+
         # Execute refresh
         result = do_refresh_feed(feed_id, feed_url, user_id)
 

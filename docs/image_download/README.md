@@ -32,17 +32,19 @@ MIME类型: jpeg, png, gif, webp, svg, avif, bmp, jpg
 
 - `idx_articles_images_unprocessed`: 部分索引，加速查询未处理文章
 
-### Celery Task: 图片处理任务
+### Celery Task: 图片处理任务(已完成)
 
 **文件**: `backend/app/celery_app/image_processor.py`
 
 **任务**:
+
 - `process_article_images(article_id)` - 处理单篇文章的所有图片
 - `schedule_image_processing(article_ids)` - 批量调度图片处理
 
 **触发时机**: `refresh_feed` 任务成功后自动触发
 
 **流程**:
+
 1. BeautifulSoup 解析 HTML，提取 `<img src="...">`
 2. 下载图片 (httpx + SSRF 防护 + 伪造 User-Agent/Referer)
 3. Pillow 压缩为 WebP 格式 (max 1920px, quality=85)
@@ -51,6 +53,7 @@ MIME类型: jpeg, png, gif, webp, svg, avif, bmp, jpg
 6. 更新 `images_processed=true, images_processed_at=now()`
 
 **失败处理**:
+
 - 单个图片失败 → 保留原始 URL，继续处理其他图片
 - 所有图片失败 → `images_processed=false`
 - 网络超时 → 任务重试 (最多 2 次)
