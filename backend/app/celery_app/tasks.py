@@ -104,21 +104,44 @@ def do_refresh_feed(
     # 3. Save articles to database
     logger.info(f"[IMAGE_DEBUG] Parsed {len(articles)} articles from feed {feed_id}")
     if articles:
-        db_articles = []
+        # Collect all article URLs for batch query
+        article_urls = [a.get("url", "") for a in articles if a.get("url")]
+
+        # Query articles that have been successfully processed (images_processed = true)
+        # These should be skipped to protect their processed content
+        processed_urls = set()
+        if article_urls:
+            existing_result = supabase.table("articles").select(
+                "url"
+            ).eq("feed_id", feed_id).in_(
+                "url", article_urls
+            ).eq("images_processed", True).execute()
+
+            processed_urls = {a["url"] for a in (existing_result.data or [])}
+
+        # Build articles to upsert (skip successfully processed ones)
+        articles_to_upsert = []
         for article in articles:
-            # Map camelCase fields from rss_parser.py to snake_case for database
+            url = article.get("url", "")
+
+            if url in processed_urls:
+                # Successfully processed article: skip to protect replaced content
+                logger.debug(f"Skipping successfully processed article: {url[:80]}")
+                continue
+
+            # New, unprocessed, or failed articles: build full record
             published_at = article.get("publishedAt")
             if isinstance(published_at, datetime):
                 published_at = published_at.isoformat()
 
-            db_articles.append({
+            articles_to_upsert.append({
                 "id": article.get("id") or str(uuid4()),
-                "feed_id": feed_id,  # Use parameter, not article's feedId
+                "feed_id": feed_id,
                 "user_id": user_id,
                 "title": article.get("title", "Untitled")[:500],
                 "content": article.get("content", ""),
                 "summary": article.get("summary", "")[:1000] if article.get("summary") else "",
-                "url": article.get("url", ""),
+                "url": url,
                 "author": article.get("author"),
                 "published_at": published_at,
                 "is_read": False,
@@ -126,15 +149,17 @@ def do_refresh_feed(
                 "thumbnail": article.get("thumbnail"),
             })
 
-        # Upsert (dedupe by feed_id + url, matches articles_feed_url_unique constraint)
-        # Note: Don't use ignore_duplicates=True, as it prevents returning updated rows
-        upsert_result = supabase.table("articles").upsert(
-            db_articles,
-            on_conflict="feed_id,url"
-        ).execute()
+        # Upsert new, unprocessed, or failed articles
+        if articles_to_upsert:
+            upsert_result = supabase.table("articles").upsert(
+                articles_to_upsert,
+                on_conflict="feed_id,url"
+            ).execute()
+            article_ids = [a["id"] for a in articles_to_upsert]
+        else:
+            article_ids = []
 
-        # Collect article IDs for return value
-        article_ids = [a["id"] for a in db_articles]
+        logger.info(f"[IMAGE_DEBUG] Upserted {len(articles_to_upsert)} articles, skipped {len(processed_urls)} processed")
 
         # Schedule image processing for new articles (with chord -> RAG callback)
         # In batch_mode, image processing is handled by batch orchestrator
@@ -445,6 +470,43 @@ def schedule_next_refresh(feed_id: str, user_id: str, refresh_interval: int):
         logger.error(f"Failed to schedule next refresh: {e}")
         # Release schedule lock to allow retry
         task_lock.release(schedule_lock_key)
+
+
+def cancel_feed_refresh(feed_id: str) -> bool:
+    """
+    Cancel scheduled refresh task for a feed.
+
+    Called when a feed is deleted to prevent orphan tasks.
+
+    Steps:
+    1. Get task ID from Redis: feed_task:{feed_id}
+    2. Revoke task using Celery control API
+    3. Clean up Redis keys (feed_task + schedule lock)
+    """
+    task_lock = get_task_lock()
+    redis = task_lock.redis
+
+    # 1. Get stored task ID
+    task_id_key = f"feed_task:{feed_id}"
+    task_id = redis.get(task_id_key)
+
+    revoked = False
+    if task_id:
+        # Decode if bytes
+        if isinstance(task_id, bytes):
+            task_id = task_id.decode('utf-8')
+
+        # 2. Revoke the task (terminate=False: don't kill running task)
+        app.control.revoke(task_id, terminate=False)
+        logger.info(f"Revoked scheduled task {task_id} for feed {feed_id}")
+        revoked = True
+
+    # 3. Clean up Redis keys
+    redis.delete(task_id_key)
+    redis.delete(f"tasklock:schedule:{feed_id}")
+
+    logger.info(f"Cleaned up Redis keys for deleted feed {feed_id}")
+    return revoked
 
 
 # =============================================================================
