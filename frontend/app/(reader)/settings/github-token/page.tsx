@@ -8,43 +8,73 @@ import { Separator } from "@/components/ui/separator"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { useRSSStore } from "@/lib/store"
 import { githubApi } from "@/lib/api/github"
-import { Alert, AlertDescription } from "@/components/ui/alert"
-import { CheckCircle2, XCircle, Loader2, Key, ExternalLink, AlertCircle } from "lucide-react"
+import { useToast } from "@/hooks/use-toast"
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog"
+import { Loader2, Key, ExternalLink } from "lucide-react"
 
 export default function GitHubTokenPage() {
   const { settings, updateSettings } = useRSSStore()
+  const { toast } = useToast()
   const [token, setToken] = useState("")
   const [isValidating, setIsValidating] = useState(false)
   const [isSaving, setIsSaving] = useState(false)
+  const [showDeleteDialog, setShowDeleteDialog] = useState(false)
   const [validationResult, setValidationResult] = useState<{
     valid: boolean
     username?: string
     error?: string
-  } | null>(null)
-  const [saveResult, setSaveResult] = useState<{
-    success: boolean
-    message: string
   } | null>(null)
 
   const hasToken = !!settings.githubToken
 
   const handleValidate = async () => {
     if (!token.trim()) {
-      setValidationResult({ valid: false, error: "Token 不能为空" })
+      toast({
+        title: "验证失败",
+        description: "Token 不能为空",
+        variant: "destructive",
+      })
       return
     }
 
     setIsValidating(true)
     setValidationResult(null)
-    setSaveResult(null)
 
     try {
       const result = await githubApi.validateGitHubToken(token)
       setValidationResult(result)
+
+      if (result.valid) {
+        toast({
+          title: "验证成功",
+          description: `Token 有效！GitHub 用户: ${result.username}`,
+        })
+      } else {
+        toast({
+          title: "验证失败",
+          description: result.error,
+          variant: "destructive",
+        })
+      }
     } catch (error) {
+      const errorMsg = error instanceof Error ? error.message : "验证失败"
       setValidationResult({
         valid: false,
-        error: error instanceof Error ? error.message : "验证失败",
+        error: errorMsg,
+      })
+      toast({
+        title: "验证失败",
+        description: errorMsg,
+        variant: "destructive",
       })
     } finally {
       setIsValidating(false)
@@ -57,20 +87,20 @@ export default function GitHubTokenPage() {
     }
 
     setIsSaving(true)
-    setSaveResult(null)
 
     try {
       await updateSettings({ githubToken: token })
       setToken("")
       setValidationResult(null)
-      setSaveResult({
-        success: true,
-        message: hasToken ? "Token 已成功更新" : "Token 已成功settings.py",
+      toast({
+        title: "保存成功",
+        description: hasToken ? "Token 已成功更新" : "Token 已成功保存",
       })
     } catch (error) {
-      setSaveResult({
-        success: false,
-        message: error instanceof Error ? error.message : "保存失败，请重试",
+      toast({
+        title: "保存失败",
+        description: error instanceof Error ? error.message : "保存失败，请重试",
+        variant: "destructive",
       })
     } finally {
       setIsSaving(false)
@@ -78,27 +108,24 @@ export default function GitHubTokenPage() {
   }
 
   const handleRemove = async () => {
-    if (!confirm("确定要删除 GitHub Token 吗？")) {
-      return
-    }
-
     setIsSaving(true)
-    setSaveResult(null)
 
     try {
       // Use null to explicitly delete the token
       await updateSettings({ githubToken: null as any })
-      setSaveResult({
-        success: true,
-        message: "Token 已成功删除",
+      toast({
+        title: "删除成功",
+        description: "Token 已成功删除",
       })
     } catch (error) {
-      setSaveResult({
-        success: false,
-        message: error instanceof Error ? error.message : "删除失败，请重试",
+      toast({
+        title: "删除失败",
+        description: error instanceof Error ? error.message : "删除失败，请重试",
+        variant: "destructive",
       })
     } finally {
       setIsSaving(false)
+      setShowDeleteDialog(false)
     }
   }
 
@@ -118,20 +145,6 @@ export default function GitHubTokenPage() {
       </div>
 
       <Separator />
-
-      {/* Save Result Alert */}
-      {saveResult && (
-        <Alert variant={saveResult.success ? "default" : "destructive"}>
-          <div className="flex items-center gap-2">
-            {saveResult.success ? (
-              <CheckCircle2 className="h-4 w-4" />
-            ) : (
-              <AlertCircle className="h-4 w-4" />
-            )}
-            <AlertDescription>{saveResult.message}</AlertDescription>
-          </div>
-        </Alert>
-      )}
 
       {/* Current Token Status Card */}
       <Card>
@@ -156,11 +169,11 @@ export default function GitHubTokenPage() {
               {hasToken && (
                 <Button
                   variant="destructive"
-                  onClick={handleRemove}
+                  onClick={() => setShowDeleteDialog(true)}
                   disabled={isSaving}
                   size="sm"
                 >
-                  {isSaving ? <Loader2 className="h-4 w-4 animate-spin" /> : "删除"}
+                  删除
                 </Button>
               )}
             </div>
@@ -190,29 +203,10 @@ export default function GitHubTokenPage() {
               onChange={(e) => {
                 setToken(e.target.value)
                 setValidationResult(null)
-                setSaveResult(null)
               }}
               className="font-mono"
             />
           </div>
-
-          {/* Validation Result */}
-          {validationResult && (
-            <Alert variant={validationResult.valid ? "default" : "destructive"}>
-              <div className="flex items-center gap-2">
-                {validationResult.valid ? (
-                  <CheckCircle2 className="h-4 w-4" />
-                ) : (
-                  <XCircle className="h-4 w-4" />
-                )}
-                <AlertDescription>
-                  {validationResult.valid
-                    ? `Token 有效！GitHub 用户: ${validationResult.username}`
-                    : `Token 无效: ${validationResult.error}`}
-                </AlertDescription>
-              </div>
-            </Alert>
-          )}
 
           {/* Action Buttons */}
           <div className="flex gap-2">
@@ -284,6 +278,34 @@ export default function GitHubTokenPage() {
           </div>
         </CardContent>
       </Card>
+
+      {/* Delete Confirmation Dialog */}
+      <AlertDialog open={showDeleteDialog} onOpenChange={setShowDeleteDialog}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>确认删除</AlertDialogTitle>
+            <AlertDialogDescription>
+              确定要删除 GitHub Token 吗？此操作无法撤销。
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>取消</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={handleRemove}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              {isSaving ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  删除中...
+                </>
+              ) : (
+                "删除"
+              )}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   )
 }
