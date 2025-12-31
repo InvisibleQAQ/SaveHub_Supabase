@@ -146,7 +146,7 @@ def do_process_article_rag(article_id: str, user_id: str) -> Dict[str, Any]:
     try:
         # 1. 获取文章
         result = supabase.table("articles").select(
-            "id, user_id, title, author, content, rag_processed"
+            "id, user_id, title, author, content, url, rag_processed"
         ).eq("id", article_id).eq("user_id", user_id).single().execute()
 
         if not result.data:
@@ -174,12 +174,13 @@ def do_process_article_rag(article_id: str, user_id: str) -> Dict[str, Any]:
         title = article.get("title", "")
         author = article.get("author")
         content = article.get("content", "")
+        article_url = article.get("url")  # 用于解析相对路径的图片 URL
 
         if not content:
             rag_service.mark_article_rag_processed(article_id, success=True)
             return {"success": True, "chunks": 0, "images": 0}
 
-        parsed_article = parse_article_content(title, author, content)
+        parsed_article = parse_article_content(title, author, content, article_url)
 
         # 4. 获取所有图片 URL 并生成 caption
         image_urls = parsed_article.get_image_urls()

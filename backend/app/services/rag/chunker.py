@@ -9,6 +9,8 @@ import logging
 import re
 from dataclasses import dataclass, field
 from typing import List, Literal, Optional, Union
+from urllib.parse import urljoin, urlparse
+
 from bs4 import BeautifulSoup, NavigableString
 
 logger = logging.getLogger(__name__)
@@ -109,7 +111,49 @@ def clean_text(text: str) -> str:
     return text
 
 
-def parse_html_to_elements(html_content: str) -> List[ContentElement]:
+def _is_absolute_url(url: str) -> bool:
+    """检查 URL 是否为绝对路径"""
+    parsed = urlparse(url)
+    return bool(parsed.scheme and parsed.netloc)
+
+
+def _resolve_url(src: str, base_url: Optional[str]) -> str:
+    """
+    将相对 URL 转换为绝对 URL。
+
+    Args:
+        src: 图片 src 属性值
+        base_url: 文章原始 URL（用于解析相对路径）
+
+    Returns:
+        绝对 URL，如果无法解析则返回原始 src
+    """
+    if not src:
+        return src
+
+    # 已经是绝对 URL
+    if _is_absolute_url(src):
+        return src
+
+    # 协议相对 URL (//example.com/image.png)
+    if src.startswith("//"):
+        return f"https:{src}"
+
+    # 需要 base_url 来解析相对路径
+    if not base_url:
+        logger.warning(f"Cannot resolve relative URL without base_url: {src[:100]}")
+        return src
+
+    # 使用 urljoin 解析相对路径
+    resolved = urljoin(base_url, src)
+    logger.debug(f"Resolved URL: {src[:50]} -> {resolved[:50]}")
+    return resolved
+
+
+def parse_html_to_elements(
+    html_content: str,
+    base_url: Optional[str] = None,
+) -> List[ContentElement]:
     """
     解析 HTML 内容，按顺序提取文本和图片元素。
 
@@ -117,6 +161,7 @@ def parse_html_to_elements(html_content: str) -> List[ContentElement]:
 
     Args:
         html_content: HTML 内容字符串
+        base_url: 文章原始 URL，用于解析相对路径的图片 URL
 
     Returns:
         ContentElement 列表，按原文顺序排列
@@ -156,8 +201,10 @@ def parse_html_to_elements(html_content: str) -> List[ContentElement]:
             if src and not src.startswith("data:"):
                 # 先保存当前积累的文本
                 flush_text()
+                # 解析相对 URL 为绝对 URL
+                resolved_url = _resolve_url(src, base_url)
                 # 添加图片元素
-                elements.append(ImageElement(url=src))
+                elements.append(ImageElement(url=resolved_url))
             return
 
         # 递归处理子元素
@@ -181,6 +228,7 @@ def parse_article_content(
     title: str,
     author: Optional[str],
     html_content: str,
+    base_url: Optional[str] = None,
 ) -> ParsedArticle:
     """
     解析文章内容，返回 ParsedArticle 对象。
@@ -191,11 +239,12 @@ def parse_article_content(
         title: 文章标题
         author: 文章作者（可选）
         html_content: HTML 内容
+        base_url: 文章原始 URL，用于解析相对路径的图片 URL
 
     Returns:
         ParsedArticle 对象
     """
-    elements = parse_html_to_elements(html_content)
+    elements = parse_html_to_elements(html_content, base_url)
 
     image_count = sum(1 for e in elements if isinstance(e, ImageElement))
     text_count = sum(1 for e in elements if isinstance(e, TextElement))
