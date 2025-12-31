@@ -126,7 +126,7 @@ def do_refresh_feed(
             on_conflict="feed_id,url"
         ).execute()
 
-        # Schedule image processing for new articles
+        # Schedule image processing for new articles (with chord -> RAG callback)
         # (process_article_images checks images_processed status, safe to call for all)
         try:
             from .image_processor import schedule_image_processing
@@ -134,9 +134,9 @@ def do_refresh_feed(
             logger.info(f"[IMAGE_DEBUG] About to schedule image processing for {len(article_ids)} articles")
             logger.info(f"[IMAGE_DEBUG] Article IDs: {article_ids[:5]}...")  # Show first 5 IDs
 
-            # Call the task
-            result = schedule_image_processing.delay(article_ids)
-            logger.info(f"[IMAGE_DEBUG] Scheduled image processing task, task_id={result.id}")
+            # Call the task with feed_id for chord -> RAG callback
+            result = schedule_image_processing.delay(article_ids, feed_id)
+            logger.info(f"[IMAGE_DEBUG] Scheduled image->RAG chain, task_id={result.id}")
         except Exception as e:
             logger.error(f"[IMAGE_DEBUG] Failed to schedule image processing: {e}", exc_info=True)
             # Don't fail the entire refresh_feed task if image processing scheduling fails
@@ -424,7 +424,7 @@ def schedule_next_refresh(feed_id: str, user_id: str, refresh_interval: int):
         # Store task ID in Redis for later revocation if feed is deleted
         task_id_key = f"feed_task:{feed_id}"
         task_ttl = delay_seconds + 300  # TTL = delay + 5 minutes buffer
-        task_lock.redis_client.setex(task_id_key, task_ttl, task.id)
+        task_lock.redis.setex(task_id_key, task_ttl, task.id)
 
         logger.debug(f"Scheduled next refresh for {feed['title']} in {delay_seconds}s (task_id={task.id})")
 

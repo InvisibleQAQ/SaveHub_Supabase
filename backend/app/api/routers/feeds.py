@@ -53,6 +53,7 @@ async def create_feeds(
     Create or upsert multiple feeds.
 
     Supports bulk creation/update of feeds.
+    Automatically schedules refresh_feed task for each new feed.
 
     Args:
         feeds: List of feeds to create/update
@@ -69,6 +70,29 @@ async def create_feeds(
             if error == "duplicate":
                 raise HTTPException(status_code=409, detail="Duplicate feed URL")
             raise HTTPException(status_code=400, detail=error)
+
+        # Auto-schedule refresh for each saved feed
+        saved_feeds = result.get("data", [])
+        if saved_feeds:
+            from app.celery_app.tasks import refresh_feed
+
+            for feed_data in saved_feeds:
+                try:
+                    refresh_feed.apply_async(
+                        kwargs={
+                            "feed_id": feed_data["id"],
+                            "feed_url": feed_data["url"],
+                            "feed_title": feed_data["title"],
+                            "user_id": service.user_id,
+                            "refresh_interval": feed_data.get("refresh_interval", 60),
+                            "priority": "new_feed",
+                        },
+                        queue="high"  # New feeds get high priority
+                    )
+                    logger.info(f"Scheduled refresh for new feed: {feed_data['id']}")
+                except Exception as e:
+                    logger.error(f"Failed to schedule refresh for feed {feed_data['id']}: {e}")
+                    # Don't fail the whole request if scheduling fails
 
         logger.info(f"Created/updated {len(feeds)} feeds")
         return {"success": True, "count": len(feeds)}

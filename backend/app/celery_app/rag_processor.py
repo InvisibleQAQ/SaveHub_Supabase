@@ -419,6 +419,108 @@ def scan_pending_rag_articles():
 
 
 # =============================================================================
+# Chord Callback (triggered after all image processing completes)
+# =============================================================================
+
+@app.task(name="on_images_complete", bind=True)
+def on_images_complete(self, image_results: List[dict], article_ids: List[str], feed_id: str = None):
+    """
+    Chord 回调：所有图片处理完成后触发。
+
+    This is called automatically by Celery chord after all process_article_images
+    tasks complete. It then schedules RAG processing for all articles.
+
+    Args:
+        image_results: List of results from each process_article_images task
+        article_ids: List of article UUIDs
+        feed_id: Feed ID (for logging and traceability)
+
+    Returns:
+        Summary of image processing and RAG scheduling
+    """
+    task_id = self.request.id
+    logger.info(
+        f"[CHORD_CALLBACK] on_images_complete triggered! "
+        f"task_id={task_id}, feed_id={feed_id}, "
+        f"image_results_count={len(image_results) if image_results else 0}, "
+        f"article_ids_count={len(article_ids) if article_ids else 0}"
+    )
+
+    try:
+        # Count image processing results
+        success_count = sum(1 for r in image_results if r and r.get("success"))
+        failed_count = len(image_results) - success_count
+
+        logger.info(
+            f"[CHORD_CALLBACK] Images complete for feed {feed_id}: "
+            f"{success_count}/{len(image_results)} succeeded, "
+            f"scheduling RAG for {len(article_ids)} articles"
+        )
+
+        # Schedule RAG processing
+        rag_result = schedule_rag_for_articles(article_ids)
+
+        result = {
+            "feed_id": feed_id,
+            "image_success": success_count,
+            "image_failed": failed_count,
+            "image_total": len(image_results),
+            "rag_scheduled": rag_result.get("scheduled", 0),
+        }
+        logger.info(f"[CHORD_CALLBACK] Completed: {result}")
+        return result
+
+    except Exception as e:
+        logger.exception(f"[CHORD_CALLBACK] Error in on_images_complete: {e}")
+        raise
+
+
+@app.task(name="schedule_rag_for_articles")
+def schedule_rag_for_articles(article_ids: List[str]) -> Dict[str, Any]:
+    """
+    为一批文章调度 RAG 处理。
+
+    Called by on_images_complete after all image processing finishes.
+    Retrieves user_id for each article and schedules RAG tasks with staggered delays.
+
+    Args:
+        article_ids: List of article UUIDs
+
+    Returns:
+        {"scheduled": int} - number of RAG tasks scheduled
+    """
+    if not article_ids:
+        logger.info("No articles to schedule for RAG")
+        return {"scheduled": 0}
+
+    supabase = get_supabase_service()
+
+    # Get article user_ids
+    result = supabase.table("articles").select(
+        "id, user_id"
+    ).in_("id", article_ids).execute()
+
+    if not result.data:
+        logger.warning(f"No articles found for RAG scheduling: {article_ids[:3]}...")
+        return {"scheduled": 0}
+
+    scheduled = 0
+    for i, article in enumerate(result.data):
+        process_article_rag.apply_async(
+            kwargs={
+                "article_id": article["id"],
+                "user_id": article["user_id"],
+            },
+            countdown=i * 3,  # 3 second delay between each to avoid API rate limits
+            queue="default",
+        )
+        scheduled += 1
+
+    logger.info(f"Scheduled RAG processing for {scheduled} articles (staggered 3s apart)")
+    return {"scheduled": scheduled}
+
+
+# =============================================================================
 # Celery Beat Schedule (to be added to celery.py)
 # =============================================================================
 

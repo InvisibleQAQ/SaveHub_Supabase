@@ -76,8 +76,8 @@ class FeedService:
                     f"Saved {len(response.data)} feeds",
                     extra={'user_id': self.user_id}
                 )
-                return {"success": True}
-            return {"success": True}
+                return {"success": True, "data": response.data}
+            return {"success": True, "data": []}
         except Exception as e:
             logger.error(
                 "Failed to save feeds",

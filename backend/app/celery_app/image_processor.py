@@ -410,6 +410,7 @@ def process_article_images(
         }
 
     except Exception as e:
+        # Don't raise - return failure result to allow chord callback to execute
         duration_ms = int((datetime.now(timezone.utc) - start_time).total_seconds() * 1000)
         logger.exception(
             f"Unexpected error: {e}",
@@ -420,7 +421,12 @@ def process_article_images(
                 "duration_ms": duration_ms,
             }
         )
-        raise
+        return {
+            "success": False,
+            "article_id": article_id,
+            "error": str(e),
+            "duration_ms": duration_ms,
+        }
 
 
 # =============================================================================
@@ -428,24 +434,49 @@ def process_article_images(
 # =============================================================================
 
 @app.task(name="schedule_image_processing")
-def schedule_image_processing(article_ids: List[str]):
+def schedule_image_processing(article_ids: List[str], feed_id: str = None):
     """
-    Schedule image processing for multiple articles.
+    Schedule image processing for multiple articles using Celery chord.
 
-    Called by refresh_feed after new articles are inserted.
+    After all image processing tasks complete, automatically triggers
+    RAG processing via the on_images_complete callback.
 
     Args:
         article_ids: List of article UUIDs
+        feed_id: Feed ID (for logging and traceability)
     """
-    scheduled = 0
-    for i, article_id in enumerate(article_ids):
-        # Stagger tasks to avoid overwhelming storage
-        process_article_images.apply_async(
-            kwargs={"article_id": article_id},
-            countdown=i * 2,  # 2 seconds between each
-            queue="default",
-        )
-        scheduled += 1
+    from celery import chord, group
 
-    logger.info(f"Scheduled image processing for {scheduled} articles")
-    return {"scheduled": scheduled}
+    if not article_ids:
+        logger.info("No articles to process")
+        return {"scheduled": 0}
+
+    logger.info(f"[CHORD_DEBUG] Creating chord for {len(article_ids)} articles, feed_id={feed_id}")
+
+    try:
+        # Build parallel task group
+        image_tasks = group(
+            process_article_images.s(article_id=aid)
+            for aid in article_ids
+        )
+
+        # Import callback task
+        from .rag_processor import on_images_complete
+
+        # Create callback signature
+        callback = on_images_complete.s(article_ids=article_ids, feed_id=feed_id)
+        logger.info(f"[CHORD_DEBUG] Callback task name: {callback.task}")
+
+        # Use chord: all image tasks complete -> trigger RAG callback
+        workflow = chord(image_tasks)(callback)
+
+        logger.info(
+            f"[CHORD_DEBUG] Chord created successfully: "
+            f"{len(article_ids)} image tasks -> {callback.task} "
+            f"(feed_id={feed_id}, chord_id={workflow.id})"
+        )
+        return {"scheduled": len(article_ids), "chord_id": workflow.id}
+
+    except Exception as e:
+        logger.exception(f"[CHORD_DEBUG] Failed to create chord: {e}")
+        raise

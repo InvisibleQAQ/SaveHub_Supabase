@@ -54,8 +54,14 @@ app.conf.update(
     task_reject_on_worker_lost=True,
     task_track_started=True,  # Track STARTED state
 
-    # Result expiration
+    # Result backend configuration (required for chord)
+    result_backend=REDIS_URL,
     result_expires=86400,  # 24h
+    result_extended=True,  # Store task args/kwargs in result
+
+    # Chord configuration
+    result_chord_join_timeout=300,  # 5 minutes timeout for chord join
+    result_chord_retry_interval=1.0,  # 1 second retry interval
 
     # Multi-queue configuration (simulates priority)
     task_default_queue="default",
@@ -69,6 +75,8 @@ app.conf.update(
         "schedule_image_processing": {"queue": "default"},
         "process_article_rag": {"queue": "default"},
         "scan_pending_rag_articles": {"queue": "default"},
+        "on_images_complete": {"queue": "default"},
+        "schedule_rag_for_articles": {"queue": "default"},
     },
 
     # Celery Beat schedule
