@@ -31,6 +31,7 @@ function transformSettings(raw: Record<string, unknown>): SettingsResponse {
     markAsReadOnScroll: (raw.mark_as_read_on_scroll as boolean) ?? false,
     showThumbnails: (raw.show_thumbnails as boolean) ?? true,
     sidebarPinned: (raw.sidebar_pinned as boolean) ?? false,
+    githubToken: raw.github_token as string | undefined,
     userId: raw.user_id as string | undefined,
     updatedAt: raw.updated_at ? new Date(raw.updated_at as string) : undefined,
   }
@@ -50,6 +51,8 @@ function toApiFormat(settings: Partial<Settings>): Record<string, unknown> {
   if (settings.markAsReadOnScroll !== undefined) result.mark_as_read_on_scroll = settings.markAsReadOnScroll
   if (settings.showThumbnails !== undefined) result.show_thumbnails = settings.showThumbnails
   if (settings.sidebarPinned !== undefined) result.sidebar_pinned = settings.sidebarPinned
+  // Support explicit null to delete token
+  if ('githubToken' in settings) result.github_token = settings.githubToken ?? null
 
   return result
 }
@@ -79,21 +82,31 @@ export async function getSettings(): Promise<SettingsResponse> {
  * Supports partial updates - only provided fields will be updated.
  */
 export async function updateSettings(settings: Partial<Settings>): Promise<SettingsResponse> {
+  const apiData = toApiFormat(settings)
+  console.log('[Settings API] Sending update:', apiData)
+
   const response = await fetch(API_BASE, {
     method: "PUT",
     headers: {
       "Content-Type": "application/json",
     },
     credentials: "include",
-    body: JSON.stringify(toApiFormat(settings)),
+    body: JSON.stringify(apiData),
   })
 
   if (!response.ok) {
-    const error: ApiError = await response.json()
-    throw new Error(error.detail || "Failed to update settings")
+    console.error('[Settings API] Update failed:', response.status, response.statusText)
+    try {
+      const error: ApiError = await response.json()
+      console.error('[Settings API] Error details:', error)
+      throw new Error(error.detail || "Failed to update settings")
+    } catch (e) {
+      throw new Error(`Failed to update settings: ${response.status} ${response.statusText}`)
+    }
   }
 
   const data = await response.json()
+  console.log('[Settings API] Update success:', data)
   return transformSettings(data)
 }
 

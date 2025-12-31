@@ -49,6 +49,7 @@ class SettingsService:
             "mark_as_read_on_scroll": settings.get("mark_as_read_on_scroll", DEFAULT_SETTINGS["mark_as_read_on_scroll"]),
             "show_thumbnails": settings.get("show_thumbnails", DEFAULT_SETTINGS["show_thumbnails"]),
             "sidebar_pinned": settings.get("sidebar_pinned", DEFAULT_SETTINGS["sidebar_pinned"]),
+            "github_token": settings.get("github_token"),
             "updated_at": datetime.utcnow().isoformat(),
         }
 
@@ -85,6 +86,7 @@ class SettingsService:
                     "mark_as_read_on_scroll": row["mark_as_read_on_scroll"],
                     "show_thumbnails": row["show_thumbnails"],
                     "sidebar_pinned": row.get("sidebar_pinned", False),
+                    "github_token": row.get("github_token"),
                     "updated_at": row.get("updated_at"),
                 }
             return None
@@ -114,10 +116,12 @@ class SettingsService:
             "mark_as_read_on_scroll": "mark_as_read_on_scroll",
             "show_thumbnails": "show_thumbnails",
             "sidebar_pinned": "sidebar_pinned",
+            "github_token": "github_token",
         }
 
         for key, db_key in field_mapping.items():
-            if key in updates and updates[key] is not None:
+            if key in updates:
+                # Support explicit None to delete token
                 update_data[db_key] = updates[key]
 
         logger.debug(f"Updating settings: {list(update_data.keys())}")

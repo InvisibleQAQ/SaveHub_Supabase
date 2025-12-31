@@ -95,5 +95,6 @@ export interface RSSReaderState {
     markAsReadOnScroll: boolean
     showThumbnails: boolean
     sidebarPinned: boolean
+    githubToken?: string
   }
 }
