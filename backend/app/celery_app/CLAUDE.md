@@ -2,9 +2,11 @@
 
 Background task processing using Celery with Redis as broker/backend.
 
-## Task Chain Architecture
+## Two Task Chain Modes
 
-When a new RSS Feed is added, tasks execute in sequence:
+### Mode 1: New Feed (Single Feed Chain)
+
+When a new RSS Feed is added via `POST /feeds`:
 
 ```
 POST /feeds (auto-trigger)
@@ -30,49 +32,103 @@ schedule_rag_for_articles
 [staggered] process_article_rag x N
 ```
 
+### Mode 2: Scheduled Batch (Global Ordering)
+
+Celery Beat scans feeds every minute and triggers batch refresh with global ordering:
+
+```
+Celery Beat (every minute)
+    |
+    v
+scan_due_feeds
+    | filter: last_fetched + refresh_interval < now
+    | group by user_id
+    v
+schedule_user_batch_refresh (per user)
+    |
+    v
+Chord 1: [refresh_feed_batch x N feeds] (parallel)
+    |      uses batch_mode=True (no image scheduling)
+    v      collects all article_ids
+on_user_feeds_complete
+    |
+    v
+Chord 2: schedule_batch_image_processing
+    |
+    +---> [parallel] process_article_images x M articles
+    |                      |
+    v                      v
+    +<---- chord waits for all ----+
+    |
+    v
+on_batch_images_complete
+    |
+    v
+schedule_rag_for_articles (reuse existing)
+    |
+    v
+[staggered] process_article_rag x M
+```
+
+**Key Difference**: Mode 2 waits for ALL feeds to complete before starting ANY image processing, then waits for ALL images to complete before starting ANY RAG processing.
+
 ## Key Files
 
 | File | Purpose |
 |------|---------|
-| `celery.py` | Celery app configuration |
-| `tasks.py` | Feed refresh tasks (`refresh_feed`, `schedule_next_refresh`) |
-| `image_processor.py` | Image download/compress/upload (`process_article_images`, `schedule_image_processing`) |
-| `rag_processor.py` | RAG embedding tasks (`process_article_rag`, `on_images_complete`, `schedule_rag_for_articles`) |
+| `celery.py` | Celery app configuration, beat_schedule |
+| `tasks.py` | Feed refresh tasks, batch scheduling orchestration |
+| `image_processor.py` | Image processing tasks (single + batch) |
+| `rag_processor.py` | RAG embedding tasks |
 | `task_lock.py` | Redis-based task locking (prevent duplicates) |
 | `rate_limiter.py` | Domain-based rate limiting for RSS fetches |
 | `supabase_client.py` | Service-role Supabase client (bypasses RLS) |
 
-## Task Chain Implementation
+## Task Reference
 
-**Celery Chord Pattern** (in `image_processor.py:schedule_image_processing`):
-```python
-chord(
-    group(process_article_images.s(article_id=aid) for aid in article_ids)
-)(
-    on_images_complete.s(article_ids=article_ids, feed_id=feed_id)
-)
-```
+### tasks.py
 
-- All image tasks run in parallel
-- Callback (`on_images_complete`) executes only after ALL complete
-- Tasks return `{"success": bool, ...}` instead of raising exceptions to ensure callback fires
+| Task | Mode | Description |
+|------|------|-------------|
+| `refresh_feed` | Single | Refresh one feed, trigger image chain, schedule next |
+| `refresh_feed_batch` | Batch | Refresh one feed with `batch_mode=True`, no chaining |
+| `scan_due_feeds` | Beat | Scan feeds due for refresh, group by user |
+| `schedule_user_batch_refresh` | Batch | Create chord for user's feeds |
+| `on_user_feeds_complete` | Batch | Chord callback, collect article_ids, trigger images |
+
+### image_processor.py
+
+| Task | Mode | Description |
+|------|------|-------------|
+| `process_article_images` | Both | Process single article's images |
+| `schedule_image_processing` | Single | Create chord with feed_id, callback to RAG |
+| `schedule_batch_image_processing` | Batch | Create chord with user_id, callback to RAG |
+| `on_batch_images_complete` | Batch | Chord callback, trigger RAG processing |
+
+### rag_processor.py
+
+| Task | Mode | Description |
+|------|------|-------------|
+| `process_article_rag` | Both | Generate embeddings for one article |
+| `on_images_complete` | Single | Chord callback from single feed chain |
+| `schedule_rag_for_articles` | Both | Schedule RAG tasks with staggered delays |
+| `scan_pending_rag_articles` | Fallback | Beat task, scan missed articles |
+
+## Beat Schedule
+
+| Task | Schedule | Purpose |
+|------|----------|---------|
+| `scan_due_feeds` | Every minute | Trigger batch refresh for due feeds |
+| `scan_pending_rag_articles` | Every 30 min | Fallback for missed RAG processing |
 
 ## Error Handling
 
-- Single article failure does NOT block the chain
-- Image/RAG tasks catch all exceptions and return `{"success": False, "error": "..."}`
+- Single feed/article failure does NOT block the chain
+- All tasks return `{"success": bool, ...}` instead of raising exceptions
 - `scan_pending_rag_articles` runs every 30min as fallback for missed articles
 
-## Queues
+## Conflict Prevention
 
-| Queue | Priority | Used By |
-|-------|----------|---------|
-| `high` | High | New feed refresh, manual refresh |
-| `default` | Normal | Scheduled refresh, image/RAG processing |
-
-## Adding New Tasks
-
-1. Define in appropriate file (`tasks.py`, `image_processor.py`, or `rag_processor.py`)
-2. Use `@app.task` decorator with appropriate settings
-3. Return dict result (don't raise exceptions if part of a chord)
-4. Add to `__init__.py` exports if needed externally
+1. **Feed-level lock**: `refresh_feed` and `refresh_feed_batch` share same lock key `feed:{feed_id}`
+2. **Beat overlap lock**: `scan_due_feeds` uses lock with 55s TTL
+3. **New feed handling**: `POST /feeds` sets `last_fetched = now` before scheduling, preventing Beat re-trigger

@@ -74,10 +74,22 @@ async def create_feeds(
         # Auto-schedule refresh for each saved feed
         saved_feeds = result.get("data", [])
         if saved_feeds:
+            from datetime import datetime, timezone
             from app.celery_app.tasks import refresh_feed
+            from app.celery_app.supabase_client import get_supabase_service
+
+            # Set last_fetched = now for new feeds to prevent Beat from re-triggering
+            # (POST /feeds auto-schedules refresh_feed, Beat should not duplicate it)
+            supabase_service = get_supabase_service()
+            now_iso = datetime.now(timezone.utc).isoformat()
 
             for feed_data in saved_feeds:
                 try:
+                    # Set last_fetched to prevent Beat from re-triggering
+                    supabase_service.table("feeds").update({
+                        "last_fetched": now_iso
+                    }).eq("id", feed_data["id"]).execute()
+
                     refresh_feed.apply_async(
                         kwargs={
                             "feed_id": feed_data["id"],

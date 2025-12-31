@@ -8,9 +8,57 @@
 import logging
 from typing import List, Optional
 
+import httpx
 from openai import OpenAI
 
 logger = logging.getLogger(__name__)
+
+# 网络配置 - 应对代理不稳定
+DEFAULT_TIMEOUT = httpx.Timeout(60.0, connect=30.0)  # 总超时60s，连接超时30s
+DEFAULT_MAX_RETRIES = 3  # 自动重试次数
+
+
+def _ensure_url_protocol(url: str) -> str:
+    """确保 URL 包含协议前缀"""
+    if not url:
+        return url
+    url = url.strip()
+    if not url.startswith(("http://", "https://")):
+        return f"https://{url}"
+    return url
+
+
+def _normalize_base_url(url: str) -> str:
+    """
+    规范化 OpenAI 兼容 API 的 base_url。
+
+    OpenAI SDK 会自动追加 /embeddings、/chat/completions 等路径，
+    所以 base_url 应该以 /v1 结尾，而非包含具体端点路径。
+
+    修复常见错误配置：
+    - xxx/v1/embeddings -> xxx/v1
+    - xxx/v1/chat/completions -> xxx/v1
+    """
+    if not url:
+        return url
+
+    url = _ensure_url_protocol(url)
+    url = url.rstrip("/")
+
+    # 移除常见的端点后缀（OpenAI SDK 会自动添加这些）
+    endpoint_suffixes = [
+        "/embeddings",
+        "/chat/completions",
+        "/completions",
+    ]
+
+    for suffix in endpoint_suffixes:
+        if url.endswith(suffix):
+            url = url[:-len(suffix)]
+            break
+
+    return url.rstrip("/")
+
 
 # 批处理配置
 DEFAULT_BATCH_SIZE = 100  # OpenAI 建议的批量大小
@@ -47,10 +95,17 @@ def embed_text(
         raise EmbeddingError("Empty text provided")
 
     try:
-        client = OpenAI(api_key=api_key, base_url=api_base)
+        normalized_url = _normalize_base_url(api_base)
+        client = OpenAI(
+            api_key=api_key,
+            base_url=normalized_url,
+            timeout=DEFAULT_TIMEOUT,
+            max_retries=DEFAULT_MAX_RETRIES,
+        )
         response = client.embeddings.create(
             model=model,
             input=text.strip(),
+            dimensions=1536
         )
         return response.data[0].embedding
 
@@ -100,7 +155,13 @@ def embed_texts(
         return [[] for _ in texts]
 
     try:
-        client = OpenAI(api_key=api_key, base_url=api_base)
+        normalized_url = _normalize_base_url(api_base)
+        client = OpenAI(
+            api_key=api_key,
+            base_url=normalized_url,
+            timeout=DEFAULT_TIMEOUT,
+            max_retries=DEFAULT_MAX_RETRIES,
+        )
         all_embeddings: List[Optional[List[float]]] = [None] * len(texts)
 
         # 分批处理
@@ -114,6 +175,7 @@ def embed_texts(
             response = client.embeddings.create(
                 model=model,
                 input=batch_texts,
+                dimensions=1536
             )
 
             # 将结果放回原始位置

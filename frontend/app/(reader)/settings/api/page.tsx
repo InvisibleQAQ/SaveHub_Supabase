@@ -20,6 +20,7 @@ const TAB_CONFIG: {
   description: string
   placeholder: string
   hint: string
+  notice?: string  // 重要提示（如维度要求）
 }[] = [
   {
     type: "chat",
@@ -34,6 +35,7 @@ const TAB_CONFIG: {
     description: "用于文本向量化和语义搜索",
     placeholder: "https://api.openai.com/v1/embeddings",
     hint: "请填写完整的 Embedding API 端点地址, 请求方式为openai兼容格式",
+    notice: "模型必须支持 1536 维向量输出。推荐: text-embedding-3-small, text-embedding-ada-002",
   },
   {
     type: "rerank",
@@ -373,24 +375,36 @@ export default function ApiConfigPage() {
     </div>
   )
 
-  const renderModelField = (idPrefix: string) => (
-    <div className="space-y-2">
-      <Label htmlFor={`${idPrefix}-model`}>
-        模型 <span className="text-red-500">*</span>
-      </Label>
-      <Input
-        id={`${idPrefix}-model`}
-        value={formData.model}
-        onChange={(e) => {
-          setFormData((prev) => ({ ...prev, model: e.target.value }))
-          // 模型变更时清除验证结果
-          if (validationResult) setValidationResult(null)
-        }}
-        placeholder="gpt-3.5-turbo, text-embedding-ada-002, etc."
-      />
-      <p className="text-xs text-muted-foreground">输入要使用的模型名称</p>
-    </div>
-  )
+  const renderModelField = (idPrefix: string, type?: ApiConfigType) => {
+    const currentType = type || activeTab
+    const tabConfig = TAB_CONFIG.find((t) => t.type === currentType)
+
+    return (
+      <div className="space-y-2">
+        <Label htmlFor={`${idPrefix}-model`}>
+          模型 <span className="text-red-500">*</span>
+        </Label>
+        <Input
+          id={`${idPrefix}-model`}
+          value={formData.model}
+          onChange={(e) => {
+            setFormData((prev) => ({ ...prev, model: e.target.value }))
+            // 模型变更时清除验证结果
+            if (validationResult) setValidationResult(null)
+          }}
+          placeholder="gpt-3.5-turbo, text-embedding-ada-002, etc."
+        />
+        <p className="text-xs text-muted-foreground">
+          输入要使用的模型名称
+          {tabConfig?.notice && (
+            <span className="text-amber-600 dark:text-amber-400">
+              。{tabConfig.notice}
+            </span>
+          )}
+        </p>
+      </div>
+    )
+  }
 
   const renderConfigList = (type: ApiConfigType) => {
     const configs = apiConfigsGrouped[type]
@@ -606,7 +620,7 @@ export default function ApiConfigPage() {
               </p>
             </div>
 
-            {renderModelField("edit")}
+            {renderModelField("edit", editingConfig?.type)}
             {renderValidationSection()}
           </div>
           <DialogFooter>

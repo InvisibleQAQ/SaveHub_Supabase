@@ -58,14 +58,21 @@ def do_refresh_feed(
     feed_id: str,
     feed_url: str,
     user_id: str,
+    batch_mode: bool = False,
 ) -> Dict[str, Any]:
     """
     Core feed refresh logic.
 
     Completely decoupled from Celery for unit testing.
 
+    Args:
+        feed_id: Feed UUID
+        feed_url: RSS URL
+        user_id: User UUID
+        batch_mode: If True, skip image processing scheduling (handled by batch orchestrator)
+
     Returns:
-        {"success": True, "article_count": N}
+        {"success": True, "article_count": N, "article_ids": [...]}
         or raises FeedRefreshError
     """
     # Import here to avoid circular imports
@@ -126,24 +133,30 @@ def do_refresh_feed(
             on_conflict="feed_id,url"
         ).execute()
 
-        # Schedule image processing for new articles (with chord -> RAG callback)
-        # (process_article_images checks images_processed status, safe to call for all)
-        try:
-            from .image_processor import schedule_image_processing
-            article_ids = [a["id"] for a in db_articles]
-            logger.info(f"[IMAGE_DEBUG] About to schedule image processing for {len(article_ids)} articles")
-            logger.info(f"[IMAGE_DEBUG] Article IDs: {article_ids[:5]}...")  # Show first 5 IDs
+        # Collect article IDs for return value
+        article_ids = [a["id"] for a in db_articles]
 
-            # Call the task with feed_id for chord -> RAG callback
-            result = schedule_image_processing.delay(article_ids, feed_id)
-            logger.info(f"[IMAGE_DEBUG] Scheduled image->RAG chain, task_id={result.id}")
-        except Exception as e:
-            logger.error(f"[IMAGE_DEBUG] Failed to schedule image processing: {e}", exc_info=True)
-            # Don't fail the entire refresh_feed task if image processing scheduling fails
+        # Schedule image processing for new articles (with chord -> RAG callback)
+        # In batch_mode, image processing is handled by batch orchestrator
+        if not batch_mode:
+            try:
+                from .image_processor import schedule_image_processing
+                logger.info(f"[IMAGE_DEBUG] About to schedule image processing for {len(article_ids)} articles")
+                logger.info(f"[IMAGE_DEBUG] Article IDs: {article_ids[:5]}...")  # Show first 5 IDs
+
+                # Call the task with feed_id for chord -> RAG callback
+                result = schedule_image_processing.delay(article_ids, feed_id)
+                logger.info(f"[IMAGE_DEBUG] Scheduled image->RAG chain, task_id={result.id}")
+            except Exception as e:
+                logger.error(f"[IMAGE_DEBUG] Failed to schedule image processing: {e}", exc_info=True)
+                # Don't fail the entire refresh_feed task if image processing scheduling fails
+        else:
+            logger.info(f"[BATCH_MODE] Skipping image scheduling for {len(article_ids)} articles (batch orchestrator handles it)")
     else:
+        article_ids = []
         logger.warning(f"[IMAGE_DEBUG] No articles parsed from feed {feed_id}, skipping image processing")
 
-    return {"success": True, "article_count": len(articles)}
+    return {"success": True, "article_count": len(articles), "article_ids": article_ids}
 
 
 def update_feed_status(
@@ -528,3 +541,282 @@ def schedule_all_feeds(batch_size: int = 50):
 
     logger.info(f"Scheduled {total} feeds in {batches} batches")
     return {"total": total, "batches": batches}
+
+
+# =============================================================================
+# Batch scheduling tasks (for scheduled refresh with global ordering)
+# =============================================================================
+
+@app.task(
+    bind=True,
+    name="refresh_feed_batch",
+    max_retries=2,
+    default_retry_delay=5,
+    retry_backoff=True,
+    retry_backoff_max=60,
+    time_limit=120,
+    soft_time_limit=90,
+)
+def refresh_feed_batch(
+    self,
+    feed_id: str,
+    feed_url: str,
+    feed_title: str,
+    user_id: str,
+    refresh_interval: int,
+):
+    """
+    Batch mode feed refresh task.
+
+    Differences from refresh_feed:
+    1. Uses batch_mode=True (skips image processing scheduling)
+    2. Does NOT call schedule_next_refresh (Beat controls timing)
+    3. Returns article_ids for batch orchestrator
+
+    Args:
+        feed_id: Feed UUID
+        feed_url: RSS URL
+        feed_title: Display name
+        user_id: User UUID
+        refresh_interval: Refresh interval in minutes
+    """
+    task_id = self.request.id
+    task_lock = get_task_lock()
+    lock_key = f"feed:{feed_id}"
+    lock_ttl = 180
+
+    # Check task lock (prevent duplicate execution)
+    if not task_lock.acquire(lock_key, lock_ttl, task_id):
+        logger.info(f"[BATCH] Feed {feed_id} already being processed, skipping")
+        return {
+            "success": True,
+            "feed_id": feed_id,
+            "skipped": True,
+            "reason": "locked",
+            "article_ids": []
+        }
+
+    start_time = datetime.now(timezone.utc)
+
+    try:
+        # Check if feed still exists
+        supabase = get_supabase_service()
+        feed_check = supabase.table("feeds").select("id").eq(
+            "id", feed_id
+        ).eq("user_id", user_id).execute()
+
+        if not feed_check.data:
+            logger.info(f"[BATCH] Feed {feed_id} no longer exists, skipping")
+            return {
+                "success": True,
+                "feed_id": feed_id,
+                "skipped": True,
+                "reason": "feed_deleted",
+                "article_ids": []
+            }
+
+        # Execute refresh with batch_mode=True
+        result = do_refresh_feed(feed_id, feed_url, user_id, batch_mode=True)
+
+        update_feed_status(feed_id, user_id, "success")
+
+        duration_ms = int((datetime.now(timezone.utc) - start_time).total_seconds() * 1000)
+        logger.info(
+            f"[BATCH] Feed {feed_id} completed: {result['article_count']} articles, {duration_ms}ms"
+        )
+
+        return {
+            "success": True,
+            "feed_id": feed_id,
+            "article_count": result["article_count"],
+            "article_ids": result.get("article_ids", []),
+            "duration_ms": duration_ms
+        }
+
+    except RetryableError as e:
+        update_feed_status(feed_id, user_id, "failed", str(e))
+        raise self.retry(exc=e)
+
+    except NonRetryableError as e:
+        update_feed_status(feed_id, user_id, "failed", str(e))
+        return {
+            "success": False,
+            "feed_id": feed_id,
+            "error": str(e),
+            "article_ids": []
+        }
+
+    except Exception as e:
+        update_feed_status(feed_id, user_id, "failed", str(e))
+        logger.exception(f"[BATCH] Unexpected error for feed {feed_id}: {e}")
+        return {
+            "success": False,
+            "feed_id": feed_id,
+            "error": str(e),
+            "article_ids": []
+        }
+
+    finally:
+        task_lock.release(lock_key, task_id)
+
+
+@app.task(name="scan_due_feeds")
+def scan_due_feeds():
+    """
+    Celery Beat task: Scan feeds due for refresh every minute.
+
+    Refresh criteria: last_fetched + refresh_interval < now
+    or last_fetched IS NULL (never refreshed)
+
+    Groups feeds by user_id and schedules batch refresh per user.
+    """
+    task_lock = get_task_lock()
+
+    # Prevent overlapping execution (Beat may trigger again before previous completes)
+    if not task_lock.acquire("scan_due_feeds", ttl_seconds=55):
+        logger.debug("[SCAN] scan_due_feeds already running, skipping")
+        return {"skipped": True}
+
+    try:
+        supabase = get_supabase_service()
+        now = datetime.now(timezone.utc)
+
+        # Query all feeds (Supabase doesn't support complex time calculations)
+        result = supabase.table("feeds").select(
+            "id, url, title, user_id, refresh_interval, last_fetched"
+        ).execute()
+
+        if not result.data:
+            return {"due_feeds": 0, "users_scheduled": 0}
+
+        # Filter feeds due for refresh in code
+        due_feeds = []
+        for feed in result.data:
+            if feed.get("last_fetched"):
+                last_fetched = datetime.fromisoformat(
+                    feed["last_fetched"].replace("Z", "+00:00")
+                )
+                next_refresh = last_fetched + timedelta(minutes=feed["refresh_interval"])
+                if next_refresh <= now:
+                    due_feeds.append(feed)
+            else:
+                # Never fetched, needs refresh
+                due_feeds.append(feed)
+
+        if not due_feeds:
+            logger.debug("[SCAN] No feeds due for refresh")
+            return {"due_feeds": 0, "users_scheduled": 0}
+
+        # Group by user_id
+        user_feeds = {}
+        for feed in due_feeds:
+            uid = feed["user_id"]
+            if uid not in user_feeds:
+                user_feeds[uid] = []
+            user_feeds[uid].append(feed)
+
+        # Schedule batch refresh for each user
+        for user_id, feeds in user_feeds.items():
+            schedule_user_batch_refresh.delay(user_id, feeds)
+
+        logger.info(f"[SCAN] Scheduled batch refresh: {len(due_feeds)} feeds for {len(user_feeds)} users")
+        return {
+            "due_feeds": len(due_feeds),
+            "users_scheduled": len(user_feeds)
+        }
+
+    finally:
+        task_lock.release("scan_due_feeds")
+
+
+@app.task(name="schedule_user_batch_refresh")
+def schedule_user_batch_refresh(user_id: str, feeds: list):
+    """
+    Schedule batch feed refresh for a single user.
+
+    Creates a Chord: all feeds refresh in parallel -> on_user_feeds_complete callback
+
+    Args:
+        user_id: User UUID
+        feeds: List of feed dicts with id, url, title, refresh_interval
+    """
+    from celery import chord, group
+
+    if not feeds:
+        return {"scheduled": 0}
+
+    logger.info(f"[BATCH] Scheduling batch refresh for user {user_id}: {len(feeds)} feeds")
+
+    # Build feed refresh task group
+    refresh_tasks = group(
+        refresh_feed_batch.s(
+            feed_id=feed["id"],
+            feed_url=feed["url"],
+            feed_title=feed["title"],
+            user_id=user_id,
+            refresh_interval=feed["refresh_interval"],
+        )
+        for feed in feeds
+    )
+
+    # Chord: all refreshes complete -> callback collects results
+    workflow = chord(refresh_tasks)(
+        on_user_feeds_complete.s(user_id=user_id)
+    )
+
+    return {
+        "scheduled": len(feeds),
+        "chord_id": workflow.id,
+        "user_id": user_id
+    }
+
+
+@app.task(name="on_user_feeds_complete", bind=True)
+def on_user_feeds_complete(self, refresh_results: list, user_id: str):
+    """
+    Callback after all feed refreshes complete for a user.
+
+    Collects all new article IDs and triggers batch image processing.
+
+    Args:
+        refresh_results: List of results from refresh_feed_batch tasks
+        user_id: User UUID
+    """
+    task_id = self.request.id
+
+    # Count results
+    success_count = sum(1 for r in refresh_results if r and r.get("success"))
+    failed_count = len(refresh_results) - success_count
+
+    # Collect all new article IDs
+    all_article_ids = []
+    for r in refresh_results:
+        if r and r.get("success") and not r.get("skipped"):
+            all_article_ids.extend(r.get("article_ids", []))
+
+    logger.info(
+        f"[BATCH_CALLBACK] User {user_id} feeds complete: "
+        f"{success_count}/{len(refresh_results)} succeeded, "
+        f"{len(all_article_ids)} new articles"
+    )
+
+    if not all_article_ids:
+        return {
+            "user_id": user_id,
+            "feeds_success": success_count,
+            "feeds_failed": failed_count,
+            "articles": 0,
+            "image_processing": "skipped"
+        }
+
+    # Trigger batch image processing
+    from .image_processor import schedule_batch_image_processing
+    schedule_batch_image_processing.delay(all_article_ids, user_id)
+
+    return {
+        "user_id": user_id,
+        "feeds_success": success_count,
+        "feeds_failed": failed_count,
+        "articles": len(all_article_ids),
+        "image_processing": "scheduled"
+    }

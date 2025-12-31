@@ -480,3 +480,99 @@ def schedule_image_processing(article_ids: List[str], feed_id: str = None):
     except Exception as e:
         logger.exception(f"[CHORD_DEBUG] Failed to create chord: {e}")
         raise
+
+
+# =============================================================================
+# Batch image processing (for scheduled refresh with global ordering)
+# =============================================================================
+
+@app.task(name="schedule_batch_image_processing")
+def schedule_batch_image_processing(article_ids: List[str], user_id: str):
+    """
+    Schedule batch image processing for multiple articles (user-level).
+
+    Creates a Chord: all image tasks complete -> on_batch_images_complete callback
+
+    Differences from schedule_image_processing:
+    - Callback triggers RAG processing, no feed_id
+    - Designed for scheduled batch refresh scenario
+
+    Args:
+        article_ids: List of article UUIDs
+        user_id: User UUID (for logging and traceability)
+    """
+    from celery import chord, group
+
+    if not article_ids:
+        logger.info(f"[BATCH_IMAGE] No articles for batch image processing (user {user_id})")
+        return {"scheduled": 0}
+
+    logger.info(f"[BATCH_IMAGE] Creating batch image chord for user {user_id}: {len(article_ids)} articles")
+
+    try:
+        # Build parallel task group
+        image_tasks = group(
+            process_article_images.s(article_id=aid)
+            for aid in article_ids
+        )
+
+        # Create callback signature
+        callback = on_batch_images_complete.s(article_ids=article_ids, user_id=user_id)
+
+        # Use chord: all image tasks complete -> trigger RAG callback
+        workflow = chord(image_tasks)(callback)
+
+        logger.info(
+            f"[BATCH_IMAGE] Chord created successfully: "
+            f"{len(article_ids)} image tasks -> {callback.task} "
+            f"(user_id={user_id}, chord_id={workflow.id})"
+        )
+        return {
+            "scheduled": len(article_ids),
+            "chord_id": workflow.id,
+            "user_id": user_id
+        }
+
+    except Exception as e:
+        logger.exception(f"[BATCH_IMAGE] Failed to create chord: {e}")
+        raise
+
+
+@app.task(name="on_batch_images_complete", bind=True)
+def on_batch_images_complete(
+    self,
+    image_results: List[dict],
+    article_ids: List[str],
+    user_id: str
+):
+    """
+    Callback after all batch image processing completes.
+
+    Triggers RAG processing for all articles (reuses existing schedule_rag_for_articles).
+
+    Args:
+        image_results: List of results from process_article_images tasks
+        article_ids: List of article UUIDs
+        user_id: User UUID
+    """
+    task_id = self.request.id
+
+    # Count results
+    success_count = sum(1 for r in image_results if r and r.get("success"))
+    failed_count = len(image_results) - success_count
+
+    logger.info(
+        f"[BATCH_IMAGE_CALLBACK] User {user_id} images complete: "
+        f"{success_count}/{len(image_results)} succeeded"
+    )
+
+    # Trigger RAG processing (reuse existing task)
+    from .rag_processor import schedule_rag_for_articles
+    rag_result = schedule_rag_for_articles(article_ids)
+
+    return {
+        "user_id": user_id,
+        "image_success": success_count,
+        "image_failed": failed_count,
+        "rag_scheduled": rag_result.get("scheduled", 0)
+    }

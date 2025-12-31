@@ -90,9 +90,15 @@ def get_user_api_configs(user_id: str) -> Dict[str, Dict[str, str]]:
         except Exception:
             decrypted_key = config["api_key"]  # 可能未加密
 
+        # 解密 API Base
+        try:
+            decrypted_base = decrypt(config["api_base"])
+        except Exception:
+            decrypted_base = config["api_base"]  # 可能未加密
+
         configs[config_type] = {
             "api_key": decrypted_key,
-            "api_base": config["api_base"],
+            "api_base": decrypted_base,
             "model": config["model"],
         }
 

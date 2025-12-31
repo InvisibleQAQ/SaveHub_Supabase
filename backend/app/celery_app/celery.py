@@ -70,6 +70,7 @@ app.conf.update(
         "default": {},   # Scheduled refresh (normal priority)
     },
     task_routes={
+        # Existing tasks
         "app.celery_app.tasks.refresh_feed": {"queue": "default"},
         "process_article_images": {"queue": "default"},
         "schedule_image_processing": {"queue": "default"},
@@ -77,10 +78,23 @@ app.conf.update(
         "scan_pending_rag_articles": {"queue": "default"},
         "on_images_complete": {"queue": "default"},
         "schedule_rag_for_articles": {"queue": "default"},
+        # Batch scheduling tasks
+        "scan_due_feeds": {"queue": "default"},
+        "schedule_user_batch_refresh": {"queue": "default"},
+        "refresh_feed_batch": {"queue": "default"},
+        "on_user_feeds_complete": {"queue": "default"},
+        "schedule_batch_image_processing": {"queue": "default"},
+        "on_batch_images_complete": {"queue": "default"},
     },
 
     # Celery Beat schedule
     beat_schedule={
+        # Scan feeds due for refresh every minute
+        "scan-due-feeds-every-minute": {
+            "task": "scan_due_feeds",
+            "schedule": crontab(minute="*"),
+        },
+        # Fallback: scan for pending RAG articles every 30 minutes
         "scan-rag-every-30-minutes": {
             "task": "scan_pending_rag_articles",
             "schedule": crontab(minute="*/30"),
