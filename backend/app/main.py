@@ -8,7 +8,7 @@ _ = load_dotenv(find_dotenv())
 # This fixes SSL handshake timeout in slow network environments (e.g., China mainland)
 # See: https://github.com/supabase/supabase-py/issues/487
 import httpx
-_HTTPX_TIMEOUT = float(os.environ.get("HTTPX_TIMEOUT", "30"))
+_HTTPX_TIMEOUT = float(os.environ.get("HTTPX_TIMEOUT", "45"))
 httpx._config.DEFAULT_TIMEOUT_CONFIG = httpx.Timeout(_HTTPX_TIMEOUT)
 
 import logging

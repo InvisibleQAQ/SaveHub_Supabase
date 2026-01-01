@@ -20,6 +20,7 @@ from .celery import app
 from .task_lock import get_task_lock
 from .supabase_client import get_supabase_service
 from app.services.repository_analyzer import analyze_new_repositories
+from app.services.db.repositories import RepositoryService
 
 logger = logging.getLogger(__name__)
 
@@ -61,9 +62,9 @@ def do_sync_repositories(user_id: str, github_token: str) -> Dict[str, Any]:
         github_id = repo.get("id") or repo.get("github_id")
         repo["readme_content"] = readme_map.get(github_id)
 
-    # Upsert to database
+    # Upsert to database using RepositoryService
     supabase = get_supabase_service()
-    result = _upsert_repositories(supabase, user_id, all_repos)
+    result = RepositoryService.upsert_repositories_static(supabase, user_id, all_repos)
 
     return result
 
@@ -97,62 +98,6 @@ def do_ai_analysis(user_id: str, new_count: int) -> Dict[str, Any]:
         loop.close()
 
     return result
-
-
-def _upsert_repositories(supabase, user_id: str, repos: List[dict]) -> Dict[str, Any]:
-    """Upsert repositories to database."""
-    if not repos:
-        return {"total": 0, "new_count": 0, "updated_count": 0}
-
-    # Get existing github_ids
-    existing_response = supabase.table("repositories") \
-        .select("github_id") \
-        .eq("user_id", user_id) \
-        .execute()
-
-    existing_ids = {row["github_id"] for row in (existing_response.data or [])}
-
-    # Prepare rows for upsert
-    db_rows = []
-    new_count = 0
-    for repo in repos:
-        github_id = repo.get("id") or repo.get("github_id")
-        if github_id not in existing_ids:
-            new_count += 1
-
-        db_rows.append({
-            "user_id": user_id,
-            "github_id": github_id,
-            "name": repo.get("name"),
-            "full_name": repo.get("full_name"),
-            "description": repo.get("description"),
-            "html_url": repo.get("html_url"),
-            "stargazers_count": repo.get("stargazers_count", 0),
-            "language": repo.get("language"),
-            "topics": repo.get("topics", []),
-            "owner_login": repo.get("owner", {}).get("login", ""),
-            "owner_avatar_url": repo.get("owner", {}).get("avatar_url"),
-            "starred_at": repo.get("starred_at"),
-            "github_created_at": repo.get("created_at"),
-            "github_updated_at": repo.get("updated_at"),
-            "readme_content": repo.get("readme_content"),
-        })
-
-    # Upsert with conflict on (user_id, github_id)
-    response = supabase.table("repositories") \
-        .upsert(db_rows, on_conflict="user_id,github_id") \
-        .execute()
-
-    total = len(response.data or [])
-    updated_count = total - new_count
-
-    logger.info(f"Upserted {total} repositories ({new_count} new) for user {user_id}")
-
-    return {
-        "total": total,
-        "new_count": new_count,
-        "updated_count": updated_count
-    }
 
 
 async def _fetch_all_starred_repos(token: str) -> List[dict]:

@@ -18,6 +18,17 @@ class RepositoryService:
         self.supabase = supabase
         self.user_id = user_id
 
+    @classmethod
+    def upsert_repositories_static(
+        cls, supabase: Client, user_id: str, repos: List[dict]
+    ) -> dict:
+        """
+        Static method for upsert - used by Celery tasks.
+        Allows Celery tasks to use service_role client without full service instantiation.
+        """
+        service = cls(supabase, user_id)
+        return service.upsert_repositories(repos)
+
     def load_repositories(self) -> List[dict]:
         """
         Load all repositories for current user.
