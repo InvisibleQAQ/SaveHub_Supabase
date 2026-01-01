@@ -158,11 +158,34 @@ def do_refresh_feed(
             })
 
         # Upsert new, unprocessed, or failed articles
+        # CRITICAL: Use on_conflict="id" to prevent FK violations with article_embeddings
+        # Using "feed_id,url" causes PostgreSQL to UPDATE the id field when URL matching
+        # fails, which violates FK constraint (no ON UPDATE CASCADE)
         if articles_to_upsert:
-            upsert_result = supabase.table("articles").upsert(
-                articles_to_upsert,
-                on_conflict="feed_id,url"
-            ).execute()
+            from postgrest.exceptions import APIError
+            try:
+                upsert_result = supabase.table("articles").upsert(
+                    articles_to_upsert,
+                    on_conflict="id"
+                ).execute()
+            except APIError as e:
+                # Handle unique constraint violation (URL matching failed)
+                if "23505" in str(e):
+                    logger.warning(f"Unique constraint violation, retrying with URL lookup")
+                    # Re-query existing articles by URL to get correct IDs
+                    for article in articles_to_upsert:
+                        existing = supabase.table("articles").select("id").eq(
+                            "feed_id", feed_id
+                        ).eq("url", article["url"]).maybeSingle().execute()
+                        if existing.data:
+                            article["id"] = existing.data["id"]
+                    # Retry upsert with corrected IDs
+                    supabase.table("articles").upsert(
+                        articles_to_upsert,
+                        on_conflict="id"
+                    ).execute()
+                else:
+                    raise
             article_ids = [a["id"] for a in articles_to_upsert]
         else:
             article_ids = []
