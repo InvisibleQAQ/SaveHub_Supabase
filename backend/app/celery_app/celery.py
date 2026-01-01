@@ -31,6 +31,7 @@ app = Celery(
         "app.celery_app.tasks",
         "app.celery_app.image_processor",
         "app.celery_app.rag_processor",
+        "app.celery_app.repository_tasks",
     ]
 )
 
@@ -85,6 +86,8 @@ app.conf.update(
         "on_user_feeds_complete": {"queue": "default"},
         "schedule_batch_image_processing": {"queue": "default"},
         "on_batch_images_complete": {"queue": "default"},
+        # Repository sync tasks
+        "sync_repositories": {"queue": "default"},
     },
 
     # Celery Beat schedule

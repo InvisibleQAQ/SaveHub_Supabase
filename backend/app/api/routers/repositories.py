@@ -15,6 +15,7 @@ from app.supabase_client import get_supabase_client
 from app.schemas.repositories import RepositoryResponse, SyncResponse
 from app.services.db.repositories import RepositoryService
 from app.services.db.settings import SettingsService
+from app.celery_app.repository_tasks import schedule_next_repo_sync
 
 logger = logging.getLogger(__name__)
 
@@ -76,6 +77,14 @@ async def sync_repositories(
     # Upsert to database
     repo_service = RepositoryService(supabase, user_id)
     result = repo_service.upsert_repositories(all_repos)
+
+    # Schedule next auto-sync in 1 hour (resets timer if already scheduled)
+    try:
+        schedule_next_repo_sync(user_id)
+        logger.info(f"Scheduled next repo sync for user {user_id} in 1 hour")
+    except Exception as e:
+        # Don't fail the sync if scheduling fails
+        logger.warning(f"Failed to schedule next repo sync: {e}")
 
     return SyncResponse(**result)
 
