@@ -20,6 +20,7 @@ from app.schemas.repositories import (
 )
 from app.services.db.repositories import RepositoryService
 from app.services.db.settings import SettingsService
+from app.services.db.api_configs import ApiConfigService
 from app.services.repository_analyzer import analyze_repositories_needing_analysis
 from app.celery_app.repository_tasks import schedule_next_repo_sync
 
