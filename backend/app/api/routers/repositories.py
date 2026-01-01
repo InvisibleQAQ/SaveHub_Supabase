@@ -19,9 +19,8 @@ from app.schemas.repositories import (
     RepositoryUpdateRequest,
 )
 from app.services.db.repositories import RepositoryService
-from app.services.db.api_configs import ApiConfigService
 from app.services.db.settings import SettingsService
-from app.services.ai_service import create_ai_service_from_config
+from app.services.repository_analyzer import analyze_new_repositories
 from app.celery_app.repository_tasks import schedule_next_repo_sync
 
 logger = logging.getLogger(__name__)
@@ -109,41 +108,23 @@ async def sync_repositories(
             # AI analyze new repositories
             if result["new_count"] > 0:
                 try:
-                    api_config_service = ApiConfigService(supabase, user_id)
-                    config = api_config_service.get_active_config("chat")
+                    async def on_progress(repo_name: str, completed: int, total: int):
+                        await progress_queue.put({
+                            "event": "progress",
+                            "data": {
+                                "phase": "analyzing",
+                                "current": repo_name,
+                                "completed": completed,
+                                "total": total
+                            }
+                        })
 
-                    if config:
-                        new_repos = repo_service.get_unanalyzed_repositories(
-                            limit=result["new_count"]
-                        )
-                        if new_repos:
-                            # Progress callback for AI analysis
-                            async def on_progress(repo_name: str, completed: int, total: int):
-                                await progress_queue.put({
-                                    "event": "progress",
-                                    "data": {
-                                        "phase": "analyzing",
-                                        "current": repo_name,
-                                        "completed": completed,
-                                        "total": total
-                                    }
-                                })
-
-                            ai_service = create_ai_service_from_config(config)
-                            analysis_results = await ai_service.analyze_repositories_batch(
-                                repos=new_repos,
-                                concurrency=5,
-                                use_fallback=True,
-                                on_progress=on_progress,
-                            )
-                            for repo_id, analysis in analysis_results.items():
-                                if analysis["success"]:
-                                    repo_service.update_ai_analysis(repo_id, analysis["data"])
-                                else:
-                                    repo_service.mark_analysis_failed(repo_id)
-                            logger.info(
-                                f"AI analysis completed for {len(analysis_results)} new repos"
-                            )
+                    await analyze_new_repositories(
+                        supabase=supabase,
+                        user_id=user_id,
+                        limit=result["new_count"],
+                        on_progress=on_progress,
+                    )
                 except Exception as e:
                     logger.warning(f"AI analysis during sync failed: {e}")
 

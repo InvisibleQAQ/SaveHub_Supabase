@@ -19,6 +19,7 @@ from celery.exceptions import Reject
 from .celery import app
 from .task_lock import get_task_lock
 from .supabase_client import get_supabase_service
+from app.services.repository_analyzer import analyze_new_repositories
 
 logger = logging.getLogger(__name__)
 
@@ -63,6 +64,37 @@ def do_sync_repositories(user_id: str, github_token: str) -> Dict[str, Any]:
     # Upsert to database
     supabase = get_supabase_service()
     result = _upsert_repositories(supabase, user_id, all_repos)
+
+    return result
+
+
+def do_ai_analysis(user_id: str, new_count: int) -> Dict[str, Any]:
+    """
+    AI analyze newly synced repositories.
+    Wrapper that runs async analyze_new_repositories in sync context.
+
+    Args:
+        user_id: User UUID
+        new_count: Number of new repositories to analyze
+
+    Returns:
+        {"analyzed": N, "failed": N, "skipped": bool}
+    """
+    supabase = get_supabase_service()
+
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+    try:
+        result = loop.run_until_complete(
+            analyze_new_repositories(
+                supabase=supabase,
+                user_id=user_id,
+                limit=new_count,
+                on_progress=None,
+            )
+        )
+    finally:
+        loop.close()
 
     return result
 
@@ -299,6 +331,16 @@ def sync_repositories(
             }
         )
 
+        # AI analyze new repositories
+        ai_result = {"ai_analyzed": 0, "ai_failed": 0}
+        if result["new_count"] > 0:
+            try:
+                ai_analysis = do_ai_analysis(user_id, result["new_count"])
+                ai_result["ai_analyzed"] = ai_analysis["analyzed"]
+                ai_result["ai_failed"] = ai_analysis["failed"]
+            except Exception as e:
+                logger.warning(f"AI analysis during sync failed: {e}")
+
         # Schedule next auto-sync in 1 hour
         schedule_next_repo_sync(user_id)
 
@@ -308,7 +350,8 @@ def sync_repositories(
             "total": result["total"],
             "new_count": result["new_count"],
             "updated_count": result["updated_count"],
-            "duration_ms": duration_ms
+            "duration_ms": duration_ms,
+            **ai_result,
         }
 
     except ValueError as e:
