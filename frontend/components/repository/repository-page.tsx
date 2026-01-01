@@ -21,6 +21,7 @@ export function RepositoryPage() {
     loadRepositories,
     syncRepositories,
     settings,
+    isLoading: isStoreLoading,
   } = useRSSStore()
 
   const [selectedCategory, setSelectedCategory] = useState("all")
@@ -31,13 +32,13 @@ export function RepositoryPage() {
 
   // Load repositories on mount
   useEffect(() => {
+    // Skip if store is still loading settings from database
+    if (isStoreLoading) {
+      return
+    }
+
     const load = async () => {
       if (!settings.githubToken) {
-        toast({
-          title: "GitHub Token 未配置",
-          description: "请在设置页面添加 GitHub Token",
-          variant: "destructive",
-        })
         setIsLoading(false)
         return
       }
@@ -51,7 +52,7 @@ export function RepositoryPage() {
       }
     }
     load()
-  }, [settings.githubToken, loadRepositories, toast])
+  }, [isStoreLoading, settings.githubToken, loadRepositories])
 
   // Handle sync
   const handleSync = async () => {
@@ -104,8 +105,8 @@ export function RepositoryPage() {
     setDetailOpen(true)
   }
 
-  // No GitHub token configured
-  if (!settings.githubToken && !isLoading) {
+  // No GitHub token configured (only show after store finished loading)
+  if (!settings.githubToken && !isLoading && !isStoreLoading) {
     return (
       <div className="flex-1 flex items-center justify-center bg-muted/30">
         <div className="text-center space-y-4 p-8">
