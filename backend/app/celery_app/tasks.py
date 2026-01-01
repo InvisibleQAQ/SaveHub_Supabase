@@ -284,6 +284,7 @@ def refresh_feed(
         ).eq("user_id", user_id).execute()
 
         if not feed_check.data:
+            # Feed no longer exists, skip and terminate task chain
             logger.info(
                 f"Feed {feed_id} no longer exists, skipping refresh",
                 extra={
@@ -668,6 +669,7 @@ def refresh_feed_batch(
         ).eq("user_id", user_id).execute()
 
         if not feed_check.data:
+            # Feed no longer exists, skip and terminate task chain
             logger.info(f"[BATCH] Feed {feed_id} no longer exists, skipping")
             return {
                 "success": True,

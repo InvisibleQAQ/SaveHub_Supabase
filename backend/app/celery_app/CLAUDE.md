@@ -146,3 +146,4 @@ schedule_rag_for_articles (reuse existing)
 1. **Feed-level lock**: `refresh_feed` and `refresh_feed_batch` share same lock key `feed:{feed_id}`
 2. **Beat overlap lock**: `scan_due_feeds` uses lock with 55s TTL
 3. **New feed handling**: `POST /feeds` sets `last_fetched = now` before scheduling, preventing Beat re-trigger
+4. **Deleted feed handling**: Tasks check if feed exists before refresh; if deleted, skip with `feed_deleted` and terminate chain (tasks.py:286-302, 671-680)
