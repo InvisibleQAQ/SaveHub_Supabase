@@ -49,6 +49,7 @@ function transformArticle(raw: Record<string, unknown>): Article {
     isStarred: (raw.is_starred as boolean) ?? false,
     thumbnail: raw.thumbnail as string | undefined,
     contentHash: raw.content_hash as string | undefined,
+    repositoryCount: (raw.repository_count as number) ?? 0,
   }
 }
 

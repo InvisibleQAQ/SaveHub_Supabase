@@ -77,7 +77,7 @@ class ArticleService:
         logger.debug(f"Loading articles: feed_id={feed_id}, limit={limit}")
 
         query = self.supabase.table("articles") \
-            .select("*") \
+            .select("*, article_repositories(count)") \
             .eq("user_id", self.user_id) \
             .order("published_at", desc=True)
 
@@ -91,6 +91,11 @@ class ArticleService:
 
         articles = []
         for row in response.data or []:
+            # 提取关联仓库数量
+            repo_count = 0
+            if row.get("article_repositories"):
+                repo_count = row["article_repositories"][0].get("count", 0)
+
             articles.append({
                 "id": row["id"],
                 "feed_id": row["feed_id"],
@@ -106,6 +111,7 @@ class ArticleService:
                 "content_hash": row.get("content_hash"),
                 "user_id": row["user_id"],
                 "created_at": row.get("created_at"),
+                "repository_count": repo_count,
             })
 
         logger.debug(f"Loaded {len(articles)} articles")

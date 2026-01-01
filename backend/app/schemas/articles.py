@@ -49,6 +49,7 @@ class ArticleResponse(ArticleBase):
     id: UUID
     user_id: UUID
     created_at: Optional[datetime] = None
+    repository_count: int = 0  # 关联仓库数量
 
     class Config:
         from_attributes = True

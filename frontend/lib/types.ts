@@ -43,6 +43,7 @@ export const ArticleSchema = z.object({
   isStarred: z.boolean().default(false),
   thumbnail: z.string().optional(),
   contentHash: z.string().optional(), // SHA-256 hash of (title + content), used for deduplication
+  repositoryCount: z.number().default(0), // 关联仓库数量
 })
 
 // API Configuration types

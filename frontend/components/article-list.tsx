@@ -1,7 +1,7 @@
 "use client"
 
 import { useState, useMemo } from "react"
-import { Search, Filter, MoreHorizontal, Star, Check, Clock, ChevronDown, SortAsc, SortDesc } from "lucide-react"
+import { Search, Filter, MoreHorizontal, Star, Check, Clock, ChevronDown, SortAsc, SortDesc, Github } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { ScrollArea } from "@/components/ui/scroll-area"
@@ -307,6 +307,12 @@ export function ArticleList({ viewMode = "all", feedId = null }: ArticleListProp
 
                         {/* Status indicators */}
                         <div className="flex items-center gap-1 ml-auto">
+                          {article.repositoryCount > 0 && (
+                            <div className="flex items-center gap-0.5 text-foreground">
+                              <Github className="h-3 w-3" />
+                              <span className="text-xs font-medium">{article.repositoryCount}</span>
+                            </div>
+                          )}
                           {article.isStarred && <Star className="h-3 w-3 fill-current text-yellow-500" />}
                           {!article.isRead && <div className="w-2 h-2 rounded-full bg-primary" />}
                         </div>
