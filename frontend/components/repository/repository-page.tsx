@@ -1,13 +1,14 @@
 "use client"
 
 import { useEffect, useState, useMemo } from "react"
-import { RefreshCw, AlertCircle } from "lucide-react"
+import { RefreshCw, AlertCircle, Search, Github, Star } from "lucide-react"
 import { useRSSStore } from "@/lib/store"
 import { useToast } from "@/hooks/use-toast"
 import { CategorySidebar } from "./category-sidebar"
 import { RepositoryCard } from "./repository-card"
 import { getCategoryCounts, filterByCategory } from "@/lib/repository-categories"
 import { Button } from "@/components/ui/button"
+import { Input } from "@/components/ui/input"
 
 export function RepositoryPage() {
   const { toast } = useToast()
@@ -22,6 +23,7 @@ export function RepositoryPage() {
 
   const [selectedCategory, setSelectedCategory] = useState("all")
   const [isLoading, setIsLoading] = useState(true)
+  const [searchQuery, setSearchQuery] = useState("")
 
   // Load repositories on mount
   useEffect(() => {
@@ -75,20 +77,35 @@ export function RepositoryPage() {
 
   // Calculate counts and filter
   const counts = useMemo(() => getCategoryCounts(repositories), [repositories])
-  const filteredRepos = useMemo(
-    () => filterByCategory(repositories, selectedCategory),
-    [repositories, selectedCategory]
-  )
+  const filteredRepos = useMemo(() => {
+    let result = filterByCategory(repositories, selectedCategory)
+
+    // Apply search filter
+    if (searchQuery.trim()) {
+      const query = searchQuery.toLowerCase()
+      result = result.filter(
+        (repo) =>
+          repo.fullName.toLowerCase().includes(query) ||
+          repo.description?.toLowerCase().includes(query) ||
+          repo.language?.toLowerCase().includes(query) ||
+          repo.topics?.some((t) => t.toLowerCase().includes(query))
+      )
+    }
+
+    return result
+  }, [repositories, selectedCategory, searchQuery])
 
   // No GitHub token configured
   if (!settings.githubToken && !isLoading) {
     return (
-      <div className="flex-1 flex items-center justify-center">
-        <div className="text-center space-y-4">
-          <AlertCircle className="w-12 h-12 mx-auto text-muted-foreground" />
-          <h2 className="text-lg font-medium">GitHub Token 未配置</h2>
-          <p className="text-sm text-muted-foreground">
-            请在设置页面添加 GitHub Personal Access Token
+      <div className="flex-1 flex items-center justify-center bg-muted/30">
+        <div className="text-center space-y-4 p-8">
+          <div className="w-16 h-16 mx-auto rounded-full bg-muted flex items-center justify-center">
+            <Github className="w-8 h-8 text-muted-foreground" />
+          </div>
+          <h2 className="text-xl font-semibold">GitHub Token 未配置</h2>
+          <p className="text-sm text-muted-foreground max-w-sm">
+            请在设置页面添加 GitHub Personal Access Token 以同步您的 Starred 仓库
           </p>
         </div>
       </div>
@@ -98,7 +115,7 @@ export function RepositoryPage() {
   return (
     <div className="flex-1 flex h-full overflow-hidden">
       {/* Category Sidebar */}
-      <div className="border-r p-4 overflow-y-auto">
+      <div className="border-r bg-muted/30 p-4 overflow-y-auto">
         <CategorySidebar
           selectedCategory={selectedCategory}
           onSelectCategory={setSelectedCategory}
@@ -109,34 +126,62 @@ export function RepositoryPage() {
       {/* Main Content */}
       <div className="flex-1 flex flex-col overflow-hidden">
         {/* Header */}
-        <div className="flex items-center justify-between p-4 border-b">
-          <h1 className="text-lg font-medium">
-            GitHub Stars ({filteredRepos.length})
-          </h1>
-          <Button
-            onClick={handleSync}
-            disabled={isSyncing}
-            size="sm"
-            variant="outline"
-          >
-            <RefreshCw className={`w-4 h-4 mr-2 ${isSyncing ? "animate-spin" : ""}`} />
-            {isSyncing ? "同步中..." : "同步"}
-          </Button>
+        <div className="flex items-center justify-between px-6 py-4 border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
+          <div className="flex items-center gap-4">
+            <div className="flex items-center gap-2">
+              <Star className="w-5 h-5 text-amber-500" />
+              <h1 className="text-lg font-semibold">
+                GitHub Stars
+              </h1>
+            </div>
+            <span className="text-sm text-muted-foreground">
+              {filteredRepos.length} 个仓库
+            </span>
+          </div>
+          <div className="flex items-center gap-3">
+            <div className="relative">
+              <Search className="absolute left-3 inset-y-0 my-auto w-4 h-4 text-muted-foreground pointer-events-none" />
+              <Input
+                placeholder="搜索仓库..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="pl-9 w-64 h-9"
+              />
+            </div>
+            <Button
+              onClick={handleSync}
+              disabled={isSyncing}
+              size="sm"
+            >
+              <RefreshCw className={`w-4 h-4 mr-2 ${isSyncing ? "animate-spin" : ""}`} />
+              {isSyncing ? "同步中..." : "同步"}
+            </Button>
+          </div>
         </div>
 
         {/* Repository Grid */}
-        <div className="flex-1 overflow-y-auto p-4">
+        <div className="flex-1 overflow-y-auto p-6">
           {isLoading ? (
             <div className="flex items-center justify-center h-full">
-              <RefreshCw className="w-6 h-6 animate-spin text-muted-foreground" />
+              <div className="text-center space-y-3">
+                <RefreshCw className="w-8 h-8 animate-spin text-primary mx-auto" />
+                <p className="text-sm text-muted-foreground">加载中...</p>
+              </div>
             </div>
           ) : filteredRepos.length === 0 ? (
             <div className="flex items-center justify-center h-full">
-              <p className="text-muted-foreground">
-                {repositories.length === 0
-                  ? "暂无仓库，点击同步按钮获取"
-                  : "该分类下暂无仓库"}
-              </p>
+              <div className="text-center space-y-3">
+                <div className="w-12 h-12 mx-auto rounded-full bg-muted flex items-center justify-center">
+                  <Search className="w-6 h-6 text-muted-foreground" />
+                </div>
+                <p className="text-muted-foreground">
+                  {repositories.length === 0
+                    ? "暂无仓库，点击同步按钮获取"
+                    : searchQuery
+                    ? "未找到匹配的仓库"
+                    : "该分类下暂无仓库"}
+                </p>
+              </div>
             </div>
           ) : (
             <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-4">
