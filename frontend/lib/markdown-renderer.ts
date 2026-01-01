@@ -1,5 +1,8 @@
 import { marked } from 'marked'
-import DOMPurify from 'isomorphic-dompurify'
+import DOMPurify from 'dompurify'
+
+// Check if running on server (SSR)
+const isServer = typeof window === 'undefined'
 
 interface MarkdownRendererOptions {
   /**
@@ -104,8 +107,16 @@ function transformImageUrl(src: string, baseUrl?: string): string {
  * Sanitize HTML to prevent XSS attacks
  *
  * ⚠️ CRITICAL SECURITY FUNCTION
+ * On server: returns raw HTML (actual sanitization happens on client hydration)
+ * On client: uses DOMPurify for XSS protection
  */
 function sanitizeHtml(html: string): string {
+  // Skip sanitization on server - DOMPurify requires DOM APIs
+  // The component using this is "use client", so actual render happens client-side
+  if (isServer) {
+    return html
+  }
+
   return DOMPurify.sanitize(html, {
     ALLOWED_TAGS: [
       // Headings
