@@ -7,7 +7,7 @@ import { useToast } from "@/hooks/use-toast"
 import { CategorySidebar } from "./category-sidebar"
 import { RepositoryCard } from "./repository-card"
 import { RepositoryDetailDialog } from "./repository-detail-dialog"
-import { getCategoryCounts, filterByCategory } from "@/lib/repository-categories"
+import { getCategoryCounts, filterByCategory, getPlatformCounts, getTagCounts, filterByDynamic } from "@/lib/repository-categories"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
@@ -34,6 +34,10 @@ export function RepositoryPage() {
   const [searchQuery, setSearchQuery] = useState("")
   const [selectedRepo, setSelectedRepo] = useState<Repository | null>(null)
   const [detailOpen, setDetailOpen] = useState(false)
+  const [selectedDynamicFilter, setSelectedDynamicFilter] = useState<{
+    type: "platform" | "tag"
+    value: string
+  } | null>(null)
 
   // Sort state with localStorage persistence
   const [sortField, setSortField] = useState<SortField>(() => {
@@ -146,8 +150,13 @@ export function RepositoryPage() {
 
   // Calculate counts and filter
   const counts = useMemo(() => getCategoryCounts(repositories), [repositories])
+  const platforms = useMemo(() => getPlatformCounts(repositories), [repositories])
+  const tags = useMemo(() => getTagCounts(repositories), [repositories])
   const filteredRepos = useMemo(() => {
-    let result = filterByCategory(repositories, selectedCategory)
+    // 动态过滤优先
+    let result = selectedDynamicFilter
+      ? filterByDynamic(repositories, selectedDynamicFilter.type, selectedDynamicFilter.value)
+      : filterByCategory(repositories, selectedCategory)
 
     // Apply search filter
     if (searchQuery.trim()) {
@@ -162,7 +171,19 @@ export function RepositoryPage() {
     }
 
     return sortRepositories(result, sortField, sortDirection)
-  }, [repositories, selectedCategory, searchQuery, sortField, sortDirection])
+  }, [repositories, selectedCategory, selectedDynamicFilter, searchQuery, sortField, sortDirection])
+
+  // 选择预设分类时，清除动态过滤
+  const handleSelectCategory = (id: string) => {
+    setSelectedCategory(id)
+    setSelectedDynamicFilter(null)
+  }
+
+  // 选择动态分类时，重置预设分类为 "all"
+  const handleSelectDynamicFilter = (type: "platform" | "tag", value: string) => {
+    setSelectedDynamicFilter({ type, value })
+    setSelectedCategory("all")
+  }
 
   const handleCardClick = (repo: Repository) => {
     setSelectedRepo(repo)
@@ -192,8 +213,12 @@ export function RepositoryPage() {
       <div className="border-r bg-muted/30 p-4 overflow-y-auto">
         <CategorySidebar
           selectedCategory={selectedCategory}
-          onSelectCategory={setSelectedCategory}
+          onSelectCategory={handleSelectCategory}
           counts={counts}
+          platforms={platforms}
+          tags={tags}
+          selectedDynamicFilter={selectedDynamicFilter}
+          onSelectDynamicFilter={handleSelectDynamicFilter}
         />
       </div>
 

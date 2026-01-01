@@ -4,6 +4,12 @@
 
 import type { Repository, RepositoryCategory } from "./types"
 
+/** 动态分类项 */
+export interface DynamicCategoryItem {
+  value: string
+  count: number
+}
+
 /**
  * 标准化字符串用于匹配比较
  * - 转小写
@@ -124,5 +130,56 @@ export function filterByCategory(repos: Repository[], categoryId: string): Repos
   return repos.filter(repo => {
     const matchedCategories = matchCategories(repo)
     return matchedCategories.includes(categoryId)
+  })
+}
+
+/**
+ * 聚合仓库的指定字段值，按出现次数降序排序
+ */
+function aggregateField(
+  repos: Repository[],
+  extractor: (repo: Repository) => string[]
+): DynamicCategoryItem[] {
+  const countMap = new Map<string, number>()
+
+  for (const repo of repos) {
+    const values = extractor(repo)
+    for (const value of values) {
+      if (value) {
+        countMap.set(value, (countMap.get(value) || 0) + 1)
+      }
+    }
+  }
+
+  return Array.from(countMap.entries())
+    .map(([value, count]) => ({ value, count }))
+    .sort((a, b) => b.count - a.count)
+}
+
+/** 聚合所有 platforms */
+export function getPlatformCounts(repos: Repository[]): DynamicCategoryItem[] {
+  return aggregateField(repos, (repo) => repo.aiPlatforms || [])
+}
+
+/** 聚合所有 tags (ai_tags + custom_tags 合并) */
+export function getTagCounts(repos: Repository[]): DynamicCategoryItem[] {
+  return aggregateField(repos, (repo) => [
+    ...(repo.aiTags || []),
+    ...(repo.customTags || []),
+  ])
+}
+
+/** 按动态分类过滤仓库 */
+export function filterByDynamic(
+  repos: Repository[],
+  type: "platform" | "tag",
+  value: string
+): Repository[] {
+  return repos.filter((repo) => {
+    if (type === "platform") {
+      return repo.aiPlatforms?.includes(value)
+    } else {
+      return repo.aiTags?.includes(value) || repo.customTags?.includes(value)
+    }
   })
 }
