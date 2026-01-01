@@ -91,15 +91,40 @@ export function RepositoryCard({
     return { content: repository.description || "暂无描述", isCustom: false, isAI: false }
   }
 
-  // Get display tags (custom > AI > topics)
+  // Get display tags (merge all sources with deduplication)
   const getDisplayTags = () => {
-    if (repository.customTags && repository.customTags.length > 0) {
-      return { tags: repository.customTags, isCustom: true }
+    const result: Array<{ tag: string; source: 'custom' | 'ai' | 'topic' }> = []
+    const seen = new Set<string>()
+
+    const customTags = repository.customTags || []
+    const aiTags = repository.aiTags || []
+    const topics = repository.topics || []
+
+    for (const tag of customTags) {
+      const normalized = tag.toLowerCase()
+      if (!seen.has(normalized)) {
+        seen.add(normalized)
+        result.push({ tag, source: 'custom' })
+      }
     }
-    if (repository.aiTags && repository.aiTags.length > 0) {
-      return { tags: repository.aiTags, isCustom: false }
+
+    for (const tag of aiTags) {
+      const normalized = tag.toLowerCase()
+      if (!seen.has(normalized)) {
+        seen.add(normalized)
+        result.push({ tag, source: 'ai' })
+      }
     }
-    return { tags: repository.topics || [], isCustom: false }
+
+    for (const tag of topics) {
+      const normalized = tag.toLowerCase()
+      if (!seen.has(normalized)) {
+        seen.add(normalized)
+        result.push({ tag, source: 'topic' })
+      }
+    }
+
+    return result
   }
 
   // Handle AI analyze
@@ -245,14 +270,20 @@ export function RepositoryCard({
       )}
 
       {/* Tags */}
-      {displayTags.tags.length > 0 && (
+      {displayTags.length > 0 && (
         <div className="flex flex-wrap gap-1.5 mb-4">
-          {displayTags.tags.slice(0, 5).map((tag, index) => (
+          {displayTags.map((item, index) => (
             <span
               key={index}
-              className="px-2 py-0.5 text-xs bg-primary/10 text-primary/80 rounded-md font-medium"
+              className={`px-2 py-0.5 text-xs rounded-md font-medium ${
+                item.source === 'custom'
+                  ? 'bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-300'
+                  : item.source === 'ai'
+                  ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300'
+                  : 'bg-primary/10 text-primary/80'
+              }`}
             >
-              {tag}
+              {item.tag}
             </span>
           ))}
         </div>
