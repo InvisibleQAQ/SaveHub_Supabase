@@ -114,6 +114,7 @@ export interface Repository {
   ownerAvatarUrl: string | null
   starredAt: string | null
   githubUpdatedAt: string | null
+  readmeContent: string | null
 }
 
 export interface RepositoryCategory {

@@ -8,9 +8,10 @@ import { getLanguageColor } from "@/lib/language-colors"
 
 interface RepositoryCardProps {
   repository: Repository
+  onClick?: () => void
 }
 
-export function RepositoryCard({ repository }: RepositoryCardProps) {
+export function RepositoryCard({ repository, onClick }: RepositoryCardProps) {
   const updatedAt = repository.githubUpdatedAt
     ? formatDistanceToNow(new Date(repository.githubUpdatedAt), {
         addSuffix: true,
@@ -21,7 +22,10 @@ export function RepositoryCard({ repository }: RepositoryCardProps) {
   const languageColor = getLanguageColor(repository.language)
 
   return (
-    <div className="group relative bg-card border rounded-xl p-4 transition-all duration-200 hover:shadow-lg hover:border-primary/30 hover:-translate-y-0.5">
+    <div
+      className="group relative bg-card border rounded-xl p-4 transition-all duration-200 hover:shadow-lg hover:border-primary/30 hover:-translate-y-0.5 cursor-pointer"
+      onClick={onClick}
+    >
       <div className="flex items-start gap-3">
         {repository.ownerAvatarUrl && (
           <img
@@ -37,6 +41,7 @@ export function RepositoryCard({ repository }: RepositoryCardProps) {
               target="_blank"
               rel="noopener noreferrer"
               className="font-semibold text-foreground hover:text-primary transition-colors truncate"
+              onClick={(e) => e.stopPropagation()}
             >
               {repository.fullName}
             </a>

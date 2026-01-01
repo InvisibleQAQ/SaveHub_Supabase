@@ -65,6 +65,14 @@ async def sync_repositories(
     # Fetch all starred repos from GitHub
     all_repos = await _fetch_all_starred_repos(github_token)
 
+    # Fetch README content for all repos (with concurrency control)
+    readme_map = await _fetch_all_readmes(github_token, all_repos, concurrency=10)
+
+    # Merge readme_content into repo data
+    for repo in all_repos:
+        github_id = repo.get("id") or repo.get("github_id")
+        repo["readme_content"] = readme_map.get(github_id)
+
     # Upsert to database
     repo_service = RepositoryService(supabase, user_id)
     result = repo_service.upsert_repositories(all_repos)
@@ -119,3 +127,59 @@ async def _fetch_all_starred_repos(token: str) -> List[dict]:
 
     logger.info(f"Fetched {len(all_repos)} starred repositories from GitHub")
     return all_repos
+
+
+async def _fetch_readme(
+    client: httpx.AsyncClient,
+    token: str,
+    full_name: str
+) -> str | None:
+    """
+    Fetch README content for a single repository.
+    Returns raw markdown content or None if not found.
+    """
+    try:
+        response = await client.get(
+            f"https://api.github.com/repos/{full_name}/readme",
+            headers={
+                "Authorization": f"Bearer {token}",
+                "Accept": "application/vnd.github.raw+json",
+                "X-GitHub-Api-Version": "2022-11-28"
+            },
+            timeout=10.0
+        )
+        if response.status_code == 200:
+            return response.text
+        return None
+    except Exception as e:
+        logger.debug(f"Failed to fetch README for {full_name}: {e}")
+        return None
+
+
+async def _fetch_all_readmes(
+    token: str,
+    repos: List[dict],
+    concurrency: int = 10
+) -> dict[int, str]:
+    """
+    Fetch README content for all repositories with concurrency control.
+    Returns {github_id: readme_content} mapping.
+    """
+    semaphore = asyncio.Semaphore(concurrency)
+    results: dict[int, str] = {}
+
+    async def fetch_one(client: httpx.AsyncClient, repo: dict):
+        async with semaphore:
+            github_id = repo.get("id") or repo.get("github_id")
+            full_name = repo.get("full_name")
+            content = await _fetch_readme(client, token, full_name)
+            if content:
+                results[github_id] = content
+            await asyncio.sleep(0.05)  # 50ms delay to avoid rate limiting
+
+    async with httpx.AsyncClient() as client:
+        tasks = [fetch_one(client, repo) for repo in repos]
+        await asyncio.gather(*tasks, return_exceptions=True)
+
+    logger.info(f"Fetched README for {len(results)}/{len(repos)} repositories")
+    return results

@@ -115,6 +115,6 @@ SUPABASE_SERVICE_ROLE_KEY=   # For background tasks (bypasses RLS)
 ## Module-Specific Documentation
 
 - **Frontend details**: See `frontend/CLAUDE.md` for routing, components, state management
-- **Database migrations**: See `frontend/scripts/CLAUDE.md` for SQL migration rules
+- **Database migrations**: See `backend/scripts/` for SQL migration scripts (run in Supabase SQL Editor)
 - **Backend schemas**: See `backend/app/schemas/CLAUDE.md` for Pydantic conventions
 - **Backend services**: See `backend/app/services/CLAUDE.md` for service layer patterns

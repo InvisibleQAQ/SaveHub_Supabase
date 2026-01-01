@@ -40,6 +40,8 @@
     "pino": "^10.1.0",
     "react": "^18",
     "react-dom": "^18",
+    "react-markdown": "^10.1.0",
+    "remark-gfm": "^4.0.1",
     "rss-parser": "latest",
     "tailwind-merge": "^2.5.5",
     "use-sync-external-store": "latest",

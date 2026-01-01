@@ -82,6 +82,7 @@ class RepositoryService:
                 "starred_at": repo.get("starred_at"),
                 "github_created_at": repo.get("created_at"),
                 "github_updated_at": repo.get("updated_at"),
+                "readme_content": repo.get("readme_content"),
             })
 
         logger.info(
@@ -133,4 +134,5 @@ class RepositoryService:
             "owner_avatar_url": row.get("owner_avatar_url"),
             "starred_at": row.get("starred_at"),
             "github_updated_at": row.get("github_updated_at"),
+            "readme_content": row.get("readme_content"),
         }

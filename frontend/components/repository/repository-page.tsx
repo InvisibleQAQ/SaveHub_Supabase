@@ -6,9 +6,11 @@ import { useRSSStore } from "@/lib/store"
 import { useToast } from "@/hooks/use-toast"
 import { CategorySidebar } from "./category-sidebar"
 import { RepositoryCard } from "./repository-card"
+import { RepositoryDetailDialog } from "./repository-detail-dialog"
 import { getCategoryCounts, filterByCategory } from "@/lib/repository-categories"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
+import type { Repository } from "@/lib/types"
 
 export function RepositoryPage() {
   const { toast } = useToast()
@@ -24,6 +26,8 @@ export function RepositoryPage() {
   const [selectedCategory, setSelectedCategory] = useState("all")
   const [isLoading, setIsLoading] = useState(true)
   const [searchQuery, setSearchQuery] = useState("")
+  const [selectedRepo, setSelectedRepo] = useState<Repository | null>(null)
+  const [detailOpen, setDetailOpen] = useState(false)
 
   // Load repositories on mount
   useEffect(() => {
@@ -94,6 +98,11 @@ export function RepositoryPage() {
 
     return result
   }, [repositories, selectedCategory, searchQuery])
+
+  const handleCardClick = (repo: Repository) => {
+    setSelectedRepo(repo)
+    setDetailOpen(true)
+  }
 
   // No GitHub token configured
   if (!settings.githubToken && !isLoading) {
@@ -186,12 +195,22 @@ export function RepositoryPage() {
           ) : (
             <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-4">
               {filteredRepos.map((repo) => (
-                <RepositoryCard key={repo.id} repository={repo} />
+                <RepositoryCard
+                  key={repo.id}
+                  repository={repo}
+                  onClick={() => handleCardClick(repo)}
+                />
               ))}
             </div>
           )}
         </div>
       </div>
+
+      <RepositoryDetailDialog
+        repository={selectedRepo}
+        open={detailOpen}
+        onOpenChange={setDetailOpen}
+      />
     </div>
   )
 }
