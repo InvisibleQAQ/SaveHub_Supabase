@@ -38,33 +38,66 @@ def do_sync_repositories(user_id: str, github_token: str) -> Dict[str, Any]:
 
     Fetches starred repos from GitHub and upserts to database.
     Only adds/updates, never deletes (preserves unstarred repos).
+    Only fetches README for new repos or repos with pushed_at change.
 
     Args:
         user_id: User UUID
         github_token: GitHub personal access token
 
     Returns:
-        {"total": N, "new_count": N, "updated_count": N}
+        {"total": N, "new_count": N, "updated_count": N, "changed_github_ids": [...]}
     """
+    supabase = get_supabase_service()
+    repo_service = RepositoryService(supabase, user_id)
+
     # Run async code in sync context
     loop = asyncio.new_event_loop()
     asyncio.set_event_loop(loop)
     try:
         all_repos = loop.run_until_complete(_fetch_all_starred_repos(github_token))
-        readme_map = loop.run_until_complete(
-            _fetch_all_readmes(github_token, all_repos, concurrency=10)
-        )
+
+        # Get existing pushed_at to detect changes
+        existing_pushed_at = repo_service.get_existing_pushed_at()
+
+        # Find repos needing README fetch (new or pushed_at changed)
+        github_ids_needing_readme = set()
+        for repo in all_repos:
+            github_id = repo.get("id") or repo.get("github_id")
+            new_pushed_at = repo.get("pushed_at")
+
+            if github_id not in existing_pushed_at:
+                # New repo
+                github_ids_needing_readme.add(github_id)
+            elif existing_pushed_at[github_id] != new_pushed_at:
+                # pushed_at changed (code update)
+                github_ids_needing_readme.add(github_id)
+
+        # Fetch README only for repos that need it
+        readme_map = {}
+        if github_ids_needing_readme:
+            repos_to_fetch = [
+                r for r in all_repos
+                if (r.get("id") or r.get("github_id")) in github_ids_needing_readme
+            ]
+            readme_map = loop.run_until_complete(
+                _fetch_all_readmes(github_token, repos_to_fetch, concurrency=10)
+            )
     finally:
         loop.close()
 
-    # Merge readme_content into repo data
+    # Merge readme_content into repo data (only for fetched repos)
     for repo in all_repos:
         github_id = repo.get("id") or repo.get("github_id")
-        repo["readme_content"] = readme_map.get(github_id)
+        if github_id in github_ids_needing_readme:
+            repo["readme_content"] = readme_map.get(github_id)
 
-    # Upsert to database using RepositoryService
-    supabase = get_supabase_service()
-    result = RepositoryService.upsert_repositories_static(supabase, user_id, all_repos)
+    # Upsert to database (will clear AI fields for changed repos)
+    result = repo_service.upsert_repositories(all_repos)
+
+    logger.info(
+        f"Sync completed: {result['total']} total, {result['new_count']} new, "
+        f"{len(github_ids_needing_readme)} needed README fetch"
+    )
 
     return result
 

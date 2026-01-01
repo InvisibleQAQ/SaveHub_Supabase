@@ -114,6 +114,7 @@ export interface Repository {
   ownerAvatarUrl: string | null
   starredAt: string | null
   githubUpdatedAt: string | null
+  githubPushedAt: string | null
   readmeContent: string | null
   // AI analysis fields
   aiSummary: string | null
