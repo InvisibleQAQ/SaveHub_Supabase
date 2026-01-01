@@ -96,11 +96,11 @@ def setup_logging(level: int = logging.INFO) -> None:
     root_logger.addHandler(console_handler)
 
     # Handler 2: CSV file output (for analysis in Excel/Numbers)
-    # Filename includes date: rss_refresh_2025_12_19.csv
+    # Filename includes date: repository_analysis_2025_12_19.csv
     # Daily rotation at midnight, keep 30 days
     today = datetime.now().strftime("%Y_%m_%d")
     csv_handler = CsvRotatingFileHandler(
-        filename=LOG_DIR / f"rss_refresh_{today}.csv",
+        filename=LOG_DIR / f"repository_analysis_{today}.csv",
         when="midnight",
         interval=1,
         backupCount=30,

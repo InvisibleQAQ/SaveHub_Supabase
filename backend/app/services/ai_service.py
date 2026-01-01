@@ -17,6 +17,44 @@ from app.services.encryption import decrypt, is_encrypted
 
 logger = logging.getLogger(__name__)
 
+
+def _format_error_chain(e: Exception) -> str:
+    """
+    Extract full error chain for detailed logging.
+
+    Checks __cause__ (explicit), __context__ (implicit), and args.
+    """
+    def format_single(ex: Exception) -> str:
+        """Format a single exception with all available info."""
+        name = type(ex).__name__
+        msg = str(ex)
+
+        # If str(ex) is empty, try args
+        if not msg and ex.args:
+            msg = str(ex.args[0]) if len(ex.args) == 1 else str(ex.args)
+
+        # If still empty, try repr
+        if not msg:
+            msg = repr(ex)
+
+        return f"{name}: {msg}"
+
+    parts = [format_single(e)]
+    seen = {id(e)}
+
+    # Walk both __cause__ and __context__
+    current = e
+    while True:
+        next_ex = current.__cause__ or current.__context__
+        if next_ex is None or id(next_ex) in seen:
+            break
+        seen.add(id(next_ex))
+        parts.append(f" <- {format_single(next_ex)}")
+        current = next_ex
+
+    return "".join(parts)
+
+
 # System prompt for repository analysis
 ANALYSIS_PROMPT = """你是一个专业的GitHub仓库分析助手。请分析以下仓库的README内容，并提取关键信息。
 
@@ -112,54 +150,80 @@ class AIService:
             user_message += f"仓库描述: {description}\n"
         user_message += f"\nREADME内容:\n{readme_content[:8000]}"  # Limit content
 
-        try:
-            async with httpx.AsyncClient(timeout=90.0) as client:
-                response = await client.post(
-                    f"{self.api_base}/chat/completions",
-                    headers={
-                        "Authorization": f"Bearer {self.api_key}",
-                        "Content-Type": "application/json",
-                    },
-                    json={
-                        "model": self.model,
-                        "messages": [
-                            {"role": "system", "content": ANALYSIS_PROMPT},
-                            {"role": "user", "content": user_message},
-                        ],
-                        "temperature": 0.3,
-                        "max_tokens": 2048,
-                    },
-                )
+        # Retry with exponential backoff for transient SSL/network errors
+        max_retries = 3
 
-                if response.status_code != 200:
-                    logger.error(
-                        f"AI API error: {response.status_code} | "
-                        f"URL: {self.api_base}/chat/completions | "
-                        f"Model: {self.model} | "
-                        f"Response: {response.text[:500]}"
+        for attempt in range(max_retries):
+            try:
+                async with httpx.AsyncClient(timeout=90.0) as client:
+                    response = await client.post(
+                        f"{self.api_base}/chat/completions",
+                        headers={
+                            "Authorization": f"Bearer {self.api_key}",
+                            "Content-Type": "application/json",
+                        },
+                        json={
+                            "model": self.model,
+                            "messages": [
+                                {"role": "system", "content": ANALYSIS_PROMPT},
+                                {"role": "user", "content": user_message},
+                            ],
+                            "temperature": 0.3,
+                            "max_tokens": 2048,
+                        },
                     )
-                    raise Exception(f"AI API error: {response.status_code}")
 
-                data = response.json()
-                content = data["choices"][0]["message"]["content"]
+                    if response.status_code != 200:
+                        logger.error(
+                            f"AI API error: {response.status_code} | "
+                            f"URL: {self.api_base}/chat/completions | "
+                            f"Model: {self.model} | "
+                            f"Response: {response.text[:500]}"
+                        )
+                        raise Exception(f"AI API error: {response.status_code}")
 
-                # Parse JSON response
-                result = self._parse_response(content)
-                logger.info(
-                    f"Repository analyzed: {repo_name}",
-                    extra={"tags": result.get("tags", [])}
+                    data = response.json()
+                    content = data["choices"][0]["message"]["content"]
+
+                    # Parse JSON response
+                    result = self._parse_response(content)
+                    logger.info(
+                        f"Repository analyzed: {repo_name}",
+                        extra={"tags": result.get("tags", [])}
+                    )
+                    return result
+
+            except httpx.TimeoutException:
+                logger.warning(f"AI API timeout for {repo_name} (90s)")
+                raise Exception("AI API timeout")
+            except (httpx.ConnectError, httpx.RemoteProtocolError) as e:
+                # SSL/connection errors - retry with backoff
+                if attempt < max_retries - 1:
+                    wait_time = (2 ** attempt) + 0.5  # 1.5s, 2.5s, 4.5s
+                    logger.warning(
+                        f"AI API connection error for {repo_name} "
+                        f"(attempt {attempt + 1}/{max_retries}), "
+                        f"retrying in {wait_time}s: {type(e).__name__}"
+                    )
+                    await asyncio.sleep(wait_time)
+                else:
+                    logger.warning(
+                        f"AI API request error for {repo_name}: "
+                        f"{_format_error_chain(e)}"
+                    )
+                    raise
+            except httpx.RequestError as e:
+                logger.warning(
+                    f"AI API request error for {repo_name}: "
+                    f"{_format_error_chain(e)}"
                 )
-                return result
-
-        except httpx.TimeoutException:
-            logger.warning(f"AI API timeout for {repo_name} (90s)")
-            raise Exception("AI API timeout")
-        except httpx.RequestError as e:
-            logger.warning(f"AI API request error for {repo_name}: {type(e).__name__}: {e}")
-            raise
-        except Exception as e:
-            logger.warning(f"AI analysis failed for {repo_name}: {type(e).__name__}: {e}")
-            raise
+                raise
+            except Exception as e:
+                logger.warning(
+                    f"AI analysis failed for {repo_name}: "
+                    f"{type(e).__name__}: {e}"
+                )
+                raise
 
     def _parse_response(self, content: str) -> dict:
         """Parse AI response JSON."""
@@ -303,7 +367,7 @@ class AIService:
                     if use_fallback:
                         result = self.fallback_analysis(repo)
                         results[repo_id] = {"success": True, "data": result, "fallback": True}
-                        logger.info(f"Fallback analysis for {repo_name} (AI failed)")
+                        logger.warning(f"Fallback analysis for {repo_name} (AI failed: {_format_error_chain(e)})")
                     else:
                         results[repo_id] = {"success": False, "error": str(e)}
 
