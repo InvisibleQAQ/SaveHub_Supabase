@@ -114,6 +114,20 @@ schedule_rag_for_articles (reuse existing)
 | `schedule_rag_for_articles` | Both | Schedule RAG tasks with staggered delays |
 | `scan_pending_rag_articles` | Fallback | Beat task, scan missed articles |
 
+### repo_extractor.py
+
+| Task | Mode | Description |
+|------|------|-------------|
+| `extract_article_repos` | Both | Extract GitHub repos from article, auto-triggers `sync_repositories` |
+| `schedule_repo_extraction_for_articles` | Both | Schedule extraction for batch of articles |
+| `scan_pending_repo_extraction` | Fallback | Beat task, scan missed extractions |
+
+### repository_tasks.py
+
+| Task | Mode | Description |
+|------|------|-------------|
+| `sync_repositories` | Both | Sync GitHub starred repos + fill README + AI analysis |
+
 ## Beat Schedule
 
 | Task | Schedule | Purpose |

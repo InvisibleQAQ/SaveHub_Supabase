@@ -211,6 +211,35 @@ def do_extract_article_repos(article_id: str, user_id: str) -> Dict[str, Any]:
 
 
 # =============================================================================
+# Sync Trigger Helper
+# =============================================================================
+
+def _maybe_trigger_sync(user_id: str):
+    """
+    Trigger sync_repositories after repo extraction.
+    Uses Redis lock to prevent duplicate scheduling within 60 seconds.
+    """
+    from .task_lock import get_task_lock
+    from .repository_tasks import sync_repositories
+
+    task_lock = get_task_lock()
+    schedule_key = f"trigger_sync_after_extract:{user_id}"
+
+    # 60 秒内只调度一次
+    if not task_lock.acquire(schedule_key, ttl_seconds=60):
+        logger.debug(f"sync_repositories already scheduled for user {user_id}")
+        return
+
+    # 延迟 30 秒执行，合并多篇文章的触发
+    sync_repositories.apply_async(
+        kwargs={"user_id": user_id, "trigger": "auto"},
+        countdown=30,
+        queue="default",
+    )
+    logger.info(f"Scheduled sync_repositories for user {user_id} in 30s")
+
+
+# =============================================================================
 # Celery Tasks
 # =============================================================================
 
@@ -238,6 +267,10 @@ def extract_article_repos(self, article_id: str, user_id: str):
         f"Repo extraction complete: {result}",
         extra={"task_id": task_id, "duration_ms": duration_ms}
     )
+
+    # Trigger sync_repositories if new repos were extracted
+    if result.get("success") and result.get("extracted", 0) > 0:
+        _maybe_trigger_sync(user_id)
 
     return {"article_id": article_id, "duration_ms": duration_ms, **result}
 
