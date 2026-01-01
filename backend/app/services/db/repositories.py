@@ -141,6 +141,7 @@ class RepositoryService:
                 "github_updated_at": repo.get("updated_at"),
                 "github_pushed_at": new_pushed_at,
                 "readme_content": repo.get("readme_content"),
+                "is_starred": True,  # Mark as starred repo
             }
 
             # Clear AI fields for repos with pushed_at change
@@ -209,6 +210,48 @@ class RepositoryService:
 
         if response.data:
             return self._row_to_dict(response.data)
+        return None
+
+    def get_by_github_id(self, github_id: int) -> dict | None:
+        """
+        Get a repository by GitHub ID.
+
+        Args:
+            github_id: GitHub's numeric repository ID
+
+        Returns:
+            Repository dict or None if not found
+        """
+        response = self.supabase.table("repositories") \
+            .select("*") \
+            .eq("user_id", self.user_id) \
+            .eq("github_id", github_id) \
+            .limit(1) \
+            .execute()
+
+        if response.data and len(response.data) > 0:
+            return self._row_to_dict(response.data[0])
+        return None
+
+    def get_by_full_name(self, full_name: str) -> dict | None:
+        """
+        Get a repository by full_name (owner/repo).
+
+        Args:
+            full_name: Repository full name (e.g., "owner/repo")
+
+        Returns:
+            Repository dict or None if not found
+        """
+        response = self.supabase.table("repositories") \
+            .select("*") \
+            .eq("user_id", self.user_id) \
+            .eq("full_name", full_name) \
+            .limit(1) \
+            .execute()
+
+        if response.data and len(response.data) > 0:
+            return self._row_to_dict(response.data[0])
         return None
 
     def update_repository(self, repo_id: str, data: dict) -> dict | None:
@@ -345,6 +388,57 @@ class RepositoryService:
 
         return response.data or []
 
+    def upsert_extracted_repository(self, repo_data: dict) -> dict | None:
+        """
+        Upsert a repository extracted from article content.
+
+        Sets is_extracted=True. If repo already exists, updates is_extracted flag.
+
+        Args:
+            repo_data: Dict with github_id, name, full_name, description,
+                      html_url, stargazers_count, language, topics, owner, etc.
+
+        Returns:
+            Upserted repository dict or None on failure
+        """
+        github_id = repo_data.get("id") or repo_data.get("github_id")
+        if not github_id:
+            logger.error("Cannot upsert extracted repo: missing github_id")
+            return None
+
+        row = {
+            "user_id": self.user_id,
+            "github_id": github_id,
+            "name": repo_data.get("name"),
+            "full_name": repo_data.get("full_name"),
+            "description": repo_data.get("description"),
+            "html_url": repo_data.get("html_url"),
+            "stargazers_count": repo_data.get("stargazers_count", 0),
+            "language": repo_data.get("language"),
+            "topics": repo_data.get("topics", []),
+            "owner_login": repo_data.get("owner", {}).get("login", ""),
+            "owner_avatar_url": repo_data.get("owner", {}).get("avatar_url"),
+            "github_created_at": repo_data.get("created_at"),
+            "github_updated_at": repo_data.get("updated_at"),
+            "github_pushed_at": repo_data.get("pushed_at"),
+            "readme_content": repo_data.get("readme_content"),
+            "is_extracted": True,
+        }
+
+        try:
+            response = self.supabase.table("repositories") \
+                .upsert(row, on_conflict="user_id,github_id") \
+                .execute()
+
+            if response.data and len(response.data) > 0:
+                logger.info(f"Upserted extracted repo: {repo_data.get('full_name')}")
+                return self._row_to_dict(response.data[0])
+            return None
+
+        except Exception as e:
+            logger.error(f"Failed to upsert extracted repo: {e}")
+            return None
+
     def _row_to_dict(self, row: dict) -> dict:
         """Convert database row to response dict."""
         return {
@@ -374,4 +468,7 @@ class RepositoryService:
             "custom_tags": row.get("custom_tags") or [],
             "custom_category": row.get("custom_category"),
             "last_edited": row.get("last_edited"),
+            # Source tracking fields
+            "is_starred": row.get("is_starred") or False,
+            "is_extracted": row.get("is_extracted") or False,
         }

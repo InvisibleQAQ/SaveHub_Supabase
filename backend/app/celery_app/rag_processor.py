@@ -362,6 +362,16 @@ def process_article_rag(self, article_id: str, user_id: str):
             }
         )
 
+        # Trigger repo extraction after RAG completes successfully
+        if result.get("success"):
+            from .repo_extractor import extract_article_repos
+            extract_article_repos.apply_async(
+                kwargs={"article_id": article_id, "user_id": user_id},
+                countdown=1,
+                queue="default",
+            )
+            logger.info(f"Scheduled repo extraction for article {article_id}")
+
         return {
             "article_id": article_id,
             "duration_ms": duration_ms,

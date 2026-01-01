@@ -32,6 +32,7 @@ app = Celery(
         "app.celery_app.image_processor",
         "app.celery_app.rag_processor",
         "app.celery_app.repository_tasks",
+        "app.celery_app.repo_extractor",
     ]
 )
 
@@ -88,6 +89,10 @@ app.conf.update(
         "on_batch_images_complete": {"queue": "default"},
         # Repository sync tasks
         "sync_repositories": {"queue": "default"},
+        # Repo extraction tasks
+        "extract_article_repos": {"queue": "default"},
+        "schedule_repo_extraction_for_articles": {"queue": "default"},
+        "scan_pending_repo_extraction": {"queue": "default"},
     },
 
     # Celery Beat schedule
@@ -100,6 +105,11 @@ app.conf.update(
         # Fallback: scan for pending RAG articles every 30 minutes
         "scan-rag-every-30-minutes": {
             "task": "scan_pending_rag_articles",
+            "schedule": crontab(minute="*/30"),
+        },
+        # Fallback: scan for pending repo extraction every 30 minutes
+        "scan-repo-extraction-every-30-minutes": {
+            "task": "scan_pending_repo_extraction",
             "schedule": crontab(minute="*/30"),
         },
     },

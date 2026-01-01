@@ -255,3 +255,51 @@ class ArticleService:
 
         logger.debug(f"Stats: total={stats['total']}, unread={stats['unread']}, starred={stats['starred']}")
         return stats
+
+    def get_articles_needing_repo_extraction(self, limit: int = 50) -> List[dict]:
+        """
+        Get articles that need GitHub repo extraction.
+
+        Conditions:
+        - images_processed = true (content is finalized)
+        - repos_extracted IS NULL (not yet attempted)
+
+        Args:
+            limit: Max number of articles to return
+
+        Returns:
+            List of dicts with id, user_id, content, summary
+        """
+        response = self.supabase.table("articles") \
+            .select("id, user_id, content, summary") \
+            .eq("user_id", self.user_id) \
+            .eq("images_processed", True) \
+            .is_("repos_extracted", "null") \
+            .order("created_at", desc=True) \
+            .limit(limit) \
+            .execute()
+
+        return response.data or []
+
+    def mark_repos_extracted(self, article_id: str, success: bool) -> None:
+        """
+        Update article's repo extraction status.
+
+        Args:
+            article_id: Article UUID
+            success: True if extraction succeeded, False if failed
+        """
+        from datetime import timezone
+
+        update_data = {
+            "repos_extracted": success,
+            "repos_extracted_at": datetime.now(timezone.utc).isoformat(),
+        }
+
+        self.supabase.table("articles") \
+            .update(update_data) \
+            .eq("id", article_id) \
+            .eq("user_id", self.user_id) \
+            .execute()
+
+        logger.debug(f"Marked article {article_id} repos_extracted={success}")

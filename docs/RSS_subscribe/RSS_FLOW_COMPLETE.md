@@ -10,6 +10,7 @@
 - [第四部分：数据库状态转移](#第四部分数据库状态转移)
 - [第五部分：关键文件索引](#第五部分关键文件索引)
 - [第六部分：错误处理机制](#第六部分错误处理机制)
+- [第七部分：GitHub仓库提取](#第七部分github仓库提取)
 
 ---
 
@@ -81,6 +82,14 @@ flowchart TB
             S --> T[语义分块]
             T --> U[生成Embedding]
             U --> V[保存到 article_embeddings]
+        end
+
+        subgraph RepoExtraction["GitHub仓库提取"]
+            V --> W[extract_article_repos]
+            W --> X[提取GitHub链接]
+            X --> Y[调用GitHub API]
+            Y --> Z[保存到repositories]
+            Z --> AA[创建article_repositories关联]
         end
     end
 
@@ -882,3 +891,112 @@ celery -A app.celery_app flower --port=5555
 ---
 
 *文档生成时间: 2026-01-02*
+*更新时间: 2026-01-03 (添加GitHub仓库提取功能)*
+
+---
+
+## 第七部分：GitHub仓库提取
+
+### 7.1 功能概述
+
+从RSS文章内容中自动提取GitHub仓库链接，调用GitHub API获取完整仓库信息，建立文章与仓库的多对多关系。
+
+**触发时机**: RAG/Embedding处理成功完成后
+
+```mermaid
+flowchart LR
+    A[process_article_rag] --> B{RAG成功?}
+    B -->|是| C[extract_article_repos]
+    B -->|否| D[结束]
+    C --> E[提取GitHub URLs]
+    E --> F[GitHub API获取信息]
+    F --> G[Upsert repositories]
+    G --> H[创建article_repositories关联]
+    H --> I[更新repos_extracted状态]
+```
+
+### 7.2 数据库表结构
+
+#### 7.2.1 article_repositories (中间表)
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| id | UUID | 主键 |
+| article_id | UUID | 关联articles表 |
+| repository_id | UUID | 关联repositories表 |
+| user_id | UUID | 用户隔离 |
+| extracted_url | TEXT | 原始提取的URL |
+| created_at | TIMESTAMP | 创建时间 |
+
+**唯一约束**: `(article_id, repository_id)`
+
+#### 7.2.2 repositories表新增字段
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| is_starred | BOOLEAN | 来自GitHub starred |
+| is_extracted | BOOLEAN | 来自文章提取 |
+
+#### 7.2.3 articles表新增字段
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| repos_extracted | BOOLEAN | NULL=未提取, TRUE=成功, FALSE=失败 |
+| repos_extracted_at | TIMESTAMP | 提取时间 |
+
+### 7.3 核心处理流程
+
+#### 7.3.1 触发入口
+
+**文件位置**: `backend/app/celery_app/rag_processor.py`
+
+```python
+# process_article_rag 任务成功完成后触发
+if result.get("success"):
+    from .repo_extractor import extract_article_repos
+    extract_article_repos.apply_async(
+        kwargs={"article_id": article_id, "user_id": user_id},
+        countdown=1,
+        queue="default",
+    )
+```
+
+#### 7.3.2 提取核心逻辑
+
+**文件位置**: `backend/app/celery_app/repo_extractor.py`
+
+```python
+def do_extract_article_repos(article_id: str, user_id: str):
+    # 1. 获取文章内容
+    # 2. 提取GitHub URLs (github_extractor.py)
+    # 3. 获取用户GitHub Token (可选，提高API限额)
+    # 4. 对每个仓库:
+    #    - 检查是否已存在 (get_by_full_name)
+    #    - 不存在则调用GitHub API获取信息
+    #    - Upsert到repositories表 (is_extracted=True)
+    # 5. 批量创建article_repositories关联
+    # 6. 更新article.repos_extracted状态
+```
+
+### 7.4 关键文件索引
+
+| 功能 | 文件路径 |
+|------|---------|
+| GitHub链接提取 | `backend/app/services/github_extractor.py` |
+| 中间表服务 | `backend/app/services/db/article_repositories.py` |
+| Celery任务 | `backend/app/celery_app/repo_extractor.py` |
+| 数据库迁移 | `backend/scripts/026_create_article_repositories.sql` |
+| 数据库迁移 | `backend/scripts/027_add_repository_source_flags.sql` |
+| 数据库迁移 | `backend/scripts/028_add_repos_extracted_status.sql` |
+
+### 7.5 Beat定时任务
+
+```python
+# celery.py beat_schedule
+"scan-repo-extraction-every-30-minutes": {
+    "task": "scan_pending_repo_extraction",
+    "schedule": crontab(minute="*/30"),
+}
+```
+
+**补偿机制**: 每30分钟扫描 `images_processed=true AND repos_extracted IS NULL` 的文章。
