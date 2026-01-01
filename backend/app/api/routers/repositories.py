@@ -87,22 +87,30 @@ async def sync_repositories(
 
             all_repos = await _fetch_all_starred_repos(github_token)
 
-            # Get existing pushed_at to detect changes
+            # Get existing repo info to detect changes
             repo_service = RepositoryService(supabase, user_id)
-            existing_pushed_at = repo_service.get_existing_pushed_at()
+            existing_repo_info = repo_service.get_existing_pushed_at()
 
-            # Find repos needing README fetch (new or pushed_at changed)
+            # Find repos needing README fetch:
+            # 1. New repo (not in DB)
+            # 2. pushed_at changed (code update)
+            # 3. readme_content is empty
             github_ids_needing_readme = set()
             for repo in all_repos:
                 github_id = repo.get("id") or repo.get("github_id")
                 new_pushed_at = repo.get("pushed_at")
 
-                if github_id not in existing_pushed_at:
+                if github_id not in existing_repo_info:
                     # New repo
                     github_ids_needing_readme.add(github_id)
-                elif existing_pushed_at[github_id] != new_pushed_at:
-                    # pushed_at changed (code update)
-                    github_ids_needing_readme.add(github_id)
+                else:
+                    info = existing_repo_info[github_id]
+                    if info["pushed_at"] != new_pushed_at:
+                        # pushed_at changed (code update)
+                        github_ids_needing_readme.add(github_id)
+                    elif not info["has_readme"]:
+                        # readme_content is empty
+                        github_ids_needing_readme.add(github_id)
 
             # Phase: fetched
             await progress_queue.put({

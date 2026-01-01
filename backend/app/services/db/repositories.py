@@ -29,16 +29,25 @@ class RepositoryService:
         service = cls(supabase, user_id)
         return service.upsert_repositories(repos)
 
-    def get_existing_pushed_at(self) -> dict[int, str | None]:
+    def get_existing_pushed_at(self) -> dict[int, dict]:
         """
-        Get existing repositories' github_id -> github_pushed_at mapping.
+        Get existing repositories' github_id -> {pushed_at, has_readme} mapping.
         Used to detect which repos need README re-fetch.
+
+        Returns:
+            {github_id: {"pushed_at": str | None, "has_readme": bool}}
         """
         response = self.supabase.table("repositories") \
-            .select("github_id, github_pushed_at") \
+            .select("github_id, github_pushed_at, readme_content") \
             .eq("user_id", self.user_id) \
             .execute()
-        return {row["github_id"]: row.get("github_pushed_at") for row in (response.data or [])}
+        return {
+            row["github_id"]: {
+                "pushed_at": row.get("github_pushed_at"),
+                "has_readme": bool(row.get("readme_content")),
+            }
+            for row in (response.data or [])
+        }
 
     def load_repositories(self) -> List[dict]:
         """

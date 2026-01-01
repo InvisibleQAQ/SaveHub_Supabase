@@ -56,21 +56,29 @@ def do_sync_repositories(user_id: str, github_token: str) -> Dict[str, Any]:
     try:
         all_repos = loop.run_until_complete(_fetch_all_starred_repos(github_token))
 
-        # Get existing pushed_at to detect changes
-        existing_pushed_at = repo_service.get_existing_pushed_at()
+        # Get existing repo info to detect changes
+        existing_repo_info = repo_service.get_existing_pushed_at()
 
-        # Find repos needing README fetch (new or pushed_at changed)
+        # Find repos needing README fetch:
+        # 1. New repo (not in DB)
+        # 2. pushed_at changed (code update)
+        # 3. readme_content is empty
         github_ids_needing_readme = set()
         for repo in all_repos:
             github_id = repo.get("id") or repo.get("github_id")
             new_pushed_at = repo.get("pushed_at")
 
-            if github_id not in existing_pushed_at:
+            if github_id not in existing_repo_info:
                 # New repo
                 github_ids_needing_readme.add(github_id)
-            elif existing_pushed_at[github_id] != new_pushed_at:
-                # pushed_at changed (code update)
-                github_ids_needing_readme.add(github_id)
+            else:
+                info = existing_repo_info[github_id]
+                if info["pushed_at"] != new_pushed_at:
+                    # pushed_at changed (code update)
+                    github_ids_needing_readme.add(github_id)
+                elif not info["has_readme"]:
+                    # readme_content is empty
+                    github_ids_needing_readme.add(github_id)
 
         # Fetch README only for repos that need it
         readme_map = {}
