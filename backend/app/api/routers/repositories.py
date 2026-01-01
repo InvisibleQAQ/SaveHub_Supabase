@@ -85,59 +85,82 @@ async def sync_repositories(
                 "data": {"phase": "fetching"}
             })
 
-            all_repos = await _fetch_all_starred_repos(github_token)
+            starred_repos = await _fetch_all_starred_repos(github_token)
 
             # Get existing repo info to detect changes
             repo_service = RepositoryService(supabase, user_id)
             existing_repo_info = repo_service.get_existing_pushed_at()
 
-            # Find repos needing README fetch:
-            # 1. New repo (not in DB)
-            # 2. pushed_at changed (code update)
-            # 3. readme_content is empty
-            github_ids_needing_readme = set()
-            for repo in all_repos:
+            # Find starred repos needing README fetch (new or pushed_at changed)
+            starred_github_ids = set()
+            starred_ids_needing_readme = set()
+            for repo in starred_repos:
                 github_id = repo.get("id") or repo.get("github_id")
+                starred_github_ids.add(github_id)
                 new_pushed_at = repo.get("pushed_at")
 
                 if github_id not in existing_repo_info:
                     # New repo
-                    github_ids_needing_readme.add(github_id)
+                    starred_ids_needing_readme.add(github_id)
                 else:
                     info = existing_repo_info[github_id]
                     if info["pushed_at"] != new_pushed_at:
                         # pushed_at changed (code update)
-                        github_ids_needing_readme.add(github_id)
-                    elif not info["has_readme"]:
-                        # readme_content is empty
-                        github_ids_needing_readme.add(github_id)
+                        starred_ids_needing_readme.add(github_id)
+
+            # Find db repos without readme (excluding starred repos)
+            db_repos_without_readme = repo_service.get_repos_without_readme()
+            db_repos_needing_readme = [
+                r for r in db_repos_without_readme
+                if r["github_id"] not in starred_github_ids
+            ]
 
             # Phase: fetched
+            total_needing_readme = len(starred_ids_needing_readme) + len(db_repos_needing_readme)
             await progress_queue.put({
                 "event": "progress",
                 "data": {
                     "phase": "fetched",
-                    "total": len(all_repos),
-                    "needsReadme": len(github_ids_needing_readme)
+                    "total": len(starred_repos),
+                    "needsReadme": total_needing_readme
                 }
             })
 
-            # Fetch README only for repos that need it
-            if github_ids_needing_readme:
-                repos_to_fetch = [
-                    r for r in all_repos
-                    if (r.get("id") or r.get("github_id")) in github_ids_needing_readme
-                ]
+            # Fetch README for repos that need it (starred + db repos)
+            readme_map = {}
+            if total_needing_readme > 0:
+                # Build list of repos to fetch README for
+                repos_to_fetch = []
+
+                # Add starred repos needing README
+                for repo in starred_repos:
+                    github_id = repo.get("id") or repo.get("github_id")
+                    if github_id in starred_ids_needing_readme:
+                        repos_to_fetch.append(repo)
+
+                # Add db repos needing README (use full_name for fetching)
+                for db_repo in db_repos_needing_readme:
+                    repos_to_fetch.append({
+                        "id": db_repo["github_id"],
+                        "full_name": db_repo["full_name"]
+                    })
+
                 readme_map = await _fetch_all_readmes(github_token, repos_to_fetch, concurrency=10)
 
-                # Merge readme_content into repo data (only for fetched repos)
-                for repo in all_repos:
-                    github_id = repo.get("id") or repo.get("github_id")
-                    if github_id in github_ids_needing_readme:
-                        repo["readme_content"] = readme_map.get(github_id)
+            # Merge readme_content into starred_repos
+            for repo in starred_repos:
+                github_id = repo.get("id") or repo.get("github_id")
+                if github_id in starred_ids_needing_readme:
+                    repo["readme_content"] = readme_map.get(github_id)
 
-            # Upsert to database (will clear AI fields for changed repos)
-            result = repo_service.upsert_repositories(all_repos)
+            # Upsert starred_repos to database
+            result = repo_service.upsert_repositories(starred_repos)
+
+            # Update readme_content for db repos (not in starred)
+            for db_repo in db_repos_needing_readme:
+                readme_content = readme_map.get(db_repo["github_id"])
+                if readme_content:
+                    repo_service.update_readme_content(db_repo["id"], readme_content)
 
             # AI analyze repositories needing analysis (no condition check)
             try:

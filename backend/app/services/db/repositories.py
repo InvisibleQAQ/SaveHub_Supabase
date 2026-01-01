@@ -397,6 +397,40 @@ class RepositoryService:
 
         return response.data or []
 
+    def get_repos_without_readme(self) -> List[dict]:
+        """
+        Get repositories that have empty readme_content.
+
+        Returns:
+            List of repo dicts with id, github_id, full_name for README fetching
+        """
+        response = self.supabase.table("repositories") \
+            .select("id, github_id, full_name") \
+            .eq("user_id", self.user_id) \
+            .or_("readme_content.is.null,readme_content.eq.") \
+            .execute()
+
+        return response.data or []
+
+    def update_readme_content(self, repo_id: str, readme_content: str) -> bool:
+        """
+        Update only the readme_content field for a repository.
+
+        Args:
+            repo_id: Repository UUID
+            readme_content: README content to set
+
+        Returns:
+            True if update succeeded, False otherwise
+        """
+        response = self.supabase.table("repositories") \
+            .update({"readme_content": readme_content}) \
+            .eq("id", repo_id) \
+            .eq("user_id", self.user_id) \
+            .execute()
+
+        return bool(response.data)
+
     def upsert_extracted_repository(self, repo_data: dict) -> dict | None:
         """
         Upsert a repository extracted from article content.
