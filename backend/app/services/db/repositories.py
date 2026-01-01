@@ -171,13 +171,14 @@ class RepositoryService:
             return self._row_to_dict(response.data[0])
         return None
 
-    def update_ai_analysis(self, repo_id: str, analysis: dict) -> dict | None:
+    def update_ai_analysis(self, repo_id: str, analysis: dict, is_fallback: bool = False) -> dict | None:
         """
         Update repository AI analysis results.
 
         Args:
             repo_id: Repository UUID
             analysis: Dict with ai_summary, ai_tags, ai_platforms
+            is_fallback: If True, marks analysis_failed=True (AI failed, used fallback)
         """
         from datetime import datetime, timezone
 
@@ -186,7 +187,7 @@ class RepositoryService:
             "ai_tags": analysis.get("ai_tags", []),
             "ai_platforms": analysis.get("ai_platforms", []),
             "analyzed_at": datetime.now(timezone.utc).isoformat(),
-            "analysis_failed": False,
+            "analysis_failed": is_fallback,
         }
 
         logger.info(
@@ -227,6 +228,14 @@ class RepositoryService:
             return self._row_to_dict(response.data[0])
         return None
 
+    def reset_analysis_failed(self, repo_id: str) -> None:
+        """Reset analysis_failed flag before retry."""
+        self.supabase.table("repositories") \
+            .update({"analysis_failed": False, "analyzed_at": None}) \
+            .eq("id", repo_id) \
+            .eq("user_id", self.user_id) \
+            .execute()
+
     def get_unanalyzed_repositories(self, limit: int = 50) -> List[dict]:
         """
         Get repositories that haven't been analyzed yet.
@@ -243,6 +252,26 @@ class RepositoryService:
             .is_("analyzed_at", "null") \
             .eq("analysis_failed", False) \
             .limit(limit) \
+            .execute()
+
+        return response.data or []
+
+    def get_repositories_needing_analysis(self) -> List[dict]:
+        """
+        Get repositories that need AI analysis.
+
+        Conditions (OR):
+        - ai_summary IS NULL
+        - ai_tags IS NULL OR ai_tags = ''
+        - analysis_failed = TRUE (retry)
+
+        Returns:
+            List of repo dicts with id, full_name, description, readme_content, language, name, analysis_failed
+        """
+        response = self.supabase.table("repositories") \
+            .select("id, full_name, description, readme_content, language, name, analysis_failed") \
+            .eq("user_id", self.user_id) \
+            .or_("ai_summary.is.null,ai_tags.is.null,ai_tags.eq.{},analysis_failed.eq.true") \
             .execute()
 
         return response.data or []

@@ -21,6 +21,7 @@ export const repositoriesApi = {
   async getAll(): Promise<Repository[]> {
     const response = await fetch(`${API_BASE}/api/repositories`, {
       credentials: "include",
+      cache: "no-store",
     })
 
     if (!response.ok) {

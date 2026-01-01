@@ -20,7 +20,7 @@ from app.schemas.repositories import (
 )
 from app.services.db.repositories import RepositoryService
 from app.services.db.settings import SettingsService
-from app.services.repository_analyzer import analyze_new_repositories
+from app.services.repository_analyzer import analyze_repositories_needing_analysis
 from app.celery_app.repository_tasks import schedule_next_repo_sync
 
 logger = logging.getLogger(__name__)
@@ -105,28 +105,26 @@ async def sync_repositories(
             repo_service = RepositoryService(supabase, user_id)
             result = repo_service.upsert_repositories(all_repos)
 
-            # AI analyze new repositories
-            if result["new_count"] > 0:
-                try:
-                    async def on_progress(repo_name: str, completed: int, total: int):
-                        await progress_queue.put({
-                            "event": "progress",
-                            "data": {
-                                "phase": "analyzing",
-                                "current": repo_name,
-                                "completed": completed,
-                                "total": total
-                            }
-                        })
+            # AI analyze repositories needing analysis (no condition check)
+            try:
+                async def on_progress(repo_name: str, completed: int, total: int):
+                    await progress_queue.put({
+                        "event": "progress",
+                        "data": {
+                            "phase": "analyzing",
+                            "current": repo_name,
+                            "completed": completed,
+                            "total": total
+                        }
+                    })
 
-                    await analyze_new_repositories(
-                        supabase=supabase,
-                        user_id=user_id,
-                        limit=result["new_count"],
-                        on_progress=on_progress,
-                    )
-                except Exception as e:
-                    logger.warning(f"AI analysis during sync failed: {e}")
+                await analyze_repositories_needing_analysis(
+                    supabase=supabase,
+                    user_id=user_id,
+                    on_progress=on_progress,
+                )
+            except Exception as e:
+                logger.warning(f"AI analysis during sync failed: {e}")
 
             # Schedule next auto-sync
             try:

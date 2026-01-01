@@ -19,7 +19,7 @@ from celery.exceptions import Reject
 from .celery import app
 from .task_lock import get_task_lock
 from .supabase_client import get_supabase_service
-from app.services.repository_analyzer import analyze_new_repositories
+from app.services.repository_analyzer import analyze_repositories_needing_analysis
 from app.services.db.repositories import RepositoryService
 
 logger = logging.getLogger(__name__)
@@ -69,17 +69,16 @@ def do_sync_repositories(user_id: str, github_token: str) -> Dict[str, Any]:
     return result
 
 
-def do_ai_analysis(user_id: str, new_count: int) -> Dict[str, Any]:
+def do_ai_analysis(user_id: str) -> Dict[str, Any]:
     """
-    AI analyze newly synced repositories.
-    Wrapper that runs async analyze_new_repositories in sync context.
+    AI analyze repositories needing analysis.
+    Wrapper that runs async analyze_repositories_needing_analysis in sync context.
 
     Args:
         user_id: User UUID
-        new_count: Number of new repositories to analyze
 
     Returns:
-        {"analyzed": N, "failed": N, "skipped": bool}
+        {"analyzed": N, "failed": N, "skipped": bool, "total_candidates": N}
     """
     supabase = get_supabase_service()
 
@@ -87,10 +86,9 @@ def do_ai_analysis(user_id: str, new_count: int) -> Dict[str, Any]:
     asyncio.set_event_loop(loop)
     try:
         result = loop.run_until_complete(
-            analyze_new_repositories(
+            analyze_repositories_needing_analysis(
                 supabase=supabase,
                 user_id=user_id,
-                limit=new_count,
                 on_progress=None,
             )
         )
@@ -276,15 +274,15 @@ def sync_repositories(
             }
         )
 
-        # AI analyze new repositories
-        ai_result = {"ai_analyzed": 0, "ai_failed": 0}
-        if result["new_count"] > 0:
-            try:
-                ai_analysis = do_ai_analysis(user_id, result["new_count"])
-                ai_result["ai_analyzed"] = ai_analysis["analyzed"]
-                ai_result["ai_failed"] = ai_analysis["failed"]
-            except Exception as e:
-                logger.warning(f"AI analysis during sync failed: {e}")
+        # AI analyze repositories needing analysis (no condition check)
+        ai_result = {"ai_analyzed": 0, "ai_failed": 0, "ai_candidates": 0}
+        try:
+            ai_analysis = do_ai_analysis(user_id)
+            ai_result["ai_analyzed"] = ai_analysis["analyzed"]
+            ai_result["ai_failed"] = ai_analysis["failed"]
+            ai_result["ai_candidates"] = ai_analysis.get("total_candidates", 0)
+        except Exception as e:
+            logger.warning(f"AI analysis during sync failed: {e}")
 
         # Schedule next auto-sync in 1 hour
         schedule_next_repo_sync(user_id)
