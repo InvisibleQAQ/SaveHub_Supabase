@@ -109,7 +109,7 @@ def get_user_chat_config(user_id: str) -> Dict[str, str] | None:
         {"api_key": "...", "api_base": "...", "model": "..."} or None
     """
     from app.services.db.api_configs import ApiConfigService
-    from app.api.routers.api_configs import decrypt_sensitive_fields
+    from app.api.routers.api_configs import _decrypt_config
 
     supabase = get_supabase_service()
     config_service = ApiConfigService(supabase, user_id)
@@ -119,7 +119,7 @@ def get_user_chat_config(user_id: str) -> Dict[str, str] | None:
         return None
 
     # Decrypt sensitive fields
-    decrypted = decrypt_sensitive_fields(config)
+    decrypted = _decrypt_config(config)
     return {
         "api_key": decrypted.get("api_key"),
         "api_base": decrypted.get("api_base"),
