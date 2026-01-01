@@ -84,6 +84,34 @@ async def sync_repositories(
     repo_service = RepositoryService(supabase, user_id)
     result = repo_service.upsert_repositories(all_repos)
 
+    # AI analyze new repositories
+    if result["new_count"] > 0:
+        try:
+            api_config_service = ApiConfigService(supabase, user_id)
+            config = api_config_service.get_active_config("chat")
+
+            if config:
+                new_repos = repo_service.get_unanalyzed_repositories(
+                    limit=result["new_count"]
+                )
+                if new_repos:
+                    ai_service = create_ai_service_from_config(config)
+                    analysis_results = await ai_service.analyze_repositories_batch(
+                        repos=new_repos,
+                        concurrency=5,
+                        use_fallback=True,
+                    )
+                    for repo_id, analysis in analysis_results.items():
+                        if analysis["success"]:
+                            repo_service.update_ai_analysis(repo_id, analysis["data"])
+                        else:
+                            repo_service.mark_analysis_failed(repo_id)
+                    logger.info(
+                        f"AI analysis completed for {len(analysis_results)} new repos"
+                    )
+        except Exception as e:
+            logger.warning(f"AI analysis during sync failed: {e}")
+
     # Schedule next auto-sync in 1 hour (resets timer if already scheduled)
     try:
         schedule_next_repo_sync(user_id)

@@ -63,7 +63,7 @@ def generate_image_caption(
     api_key: str,
     api_base: str,
     model: str,
-    max_tokens: int = 32000,
+    max_tokens: int = 4096,
 ) -> str:
     """
     使用 Vision 模型生成图片 caption。

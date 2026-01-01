@@ -8,6 +8,7 @@ Analyzes README content using OpenAI-compatible API to extract:
 """
 
 import logging
+import asyncio
 import httpx
 import json
 from typing import Optional
@@ -36,6 +37,40 @@ ANALYSIS_PROMPT = """你是一个专业的GitHub仓库分析助手。请分析�
 
 class AIService:
     """Service for AI-powered repository analysis."""
+
+    # Language to platform mapping for fallback analysis
+    LANG_PLATFORM_MAP = {
+        "JavaScript": ["Web", "Cli"],
+        "TypeScript": ["Web", "Cli"],
+        "Python": ["Linux", "Macos", "Windows", "Cli"],
+        "Java": ["Linux", "Macos", "Windows"],
+        "Go": ["Linux", "Macos", "Windows", "Cli"],
+        "Rust": ["Linux", "Macos", "Windows", "Cli"],
+        "C++": ["Linux", "Macos", "Windows"],
+        "C": ["Linux", "Macos", "Windows"],
+        "Swift": ["Ios", "Macos"],
+        "Kotlin": ["Android"],
+        "Dart": ["Ios", "Android"],
+        "Shell": ["Linux", "Macos", "Cli"],
+        "PHP": ["Web", "Linux"],
+        "Ruby": ["Web", "Linux", "Macos"],
+    }
+
+    # Keyword to platform mapping for fallback analysis
+    KEYWORD_PLATFORM_MAP = {
+        "web": ["Web"],
+        "frontend": ["Web"],
+        "cli": ["Cli"],
+        "command": ["Cli"],
+        "docker": ["Docker"],
+        "container": ["Docker"],
+        "android": ["Android"],
+        "ios": ["Ios"],
+        "macos": ["Macos"],
+        "mac": ["Macos"],
+        "windows": ["Windows"],
+        "linux": ["Linux"],
+    }
 
     def __init__(self, api_key: str, api_base: str, model: str):
         """
@@ -88,7 +123,7 @@ class AIService:
                             {"role": "user", "content": user_message},
                         ],
                         "temperature": 0.3,
-                        "max_tokens": 32000,
+                        "max_tokens": 2048,
                     },
                 )
 
@@ -111,10 +146,10 @@ class AIService:
                 return result
 
         except httpx.TimeoutException:
-            logger.error(f"AI API timeout for {repo_name}")
+            logger.warning(f"AI API timeout for {repo_name}")
             raise Exception("AI API timeout")
         except Exception as e:
-            logger.error(f"AI analysis failed: {e}", exc_info=True)
+            logger.warning(f"AI analysis failed for {repo_name}: {e}")
             raise
 
     def _parse_response(self, content: str) -> dict:
@@ -177,6 +212,93 @@ class AIService:
                 normalized.append(p_lower.capitalize())
 
         return normalized[:6]  # Limit platforms
+
+    def fallback_analysis(self, repo: dict) -> dict:
+        """
+        Fallback analysis based on language and keywords.
+        Used when AI API is unavailable or README is missing.
+        """
+        language = repo.get("language") or ""
+        description = (repo.get("description") or "").lower()
+        name = (repo.get("name") or "").lower()
+        search_text = f"{description} {name}"
+
+        platforms = []
+
+        # Infer from programming language
+        if language in self.LANG_PLATFORM_MAP:
+            platforms.extend(self.LANG_PLATFORM_MAP[language])
+
+        # Infer from keywords
+        for keyword, plats in self.KEYWORD_PLATFORM_MAP.items():
+            if keyword in search_text:
+                platforms.extend(plats)
+
+        # Deduplicate and limit
+        seen = set()
+        unique_platforms = []
+        for p in platforms:
+            if p not in seen:
+                seen.add(p)
+                unique_platforms.append(p)
+
+        return {
+            "ai_summary": "",
+            "ai_tags": [],
+            "ai_platforms": unique_platforms[:6],
+        }
+
+    async def analyze_repositories_batch(
+        self,
+        repos: list[dict],
+        concurrency: int = 5,
+        use_fallback: bool = True,
+    ) -> dict[str, dict]:
+        """
+        Batch analyze repositories with concurrency control.
+
+        Args:
+            repos: List of repo dicts with id, full_name, description, readme_content, language
+            concurrency: Max concurrent AI API calls
+            use_fallback: Use fallback analysis when AI fails or no README
+
+        Returns:
+            Dict mapping repo_id to {"success": bool, "data": dict}
+        """
+        semaphore = asyncio.Semaphore(concurrency)
+        results: dict[str, dict] = {}
+
+        async def analyze_one(repo: dict):
+            async with semaphore:
+                repo_id = repo["id"]
+                try:
+                    if repo.get("readme_content"):
+                        result = await self.analyze_repository(
+                            readme_content=repo["readme_content"],
+                            repo_name=repo["full_name"],
+                            description=repo.get("description"),
+                        )
+                        results[repo_id] = {"success": True, "data": result}
+                    elif use_fallback:
+                        result = self.fallback_analysis(repo)
+                        results[repo_id] = {"success": True, "data": result, "fallback": True}
+                        logger.info(f"Fallback analysis for {repo['full_name']} (no README)")
+                    else:
+                        results[repo_id] = {"success": False, "error": "No README"}
+                except Exception as e:
+                    if use_fallback:
+                        result = self.fallback_analysis(repo)
+                        results[repo_id] = {"success": True, "data": result, "fallback": True}
+                        logger.info(f"Fallback analysis for {repo['full_name']} (AI failed)")
+                    else:
+                        results[repo_id] = {"success": False, "error": str(e)}
+
+                await asyncio.sleep(0.1)  # Rate limiting
+
+        tasks = [analyze_one(repo) for repo in repos]
+        await asyncio.gather(*tasks, return_exceptions=True)
+
+        return results
 
 
 def create_ai_service_from_config(config: dict) -> AIService:

@@ -207,6 +207,26 @@ class RepositoryService:
             return self._row_to_dict(response.data[0])
         return None
 
+    def get_unanalyzed_repositories(self, limit: int = 50) -> List[dict]:
+        """
+        Get repositories that haven't been analyzed yet.
+
+        Args:
+            limit: Max number of repositories to return
+
+        Returns:
+            List of repo dicts with id, full_name, description, readme_content, language, name
+        """
+        response = self.supabase.table("repositories") \
+            .select("id, full_name, description, readme_content, language, name") \
+            .eq("user_id", self.user_id) \
+            .is_("analyzed_at", "null") \
+            .eq("analysis_failed", False) \
+            .limit(limit) \
+            .execute()
+
+        return response.data or []
+
     def _row_to_dict(self, row: dict) -> dict:
         """Convert database row to response dict."""
         return {
