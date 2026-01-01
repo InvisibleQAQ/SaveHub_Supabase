@@ -115,6 +115,17 @@ export interface Repository {
   starredAt: string | null
   githubUpdatedAt: string | null
   readmeContent: string | null
+  // AI analysis fields
+  aiSummary: string | null
+  aiTags: string[]
+  aiPlatforms: string[]
+  analyzedAt: string | null
+  analysisFailed: boolean
+  // Custom edit fields
+  customDescription: string | null
+  customTags: string[]
+  customCategory: string | null
+  lastEdited: string | null
 }
 
 export interface RepositoryCategory {

@@ -118,6 +118,95 @@ class RepositoryService:
 
         return response.count or 0
 
+    def get_repository_by_id(self, repo_id: str) -> dict | None:
+        """Get a single repository by ID."""
+        response = self.supabase.table("repositories") \
+            .select("*") \
+            .eq("id", repo_id) \
+            .eq("user_id", self.user_id) \
+            .single() \
+            .execute()
+
+        if response.data:
+            return self._row_to_dict(response.data)
+        return None
+
+    def update_repository(self, repo_id: str, data: dict) -> dict | None:
+        """
+        Update repository custom fields.
+
+        Args:
+            repo_id: Repository UUID
+            data: Dict with custom_description, custom_tags, custom_category
+        """
+        from datetime import datetime, timezone
+
+        update_data = {"last_edited": datetime.now(timezone.utc).isoformat()}
+
+        if "custom_description" in data:
+            update_data["custom_description"] = data["custom_description"]
+        if "custom_tags" in data:
+            update_data["custom_tags"] = data["custom_tags"]
+        if "custom_category" in data:
+            update_data["custom_category"] = data["custom_category"]
+
+        response = self.supabase.table("repositories") \
+            .update(update_data) \
+            .eq("id", repo_id) \
+            .eq("user_id", self.user_id) \
+            .execute()
+
+        if response.data:
+            return self._row_to_dict(response.data[0])
+        return None
+
+    def update_ai_analysis(self, repo_id: str, analysis: dict) -> dict | None:
+        """
+        Update repository AI analysis results.
+
+        Args:
+            repo_id: Repository UUID
+            analysis: Dict with ai_summary, ai_tags, ai_platforms
+        """
+        from datetime import datetime, timezone
+
+        update_data = {
+            "ai_summary": analysis.get("ai_summary"),
+            "ai_tags": analysis.get("ai_tags", []),
+            "ai_platforms": analysis.get("ai_platforms", []),
+            "analyzed_at": datetime.now(timezone.utc).isoformat(),
+            "analysis_failed": False,
+        }
+
+        response = self.supabase.table("repositories") \
+            .update(update_data) \
+            .eq("id", repo_id) \
+            .eq("user_id", self.user_id) \
+            .execute()
+
+        if response.data:
+            return self._row_to_dict(response.data[0])
+        return None
+
+    def mark_analysis_failed(self, repo_id: str) -> dict | None:
+        """Mark repository AI analysis as failed."""
+        from datetime import datetime, timezone
+
+        update_data = {
+            "analyzed_at": datetime.now(timezone.utc).isoformat(),
+            "analysis_failed": True,
+        }
+
+        response = self.supabase.table("repositories") \
+            .update(update_data) \
+            .eq("id", repo_id) \
+            .eq("user_id", self.user_id) \
+            .execute()
+
+        if response.data:
+            return self._row_to_dict(response.data[0])
+        return None
+
     def _row_to_dict(self, row: dict) -> dict:
         """Convert database row to response dict."""
         return {
@@ -129,10 +218,21 @@ class RepositoryService:
             "html_url": row["html_url"],
             "stargazers_count": row.get("stargazers_count", 0),
             "language": row.get("language"),
-            "topics": row.get("topics", []),
+            "topics": row.get("topics") or [],
             "owner_login": row["owner_login"],
             "owner_avatar_url": row.get("owner_avatar_url"),
             "starred_at": row.get("starred_at"),
             "github_updated_at": row.get("github_updated_at"),
             "readme_content": row.get("readme_content"),
+            # AI analysis fields
+            "ai_summary": row.get("ai_summary"),
+            "ai_tags": row.get("ai_tags") or [],
+            "ai_platforms": row.get("ai_platforms") or [],
+            "analyzed_at": row.get("analyzed_at"),
+            "analysis_failed": row.get("analysis_failed") or False,
+            # Custom edit fields
+            "custom_description": row.get("custom_description"),
+            "custom_tags": row.get("custom_tags") or [],
+            "custom_category": row.get("custom_category"),
+            "last_edited": row.get("last_edited"),
         }

@@ -62,6 +62,35 @@ def verify_cookie_auth(request: Request):
         raise HTTPException(status_code=401, detail=str(e))
 
 
+def get_access_token(
+    request: Request,
+    credentials: Optional[HTTPAuthorizationCredentials] = Depends(security),
+) -> str:
+    """
+    Extract access token from either cookie or Authorization header.
+    Prioritizes cookie-based auth, falls back to header-based auth.
+
+    Returns:
+        Access token string
+
+    Raises:
+        HTTPException: 401 if no token found
+    """
+    # First try cookie
+    access_token = request.cookies.get(COOKIE_NAME_ACCESS)
+    if access_token:
+        return access_token
+
+    # Then try Authorization header
+    if credentials:
+        return credentials.credentials
+
+    raise HTTPException(
+        status_code=401,
+        detail="No access token found (no cookie or Authorization header)"
+    )
+
+
 def verify_auth(
     request: Request,
     credentials: Optional[HTTPAuthorizationCredentials] = Depends(security),

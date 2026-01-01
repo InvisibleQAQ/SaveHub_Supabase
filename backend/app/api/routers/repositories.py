@@ -12,9 +12,15 @@ import httpx
 
 from app.dependencies import verify_auth, COOKIE_NAME_ACCESS
 from app.supabase_client import get_supabase_client
-from app.schemas.repositories import RepositoryResponse, SyncResponse
+from app.schemas.repositories import (
+    RepositoryResponse,
+    SyncResponse,
+    RepositoryUpdateRequest,
+)
 from app.services.db.repositories import RepositoryService
+from app.services.db.api_configs import ApiConfigService
 from app.services.db.settings import SettingsService
+from app.services.ai_service import create_ai_service_from_config
 from app.celery_app.repository_tasks import schedule_next_repo_sync
 
 logger = logging.getLogger(__name__)
@@ -192,3 +198,82 @@ async def _fetch_all_readmes(
 
     logger.info(f"Fetched README for {len(results)}/{len(repos)} repositories")
     return results
+
+
+@router.patch("/{repo_id}", response_model=RepositoryResponse)
+async def update_repository(
+    repo_id: str,
+    data: RepositoryUpdateRequest,
+    service: RepositoryService = Depends(get_repository_service)
+):
+    """Update repository custom fields (description, tags, category)."""
+    update_data = data.model_dump(exclude_none=True)
+
+    result = service.update_repository(repo_id, update_data)
+    if not result:
+        raise HTTPException(status_code=404, detail="Repository not found")
+
+    return result
+
+
+@router.post("/{repo_id}/analyze", response_model=RepositoryResponse)
+async def analyze_repository(
+    repo_id: str,
+    request: Request,
+    user=Depends(verify_auth)
+):
+    """
+    Analyze repository using AI.
+
+    Uses the user's active chat API config to analyze README content.
+    Returns updated repository with AI summary, tags, and platforms.
+    """
+    access_token = request.cookies.get(COOKIE_NAME_ACCESS)
+    supabase = get_supabase_client(access_token)
+    user_id = user.user.id
+
+    repo_service = RepositoryService(supabase, user_id)
+    api_config_service = ApiConfigService(supabase, user_id)
+
+    # Get repository
+    repo = repo_service.get_repository_by_id(repo_id)
+    if not repo:
+        raise HTTPException(status_code=404, detail="Repository not found")
+
+    # Check if README exists
+    if not repo.get("readme_content"):
+        raise HTTPException(
+            status_code=400,
+            detail="Repository has no README content to analyze"
+        )
+
+    # Get active chat API config
+    config = api_config_service.get_active_config("chat")
+    if not config:
+        raise HTTPException(
+            status_code=400,
+            detail="No active chat API configured. Please add one in Settings."
+        )
+
+    try:
+        # Create AI service and analyze
+        ai_service = create_ai_service_from_config(config)
+        analysis = await ai_service.analyze_repository(
+            readme_content=repo["readme_content"],
+            repo_name=repo["full_name"],
+            description=repo.get("description"),
+        )
+
+        # Update repository with analysis results
+        result = repo_service.update_ai_analysis(repo_id, analysis)
+        if not result:
+            raise HTTPException(status_code=500, detail="Failed to save analysis")
+
+        logger.info(f"AI analysis completed for {repo['full_name']}")
+        return result
+
+    except Exception as e:
+        # Mark analysis as failed
+        repo_service.mark_analysis_failed(repo_id)
+        logger.error(f"AI analysis failed for {repo['full_name']}: {e}")
+        raise HTTPException(status_code=500, detail=f"AI analysis failed: {str(e)}")

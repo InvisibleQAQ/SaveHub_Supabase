@@ -5,7 +5,7 @@ from typing import List, Optional
 from uuid import UUID
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 
-from app.dependencies import verify_auth, COOKIE_NAME_ACCESS
+from app.dependencies import verify_auth, get_access_token
 from app.supabase_client import get_supabase_client
 from app.schemas.articles import (
     ArticleCreate,
@@ -21,9 +21,11 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/articles", tags=["articles"])
 
 
-def get_article_service(request: Request, user=Depends(verify_auth)) -> ArticleService:
+def get_article_service(
+    access_token: str = Depends(get_access_token),
+    user=Depends(verify_auth)
+) -> ArticleService:
     """Create ArticleService instance with authenticated user's session."""
-    access_token = request.cookies.get(COOKIE_NAME_ACCESS)
     client = get_supabase_client(access_token)
     return ArticleService(client, user.user.id)
 

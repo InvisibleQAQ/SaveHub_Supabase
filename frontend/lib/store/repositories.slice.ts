@@ -9,10 +9,20 @@ import { repositoriesApi } from "../api/repositories"
 export interface RepositoriesSlice {
   repositories: Repository[]
   isSyncing: boolean
+  isAnalyzing: boolean
   lastSyncedAt: string | null
   loadRepositories: () => Promise<void>
   syncRepositories: () => Promise<SyncResult>
   setRepositories: (repos: Repository[]) => void
+  updateRepository: (
+    id: string,
+    data: {
+      customDescription?: string | null
+      customTags?: string[]
+      customCategory?: string | null
+    }
+  ) => Promise<Repository>
+  analyzeRepository: (id: string) => Promise<Repository>
 }
 
 export const createRepositoriesSlice: StateCreator<
@@ -20,9 +30,10 @@ export const createRepositoriesSlice: StateCreator<
   [],
   [],
   RepositoriesSlice
-> = (set) => ({
+> = (set, get) => ({
   repositories: [],
   isSyncing: false,
+  isAnalyzing: false,
   lastSyncedAt: null,
 
   loadRepositories: async () => {
@@ -47,5 +58,30 @@ export const createRepositoriesSlice: StateCreator<
 
   setRepositories: (repos: Repository[]) => {
     set({ repositories: repos })
+  },
+
+  updateRepository: async (id, data) => {
+    const updated = await repositoriesApi.update(id, data)
+    set((state) => ({
+      repositories: state.repositories.map((repo) =>
+        repo.id === id ? updated : repo
+      ),
+    }))
+    return updated
+  },
+
+  analyzeRepository: async (id) => {
+    set({ isAnalyzing: true })
+    try {
+      const updated = await repositoriesApi.analyze(id)
+      set((state) => ({
+        repositories: state.repositories.map((repo) =>
+          repo.id === id ? updated : repo
+        ),
+      }))
+      return updated
+    } finally {
+      set({ isAnalyzing: false })
+    }
   },
 })
