@@ -270,7 +270,7 @@ def generate_answer(
     api_key: str,
     api_base: str,
     model: str,
-    max_tokens: int = 1000,
+    max_tokens: int = 32000,
 ) -> Optional[str]:
     """
     使用 LLM 根据检索结果生成答案。
