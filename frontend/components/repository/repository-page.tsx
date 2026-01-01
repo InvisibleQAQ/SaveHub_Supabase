@@ -182,18 +182,35 @@ export function RepositoryPage() {
                 {syncProgress.phase === "analyzing" && (
                   <>正在分析: <span className="text-foreground font-medium">{syncProgress.current}</span></>
                 )}
+                {syncProgress.phase === "saving" && "正在保存分析结果..."}
               </span>
               {syncProgress.phase === "analyzing" && syncProgress.completed !== undefined && syncProgress.total !== undefined && (
                 <span className="text-muted-foreground">
                   {syncProgress.completed} / {syncProgress.total}
                 </span>
               )}
+              {syncProgress.phase === "saving" && syncProgress.savedCount !== undefined && syncProgress.saveTotal !== undefined && (
+                <span className="text-muted-foreground">
+                  已保存 {syncProgress.savedCount} / {syncProgress.saveTotal}
+                </span>
+              )}
             </div>
-            {syncProgress.phase === "analyzing" && syncProgress.completed !== undefined && syncProgress.total !== undefined && (
+            {/* Two-phase progress bar: analyzing 0-95%, saving 95-100% */}
+            {(syncProgress.phase === "analyzing" || syncProgress.phase === "saving") && (
               <div className="h-2 bg-muted rounded-full overflow-hidden">
                 <div
                   className="h-full bg-primary transition-all duration-300 ease-out"
-                  style={{ width: `${(syncProgress.completed / syncProgress.total) * 100}%` }}
+                  style={{
+                    width: `${
+                      syncProgress.phase === "analyzing"
+                        ? (syncProgress.completed !== undefined && syncProgress.total !== undefined && syncProgress.total > 0
+                            ? (syncProgress.completed / syncProgress.total) * 95
+                            : 0)
+                        : (95 + (syncProgress.savedCount !== undefined && syncProgress.saveTotal !== undefined && syncProgress.saveTotal > 0
+                            ? (syncProgress.savedCount / syncProgress.saveTotal) * 5
+                            : 0))
+                    }%`
+                  }}
                 />
               </div>
             )}

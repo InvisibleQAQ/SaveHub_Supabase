@@ -7,10 +7,13 @@ import type { Repository, SyncResult } from "../types"
 import { repositoriesApi } from "../api/repositories"
 
 export interface SyncProgress {
-  phase: "fetching" | "fetched" | "analyzing"
+  phase: "fetching" | "fetched" | "analyzing" | "saving"
   total?: number
   current?: string
   completed?: number
+  // Saving phase fields
+  savedCount?: number
+  saveTotal?: number
 }
 
 export interface RepositoriesSlice {

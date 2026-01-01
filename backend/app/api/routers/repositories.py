@@ -54,7 +54,7 @@ async def sync_repositories(
     Returns SSE stream with progress updates.
 
     Events:
-    - progress: {phase: "fetching"|"fetched"|"analyzing", ...}
+    - progress: {phase: "fetching"|"fetched"|"analyzing"|"saving", ...}
     - done: {total, new_count, updated_count}
     - error: {message}
     """
@@ -118,10 +118,21 @@ async def sync_repositories(
                         }
                     })
 
+                async def on_save_progress(saved_count: int, save_total: int):
+                    await progress_queue.put({
+                        "event": "progress",
+                        "data": {
+                            "phase": "saving",
+                            "savedCount": saved_count,
+                            "saveTotal": save_total
+                        }
+                    })
+
                 await analyze_repositories_needing_analysis(
                     supabase=supabase,
                     user_id=user_id,
                     on_progress=on_progress,
+                    on_save_progress=on_save_progress,
                 )
             except Exception as e:
                 logger.warning(f"AI analysis during sync failed: {e}")

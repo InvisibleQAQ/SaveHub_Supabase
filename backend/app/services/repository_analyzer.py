@@ -20,6 +20,7 @@ async def analyze_repositories_needing_analysis(
     supabase,
     user_id: str,
     on_progress: Optional[Callable[[str, int, int], Awaitable[None]]] = None,
+    on_save_progress: Optional[Callable[[int, int], Awaitable[None]]] = None,
 ) -> dict[str, Any]:
     """
     AI analyze all repositories that need analysis.
@@ -32,7 +33,8 @@ async def analyze_repositories_needing_analysis(
     Args:
         supabase: Supabase client instance
         user_id: User UUID
-        on_progress: Optional async callback(repo_name, completed, total)
+        on_progress: Optional async callback(repo_name, completed, total) for analysis phase
+        on_save_progress: Optional async callback(saved_count, save_total) for saving phase
 
     Returns:
         {
@@ -78,6 +80,9 @@ async def analyze_repositories_needing_analysis(
     # Save analysis results
     analyzed = 0
     failed = 0
+    save_total = len(analysis_results)
+    saved_count = 0
+
     for repo_id, analysis in analysis_results.items():
         if analysis["success"]:
             is_fallback = analysis.get("fallback", False)
@@ -89,6 +94,11 @@ async def analyze_repositories_needing_analysis(
         else:
             repo_service.mark_analysis_failed(repo_id)
             failed += 1
+
+        # Report save progress
+        saved_count += 1
+        if on_save_progress:
+            await on_save_progress(saved_count, save_total)
 
     logger.info(f"AI analysis completed: {analyzed} analyzed, {failed} failed")
     return {"analyzed": analyzed, "failed": failed, "skipped": False, "skip_reason": None, "total_candidates": total_candidates}
