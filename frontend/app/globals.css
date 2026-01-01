@@ -141,3 +141,11 @@
 .custom-scrollbar::-webkit-scrollbar-thumb:hover {
   background-color: oklch(0.4 0.03 264);
 }
+
+/* Dialog centering fix for Tailwind v4 + tw-animate-css compatibility */
+/* tw-animate-css uses transform property, Tailwind v4 uses translate property */
+/* These are different CSS properties that conflict - use transform for both */
+[data-slot="dialog-content"],
+[data-slot="alert-dialog-content"] {
+  transform: translate(-50%, -50%);
+}

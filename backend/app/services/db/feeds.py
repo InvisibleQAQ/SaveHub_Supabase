@@ -12,6 +12,15 @@ from supabase import Client
 logger = logging.getLogger(__name__)
 
 
+def _cancel_feed_task(feed_id: str):
+    """Cancel Celery refresh task for a feed (lazy import to avoid circular deps)."""
+    try:
+        from app.celery_app.tasks import cancel_feed_refresh
+        cancel_feed_refresh(feed_id)
+    except Exception as e:
+        logger.warning(f"Failed to cancel feed task {feed_id}: {e}")
+
+
 class FeedService:
     """Service for feed database operations."""
 
@@ -32,6 +41,11 @@ class FeedService:
         """
         db_rows = []
         for feed in feeds:
+            # Convert datetime to ISO string for JSON serialization
+            last_fetched = feed.get("last_fetched")
+            if isinstance(last_fetched, datetime):
+                last_fetched = last_fetched.isoformat()
+
             db_rows.append({
                 "id": str(feed.get("id")) if feed.get("id") else None,
                 "title": feed["title"],
@@ -43,7 +57,7 @@ class FeedService:
                 "unread_count": feed.get("unread_count", 0),
                 "refresh_interval": feed.get("refresh_interval", 60),
                 "user_id": self.user_id,
-                "last_fetched": feed.get("last_fetched"),
+                "last_fetched": last_fetched,
                 "last_fetch_status": feed.get("last_fetch_status"),
                 "last_fetch_error": feed.get("last_fetch_error"),
                 "enable_deduplication": feed.get("enable_deduplication", False),
@@ -62,8 +76,8 @@ class FeedService:
                     f"Saved {len(response.data)} feeds",
                     extra={'user_id': self.user_id}
                 )
-                return {"success": True}
-            return {"success": True}
+                return {"success": True, "data": response.data}
+            return {"success": True, "data": []}
         except Exception as e:
             logger.error(
                 "Failed to save feeds",
@@ -237,6 +251,9 @@ class FeedService:
             f"Starting feed deletion: {feed_id}",
             extra={'user_id': self.user_id}
         )
+
+        # Step 0: Cancel scheduled Celery refresh task
+        _cancel_feed_task(feed_id)
 
         # Step 1: Count and delete articles
         articles_response = self.supabase.table("articles") \

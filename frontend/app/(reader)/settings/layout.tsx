@@ -10,6 +10,7 @@ const settingsCategories = [
   { id: "appearance", label: "Appearance", href: "/settings/appearance" },
   { id: "api", label: "API Configuration", href: "/settings/api" },
   { id: "storage", label: "Storage", href: "/settings/storage" },
+  { id: "github-token", label: "GitHub Token", href: "/settings/github-token" },
 ]
 
 export default function SettingsLayout({ children }: { children: React.ReactNode }) {

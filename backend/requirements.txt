@@ -9,6 +9,9 @@ gotrue>=2.0.0
 # LLM
 langchain>=0.2.14
 langchain-openai>=0.1.22
+langchain-experimental>=0.0.47
+tiktoken>=0.5.0
+dashscope>=1.25.5
 
 # 数据验证
 pydantic>=2.8.2
@@ -29,3 +32,7 @@ email-validator>=2.0.0
 
 # Encryption
 cryptography>=41.0.0
+
+# Image processing
+Pillow>=10.0.0
+beautifulsoup4>=4.12.0

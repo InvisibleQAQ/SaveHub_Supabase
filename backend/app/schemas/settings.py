@@ -15,6 +15,7 @@ class SettingsBase(BaseModel):
     mark_as_read_on_scroll: bool = False
     show_thumbnails: bool = True
     sidebar_pinned: bool = False
+    github_token: Optional[str] = None
 
 
 class SettingsCreate(SettingsBase):
@@ -32,6 +33,7 @@ class SettingsUpdate(BaseModel):
     mark_as_read_on_scroll: Optional[bool] = None
     show_thumbnails: Optional[bool] = None
     sidebar_pinned: Optional[bool] = None
+    github_token: Optional[str] = None
 
 
 class SettingsResponse(SettingsBase):

@@ -16,7 +16,7 @@ type EventType = "INSERT" | "UPDATE" | "DELETE"
 
 /** Message format from FastAPI WebSocket */
 interface WSMessage {
-  type: "postgres_changes" | "pong" | "error"
+  type: "postgres_changes" | "pong" | "error" | "sync_progress"
   table?: TableName
   event?: EventType
   payload?: {
@@ -24,6 +24,11 @@ interface WSMessage {
     old: Record<string, unknown> | null
   }
   message?: string
+  // sync_progress fields
+  phase?: "analyzing"
+  current?: string
+  completed?: number
+  total?: number
 }
 
 /** Connection state */
@@ -35,6 +40,17 @@ interface TableCallbacks<T> {
   onUpdate?: (row: T) => void
   onDelete?: (id: string) => void
 }
+
+/** Sync progress data */
+export interface SyncProgress {
+  phase: "analyzing"
+  current: string
+  completed: number
+  total: number
+}
+
+/** Sync progress callback */
+type SyncProgressCallback = (progress: SyncProgress) => void
 
 interface RealtimeWSConfig {
   /** WebSocket URL (default: derived from window.location) */
@@ -70,6 +86,7 @@ export class RealtimeWSManager {
   private feedCallbacks: TableCallbacks<FeedRow> = {}
   private articleCallbacks: TableCallbacks<ArticleRow> = {}
   private folderCallbacks: TableCallbacks<FolderRow> = {}
+  private syncProgressCallback: SyncProgressCallback | null = null
 
   // Event listeners for state changes
   private stateListeners: Set<(state: ConnectionState) => void> = new Set()
@@ -189,6 +206,18 @@ export class RealtimeWSManager {
 
       if (message.type === "error") {
         console.error("[WS] Server error:", message.message)
+        return
+      }
+
+      if (message.type === "sync_progress") {
+        if (this.syncProgressCallback && message.phase && message.completed !== undefined && message.total !== undefined) {
+          this.syncProgressCallback({
+            phase: message.phase,
+            current: message.current || "",
+            completed: message.completed,
+            total: message.total,
+          })
+        }
         return
       }
 
@@ -393,6 +422,18 @@ export class RealtimeWSManager {
       Object.keys(this.articleCallbacks).length > 0 ||
       Object.keys(this.folderCallbacks).length > 0
     )
+  }
+
+  /**
+   * Subscribe to sync progress updates.
+   * Auto-connects if not already connected.
+   */
+  subscribeToSyncProgress(callback: SyncProgressCallback): () => void {
+    this.syncProgressCallback = callback
+    this.ensureConnected()
+    return () => {
+      this.syncProgressCallback = null
+    }
   }
 }
 

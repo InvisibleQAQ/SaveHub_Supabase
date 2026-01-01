@@ -95,5 +95,48 @@ export interface RSSReaderState {
     markAsReadOnScroll: boolean
     showThumbnails: boolean
     sidebarPinned: boolean
+    githubToken?: string
   }
+}
+
+// GitHub Repository types
+export interface Repository {
+  id: string
+  githubId: number
+  name: string
+  fullName: string
+  description: string | null
+  htmlUrl: string
+  stargazersCount: number
+  language: string | null
+  topics: string[]
+  ownerLogin: string
+  ownerAvatarUrl: string | null
+  starredAt: string | null
+  githubUpdatedAt: string | null
+  readmeContent: string | null
+  // AI analysis fields
+  aiSummary: string | null
+  aiTags: string[]
+  aiPlatforms: string[]
+  analyzedAt: string | null
+  analysisFailed: boolean
+  // Custom edit fields
+  customDescription: string | null
+  customTags: string[]
+  customCategory: string | null
+  lastEdited: string | null
+}
+
+export interface RepositoryCategory {
+  id: string
+  name: string
+  icon: string
+  keywords: string[]
+}
+
+export interface SyncResult {
+  total: number
+  newCount: number
+  updatedCount: number
 }

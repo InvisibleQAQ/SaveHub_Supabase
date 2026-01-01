@@ -70,8 +70,10 @@ async def update_settings(
         # Check if settings exist
         existing = service.load_settings()
 
-        # Filter out None values
-        update_data = {k: v for k, v in settings_update.model_dump().items() if v is not None}
+        # Convert to dict, keeping None values for fields that need to be deleted
+        update_data = settings_update.model_dump(exclude_unset=True)
+
+        logger.debug(f"Update data: {update_data}")
 
         if existing:
             # Update existing settings
@@ -80,7 +82,9 @@ async def update_settings(
         else:
             # Create new settings with defaults + updates
             new_settings = DEFAULT_SETTINGS.model_dump()
-            new_settings.update(update_data)
+            # Filter out None values for creation
+            filtered_updates = {k: v for k, v in update_data.items() if v is not None}
+            new_settings.update(filtered_updates)
             service.save_settings(new_settings)
 
         # Return updated settings

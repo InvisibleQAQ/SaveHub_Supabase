@@ -8,6 +8,7 @@ UTC timezone, and multi-queue support for priority handling.
 import os
 from celery import Celery
 from celery.signals import after_setup_logger, after_setup_task_logger
+from celery.schedules import crontab
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -26,7 +27,12 @@ app = Celery(
     "savehub",
     broker=REDIS_URL,
     backend=REDIS_URL,
-    include=["app.celery_app.tasks"]
+    include=[
+        "app.celery_app.tasks",
+        "app.celery_app.image_processor",
+        "app.celery_app.rag_processor",
+        "app.celery_app.repository_tasks",
+    ]
 )
 
 app.conf.update(
@@ -49,8 +55,14 @@ app.conf.update(
     task_reject_on_worker_lost=True,
     task_track_started=True,  # Track STARTED state
 
-    # Result expiration
+    # Result backend configuration (required for chord)
+    result_backend=REDIS_URL,
     result_expires=86400,  # 24h
+    result_extended=True,  # Store task args/kwargs in result
+
+    # Chord configuration
+    result_chord_join_timeout=300,  # 5 minutes timeout for chord join
+    result_chord_retry_interval=1.0,  # 1 second retry interval
 
     # Multi-queue configuration (simulates priority)
     task_default_queue="default",
@@ -59,6 +71,36 @@ app.conf.update(
         "default": {},   # Scheduled refresh (normal priority)
     },
     task_routes={
+        # Existing tasks
         "app.celery_app.tasks.refresh_feed": {"queue": "default"},
+        "process_article_images": {"queue": "default"},
+        "schedule_image_processing": {"queue": "default"},
+        "process_article_rag": {"queue": "default"},
+        "scan_pending_rag_articles": {"queue": "default"},
+        "on_images_complete": {"queue": "default"},
+        "schedule_rag_for_articles": {"queue": "default"},
+        # Batch scheduling tasks
+        "scan_due_feeds": {"queue": "default"},
+        "schedule_user_batch_refresh": {"queue": "default"},
+        "refresh_feed_batch": {"queue": "default"},
+        "on_user_feeds_complete": {"queue": "default"},
+        "schedule_batch_image_processing": {"queue": "default"},
+        "on_batch_images_complete": {"queue": "default"},
+        # Repository sync tasks
+        "sync_repositories": {"queue": "default"},
+    },
+
+    # Celery Beat schedule
+    beat_schedule={
+        # Scan feeds due for refresh every minute
+        "scan-due-feeds-every-minute": {
+            "task": "scan_due_feeds",
+            "schedule": crontab(minute="*"),
+        },
+        # Fallback: scan for pending RAG articles every 30 minutes
+        "scan-rag-every-30-minutes": {
+            "task": "scan_pending_rag_articles",
+            "schedule": crontab(minute="*/30"),
+        },
     },
 )

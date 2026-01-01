@@ -5,7 +5,7 @@ import type { RSSReaderState } from "../types"
 type AppSettings = RSSReaderState["settings"]
 
 export interface SettingsSlice {
-  updateSettings: (updates: Partial<AppSettings>) => void
+  updateSettings: (updates: Partial<AppSettings>) => Promise<void>
 }
 
 export const createSettingsSlice: StateCreator<
@@ -14,11 +14,24 @@ export const createSettingsSlice: StateCreator<
   [],
   SettingsSlice
 > = (set, get) => ({
-  updateSettings: (updates) => {
+  updateSettings: async (updates) => {
     const state = get() as any
-    const newSettings = { ...state.settings, ...updates }
+    const oldSettings = state.settings
+
+    // Optimistic update
+    const newSettings = { ...oldSettings, ...updates }
     set({ settings: newSettings } as any)
 
-    settingsApi.updateSettings(newSettings).catch(console.error)
+    try {
+      // Call API with only the updated fields
+      const result = await settingsApi.updateSettings(updates)
+      // Update with server response to ensure consistency
+      set({ settings: { ...oldSettings, ...result } } as any)
+    } catch (error) {
+      // Rollback on error
+      set({ settings: oldSettings } as any)
+      console.error("Failed to update settings:", error)
+      throw error
+    }
   },
 })

@@ -61,3 +61,27 @@ class ApiConfigsGroupedResponse(BaseModel):
     chat: List[ApiConfigResponse]
     embedding: List[ApiConfigResponse]
     rerank: List[ApiConfigResponse]
+
+
+# ============ Validation Schemas ============
+
+class ApiValidationRequest(BaseModel):
+    """Request model for validating API credentials and model."""
+    api_key: str
+    api_base: str
+    model: str
+    type: ApiConfigType = "chat"
+
+
+class ApiValidationDetails(BaseModel):
+    """Validation result details."""
+    latency: Optional[int] = None
+    model_supported: Optional[bool] = None
+
+
+class ApiValidationResponse(BaseModel):
+    """Response model for API validation."""
+    success: bool
+    error: Optional[str] = None
+    details: Optional[ApiValidationDetails] = None
+    models: Optional[List[str]] = None

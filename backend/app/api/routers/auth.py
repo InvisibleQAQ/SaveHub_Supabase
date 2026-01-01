@@ -3,8 +3,8 @@
 import os
 import logging
 from fastapi import APIRouter, HTTPException, Response, Request
-from supabase import create_client, Client
 from dotenv import load_dotenv, find_dotenv
+from supabase import create_client, Client
 from gotrue.errors import AuthApiError
 
 from app.schemas.auth import (

@@ -54,12 +54,39 @@ export function formatFullDate(date: Date | string): string {
   }).format(dateObj)
 }
 
+/**
+ * Convert original image URL to proxied URL.
+ * Bypasses CORS and hotlink protection by routing through backend proxy.
+ */
+export function getProxiedImageUrl(originalUrl: string | null | undefined): string {
+  if (!originalUrl) return ""
+
+  // Skip already proxied URLs
+  if (originalUrl.startsWith("/api/backend/proxy/image")) return originalUrl
+
+  // Skip data URIs
+  if (originalUrl.startsWith("data:")) return originalUrl
+
+  // Skip local resources (but not protocol-relative URLs)
+  if (originalUrl.startsWith("/") && !originalUrl.startsWith("//")) return originalUrl
+
+  return `/api/backend/proxy/image?url=${encodeURIComponent(originalUrl)}`
+}
+
 export function sanitizeHTML(html: string): string {
   // Basic HTML sanitization - remove script tags and dangerous attributes
   return html
     .replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, "")
     .replace(/on\w+="[^"]*"/gi, "")
     .replace(/javascript:/gi, "")
+    // Proxy all img src URLs to bypass CORS and hotlink protection
+    .replace(
+      /<img\s+([^>]*?)src=["']([^"']+)["']([^>]*)>/gi,
+      (_match, before, src, after) => {
+        const proxiedSrc = getProxiedImageUrl(src)
+        return `<img ${before}src="${proxiedSrc}"${after}>`
+      }
+    )
 }
 
 export function extractTextFromHTML(html: string): string {
