@@ -1,7 +1,7 @@
 "use client"
 
 import { useEffect, useState, useMemo } from "react"
-import { RefreshCw, Search, Github, Star } from "lucide-react"
+import { RefreshCw, Search, Github, Star, ArrowUp, ArrowDown } from "lucide-react"
 import { useRSSStore } from "@/lib/store"
 import { useToast } from "@/hooks/use-toast"
 import { CategorySidebar } from "./category-sidebar"
@@ -10,7 +10,11 @@ import { RepositoryDetailDialog } from "./repository-detail-dialog"
 import { getCategoryCounts, filterByCategory } from "@/lib/repository-categories"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import type { Repository } from "@/lib/types"
+
+type SortField = "stars" | "starredAt" | "updatedAt" | "pushedAt" | "name"
+type SortDirection = "asc" | "desc"
 
 export function RepositoryPage() {
   const { toast } = useToast()
@@ -30,6 +34,24 @@ export function RepositoryPage() {
   const [searchQuery, setSearchQuery] = useState("")
   const [selectedRepo, setSelectedRepo] = useState<Repository | null>(null)
   const [detailOpen, setDetailOpen] = useState(false)
+
+  // Sort state with localStorage persistence
+  const [sortField, setSortField] = useState<SortField>(() => {
+    if (typeof window === "undefined") return "stars"
+    try {
+      const saved = localStorage.getItem("savehub-repo-sort")
+      if (saved) return JSON.parse(saved).field || "stars"
+    } catch {}
+    return "stars"
+  })
+  const [sortDirection, setSortDirection] = useState<SortDirection>(() => {
+    if (typeof window === "undefined") return "desc"
+    try {
+      const saved = localStorage.getItem("savehub-repo-sort")
+      if (saved) return JSON.parse(saved).direction || "desc"
+    } catch {}
+    return "desc"
+  })
 
   // Load repositories on mount
   useEffect(() => {
@@ -54,6 +76,13 @@ export function RepositoryPage() {
     }
     load()
   }, [isStoreLoading, settings.githubToken, loadRepositories])
+
+  // Persist sort preference to localStorage
+  useEffect(() => {
+    try {
+      localStorage.setItem("savehub-repo-sort", JSON.stringify({ field: sortField, direction: sortDirection }))
+    } catch {}
+  }, [sortField, sortDirection])
 
   // Handle sync
   const handleSync = async () => {
@@ -81,6 +110,40 @@ export function RepositoryPage() {
     }
   }
 
+  // Sort repositories helper function
+  const sortRepositories = (repos: Repository[], field: SortField, direction: SortDirection) => {
+    return [...repos].sort((a, b) => {
+      let cmp = 0
+      switch (field) {
+        case "stars":
+          cmp = a.stargazersCount - b.stargazersCount
+          break
+        case "starredAt":
+          if (!a.starredAt && !b.starredAt) cmp = 0
+          else if (!a.starredAt) cmp = 1
+          else if (!b.starredAt) cmp = -1
+          else cmp = new Date(a.starredAt).getTime() - new Date(b.starredAt).getTime()
+          break
+        case "updatedAt":
+          if (!a.githubUpdatedAt && !b.githubUpdatedAt) cmp = 0
+          else if (!a.githubUpdatedAt) cmp = 1
+          else if (!b.githubUpdatedAt) cmp = -1
+          else cmp = new Date(a.githubUpdatedAt).getTime() - new Date(b.githubUpdatedAt).getTime()
+          break
+        case "pushedAt":
+          if (!a.githubPushedAt && !b.githubPushedAt) cmp = 0
+          else if (!a.githubPushedAt) cmp = 1
+          else if (!b.githubPushedAt) cmp = -1
+          else cmp = new Date(a.githubPushedAt).getTime() - new Date(b.githubPushedAt).getTime()
+          break
+        case "name":
+          cmp = a.name.localeCompare(b.name)
+          break
+      }
+      return direction === "asc" ? cmp : -cmp
+    })
+  }
+
   // Calculate counts and filter
   const counts = useMemo(() => getCategoryCounts(repositories), [repositories])
   const filteredRepos = useMemo(() => {
@@ -98,8 +161,8 @@ export function RepositoryPage() {
       )
     }
 
-    return result
-  }, [repositories, selectedCategory, searchQuery])
+    return sortRepositories(result, sortField, sortDirection)
+  }, [repositories, selectedCategory, searchQuery, sortField, sortDirection])
 
   const handleCardClick = (repo: Repository) => {
     setSelectedRepo(repo)
@@ -170,12 +233,57 @@ export function RepositoryPage() {
           </div>
         </div>
 
+        {/* Sort Bar */}
+        <div className="flex items-center justify-between px-6 py-2 border-b bg-muted/20">
+          <Tabs
+            value={sortField}
+            onValueChange={(v) => setSortField(v as SortField)}
+          >
+            <TabsList className="h-8 bg-muted/50">
+              <TabsTrigger value="stars" className="text-xs px-3 h-7 data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:font-medium">
+                Star 数
+              </TabsTrigger>
+              <TabsTrigger value="starredAt" className="text-xs px-3 h-7 data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:font-medium">
+                收藏时间
+              </TabsTrigger>
+              <TabsTrigger value="updatedAt" className="text-xs px-3 h-7 data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:font-medium">
+                最后更新
+              </TabsTrigger>
+              <TabsTrigger value="pushedAt" className="text-xs px-3 h-7 data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:font-medium">
+                最后推送
+              </TabsTrigger>
+              <TabsTrigger value="name" className="text-xs px-3 h-7 data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:font-medium">
+                名称
+              </TabsTrigger>
+            </TabsList>
+          </Tabs>
+
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => setSortDirection((d) => (d === "asc" ? "desc" : "asc"))}
+            className="gap-1.5 h-8"
+          >
+            {sortDirection === "asc" ? (
+              <>
+                <ArrowUp className="w-4 h-4" />
+                升序
+              </>
+            ) : (
+              <>
+                <ArrowDown className="w-4 h-4" />
+                降序
+              </>
+            )}
+          </Button>
+        </div>
+
         {/* Sync Progress Bar */}
         {isSyncing && syncProgress && (
           <div className="px-6 py-3 border-b bg-muted/30">
             <div className="flex items-center justify-between text-sm mb-2">
               <span className="text-muted-foreground">
-                {syncProgress.phase === "fetching" && "正在获取 starred..."}
+                {syncProgress.phase === "fetching" && "正在获取所有仓库"}
                 {syncProgress.phase === "fetched" && (
                   <>获取完成，共 <span className="text-foreground font-medium">{syncProgress.total}</span> 个仓库</>
                 )}
