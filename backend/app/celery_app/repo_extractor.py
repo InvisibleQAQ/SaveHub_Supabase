@@ -101,6 +101,32 @@ def fetch_github_repo(owner: str, repo: str, token: str = None) -> Dict[str, Any
         return None
 
 
+def get_user_chat_config(user_id: str) -> Dict[str, str] | None:
+    """
+    Get user's active chat API config for AI extraction.
+
+    Returns:
+        {"api_key": "...", "api_base": "...", "model": "..."} or None
+    """
+    from app.services.db.api_configs import ApiConfigService
+    from app.api.routers.api_configs import decrypt_sensitive_fields
+
+    supabase = get_supabase_service()
+    config_service = ApiConfigService(supabase, user_id)
+    config = config_service.get_active_config("chat")
+
+    if not config:
+        return None
+
+    # Decrypt sensitive fields
+    decrypted = decrypt_sensitive_fields(config)
+    return {
+        "api_key": decrypted.get("api_key"),
+        "api_base": decrypted.get("api_base"),
+        "model": decrypted.get("model"),
+    }
+
+
 # =============================================================================
 # Core Logic
 # =============================================================================
@@ -116,7 +142,11 @@ def do_extract_article_repos(article_id: str, user_id: str) -> Dict[str, Any]:
     Returns:
         {"success": bool, "extracted": int, "linked": int, "error": str|None}
     """
-    from app.services.github_extractor import extract_github_repos
+    from app.services.github_extractor import (
+        extract_github_repos,
+        extract_implicit_repos_with_ai,
+        merge_repos,
+    )
     from app.services.db.articles import ArticleService
     from app.services.db.repositories import RepositoryService
     from app.services.db.article_repositories import ArticleRepositoryService
@@ -141,8 +171,31 @@ def do_extract_article_repos(article_id: str, user_id: str) -> Dict[str, Any]:
         content = article.get("content", "")
         summary = article.get("summary")
 
-        # 2. Extract GitHub URLs
-        repos = extract_github_repos(content, summary)
+        # 2. Extract GitHub URLs (Step 1: BeautifulSoup)
+        explicit_repos = extract_github_repos(content, summary)
+
+        # 3. AI extraction (Step 2: implicit repos)
+        import asyncio
+        implicit_repos = []
+        chat_config = get_user_chat_config(user_id)
+        if chat_config and chat_config.get("api_key"):
+            try:
+                implicit_repos = asyncio.run(
+                    extract_implicit_repos_with_ai(
+                        content=content,
+                        summary=summary,
+                        api_key=chat_config["api_key"],
+                        api_base=chat_config["api_base"],
+                        model=chat_config["model"],
+                    )
+                )
+                logger.info(f"AI extracted {len(implicit_repos)} implicit repos for {article_id}")
+            except Exception as e:
+                logger.warning(f"AI extraction failed for {article_id}: {e}")
+                # Silent fallback - continue with explicit repos only
+
+        # 4. Merge and deduplicate
+        repos = merge_repos(explicit_repos, implicit_repos)
 
         if not repos:
             article_service.mark_repos_extracted(article_id, success=True)
