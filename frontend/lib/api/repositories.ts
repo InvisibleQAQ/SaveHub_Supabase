@@ -155,6 +155,7 @@ function mapResponseToRepository(data: Record<string, unknown>): Repository {
     ownerAvatarUrl: data.owner_avatar_url as string | null,
     starredAt: data.starred_at as string | null,
     githubUpdatedAt: data.github_updated_at as string | null,
+    githubPushedAt: data.github_pushed_at as string | null,
     readmeContent: data.readme_content as string | null,
     // AI analysis fields
     aiSummary: data.ai_summary as string | null,

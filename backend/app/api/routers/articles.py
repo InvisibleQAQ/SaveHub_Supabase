@@ -15,6 +15,8 @@ from app.schemas.articles import (
     ClearOldArticlesResponse,
 )
 from app.services.db.articles import ArticleService
+from app.services.db.article_repositories import ArticleRepositoryService
+from app.schemas.repositories import RepositoryResponse
 
 logger = logging.getLogger(__name__)
 
@@ -192,3 +194,46 @@ async def update_article(
     except Exception as e:
         logger.error(f"Failed to update article {article_id}: {e}")
         raise HTTPException(status_code=500, detail="Failed to update article")
+
+
+@router.get("/{article_id}/repositories", response_model=List[RepositoryResponse])
+async def get_article_repositories(
+    article_id: UUID,
+    access_token: str = Depends(get_access_token),
+    user=Depends(verify_auth),
+):
+    """
+    Get repositories linked to an article.
+
+    Returns repositories extracted from the article content.
+
+    Args:
+        article_id: UUID of the article
+
+    Returns:
+        List of repositories linked to this article.
+    """
+    try:
+        client = get_supabase_client(access_token)
+        service = ArticleRepositoryService(client, user.user.id)
+
+        # Get junction records with nested repository data
+        junction_records = service.get_repos_for_article(str(article_id))
+
+        # Extract repository data from nested 'repositories' field
+        repositories = []
+        list_fields = ['topics', 'ai_tags', 'ai_platforms', 'custom_tags']
+        for record in junction_records:
+            repo_data = record.get("repositories")
+            if repo_data:
+                # Convert None to empty list for list fields
+                for field in list_fields:
+                    if repo_data.get(field) is None:
+                        repo_data[field] = []
+                repositories.append(repo_data)
+
+        logger.debug(f"Retrieved {len(repositories)} repositories for article {article_id}")
+        return repositories
+    except Exception as e:
+        logger.error(f"Failed to get repositories for article {article_id}: {e}")
+        raise HTTPException(status_code=500, detail="Failed to retrieve article repositories")

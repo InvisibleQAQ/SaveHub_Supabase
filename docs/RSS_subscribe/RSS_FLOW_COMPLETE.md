@@ -743,13 +743,15 @@ def scan_pending_rag_articles():
 | images_processed_at | TIMESTAMP | 图片处理时间 |
 | rag_processed | BOOLEAN | RAG处理状态 |
 | rag_processed_at | TIMESTAMP | RAG处理时间 |
+| repos_extracted | BOOLEAN | GitHub仓库提取状态 |
+| repos_extracted_at | TIMESTAMP | 仓库提取时间 |
 
 ### 4.2 状态转移图
 
 ```mermaid
 stateDiagram-v2
     [*] --> 新文章: RSS解析完成
-    新文章: images_processed=NULL<br/>rag_processed=NULL
+    新文章: images_processed=NULL<br/>rag_processed=NULL<br/>repos_extracted=NULL
 
     新文章 --> 图片处理中: schedule_image_processing
 
@@ -767,19 +769,30 @@ stateDiagram-v2
     RAG完成: rag_processed=true
     RAG失败: rag_processed=false
 
-    RAG完成 --> [*]
+    RAG完成 --> 仓库提取中: extract_article_repos
+
+    仓库提取中 --> 仓库提取完成: 处理成功
+    仓库提取中 --> 仓库提取失败: 处理失败
+
+    仓库提取完成: repos_extracted=true
+    仓库提取失败: repos_extracted=false
+
+    仓库提取完成 --> [*]
+    仓库提取失败 --> [*]
     RAG失败 --> [*]
 ```
 
 ### 4.3 状态值含义
 
-| 状态 | images_processed | rag_processed | 说明 |
-|------|------------------|---------------|------|
-| 新文章 | NULL | NULL | 刚从RSS解析，等待处理 |
-| 图片处理成功 | true | NULL | 至少一张图片成功或无图片 |
-| 图片处理失败 | false | NULL | 有图片但全部失败 |
-| RAG处理成功 | true | true | Embedding已生成 |
-| RAG处理失败 | true | false | Embedding生成失败 |
+| 状态 | images_processed | rag_processed | repos_extracted | 说明 |
+|------|------------------|---------------|-----------------|------|
+| 新文章 | NULL | NULL | NULL | 刚从RSS解析，等待处理 |
+| 图片处理成功 | true | NULL | NULL | 至少一张图片成功或无图片 |
+| 图片处理失败 | false | NULL | NULL | 有图片但全部失败 |
+| RAG处理成功 | true | true | NULL | Embedding已生成 |
+| RAG处理失败 | true | false | NULL | Embedding生成失败 |
+| 仓库提取成功 | true | true | true | GitHub仓库已提取 |
+| 仓库提取失败 | true | true | false | 仓库提取失败 |
 
 ---
 
@@ -806,6 +819,8 @@ stateDiagram-v2
 | Feed Service | `backend/app/services/db/feeds.py` | - |
 | Article Service | `backend/app/services/db/articles.py` | - |
 | RAG Service | `backend/app/services/db/rag.py` | 27-87 |
+| Article-Repo Service | `backend/app/services/db/article_repositories.py` | 21-147 |
+| GitHub提取器 | `backend/app/services/github_extractor.py` | 27-143 |
 
 ### 5.3 Celery任务文件
 
@@ -815,6 +830,7 @@ stateDiagram-v2
 | 刷新任务 | `backend/app/celery_app/tasks.py` | 57-184, 211-299, 725-791 |
 | 图片处理 | `backend/app/celery_app/image_processor.py` | 258-323, 436-482 |
 | RAG处理 | `backend/app/celery_app/rag_processor.py` | 108-285, 391-425 |
+| 仓库提取 | `backend/app/celery_app/repo_extractor.py` | 108-210, 217-315 |
 | 任务锁 | `backend/app/celery_app/task_lock.py` | - |
 | 速率限制 | `backend/app/celery_app/rate_limiter.py` | - |
 
@@ -825,6 +841,9 @@ stateDiagram-v2
 | 图片存储配置 | `backend/scripts/018_create_article_images_storage.sql` |
 | Embedding表 | `backend/scripts/020_create_article_embeddings.sql` |
 | pgvector启用 | `backend/scripts/015_enable_pgvector.sql` |
+| 文章-仓库中间表 | `backend/scripts/026_create_article_repositories.sql` |
+| 仓库来源标记 | `backend/scripts/027_add_repository_source_flags.sql` |
+| 仓库提取状态 | `backend/scripts/028_add_repos_extracted_status.sql` |
 
 ---
 
@@ -891,7 +910,7 @@ celery -A app.celery_app flower --port=5555
 ---
 
 *文档生成时间: 2026-01-02*
-*更新时间: 2026-01-03 (添加GitHub仓库提取功能)*
+*更新时间: 2026-01-04 (完善GitHub仓库提取功能文档)*
 
 ---
 
@@ -901,7 +920,14 @@ celery -A app.celery_app flower --port=5555
 
 从RSS文章内容中自动提取GitHub仓库链接，调用GitHub API获取完整仓库信息，建立文章与仓库的多对多关系。
 
-**触发时机**: RAG/Embedding处理成功完成后
+**触发时机**: RAG/Embedding处理成功完成后 (`rag_processor.py:365-372`)
+
+**核心常量** (`repo_extractor.py:22-25`):
+| 常量 | 值 | 说明 |
+|------|-----|------|
+| BATCH_SIZE | 50 | 每次扫描最大文章数 |
+| GITHUB_API_TIMEOUT | 30s | API请求超时 |
+| MAX_REPOS_PER_ARTICLE | 20 | 单篇文章最大提取仓库数 |
 
 ```mermaid
 flowchart LR
@@ -909,10 +935,13 @@ flowchart LR
     B -->|是| C[extract_article_repos]
     B -->|否| D[结束]
     C --> E[提取GitHub URLs]
-    E --> F[GitHub API获取信息]
-    F --> G[Upsert repositories]
-    G --> H[创建article_repositories关联]
-    H --> I[更新repos_extracted状态]
+    E --> F{仓库已存在?}
+    F -->|是| G[复用existing repo_id]
+    F -->|否| H[GitHub API获取信息]
+    H --> I[Upsert repositories]
+    G --> J[创建article_repositories关联]
+    I --> J
+    J --> K[更新repos_extracted状态]
 ```
 
 ### 7.2 数据库表结构
@@ -948,7 +977,7 @@ flowchart LR
 
 #### 7.3.1 触发入口
 
-**文件位置**: `backend/app/celery_app/rag_processor.py`
+**文件位置**: `backend/app/celery_app/rag_processor.py:365-372`
 
 ```python
 # process_article_rag 任务成功完成后触发
@@ -963,20 +992,82 @@ if result.get("success"):
 
 #### 7.3.2 提取核心逻辑
 
-**文件位置**: `backend/app/celery_app/repo_extractor.py`
+**文件位置**: `backend/app/celery_app/repo_extractor.py:108-210`
 
 ```python
-def do_extract_article_repos(article_id: str, user_id: str):
+def do_extract_article_repos(article_id: str, user_id: str) -> Dict:
+    """返回: {"success": bool, "extracted": int, "linked": int, "error": str|None}"""
+
     # 1. 获取文章内容
+    article = supabase.table("articles").select("id, content, summary")
+        .eq("id", article_id).eq("user_id", user_id).single().execute()
+
     # 2. 提取GitHub URLs (github_extractor.py)
+    repos = extract_github_repos(content, summary)  # [(owner, repo, url), ...]
+    repos = repos[:MAX_REPOS_PER_ARTICLE]  # 限制数量
+
     # 3. 获取用户GitHub Token (可选，提高API限额)
-    # 4. 对每个仓库:
-    #    - 检查是否已存在 (get_by_full_name)
-    #    - 不存在则调用GitHub API获取信息
-    #    - Upsert到repositories表 (is_extracted=True)
+    settings = SettingsService(supabase, user_id).load_settings()
+    github_token = settings.get("github_token") if settings else None
+
+    # 4. 对每个仓库处理
+    for owner, repo_name, original_url in repos:
+        full_name = f"{owner}/{repo_name}"
+        existing = repo_service.get_by_full_name(full_name)
+
+        if existing:
+            repo_id = existing["id"]  # 复用已存在的仓库
+        else:
+            repo_data = fetch_github_repo(owner, repo_name, github_token)
+            if not repo_data:
+                continue
+            saved = repo_service.upsert_extracted_repository(repo_data)
+            repo_id = saved["id"]
+
+        repo_links.append({"repository_id": repo_id, "extracted_url": original_url})
+
     # 5. 批量创建article_repositories关联
+    linked_count = link_service.bulk_link_repos(article_id, repo_links)
+
     # 6. 更新article.repos_extracted状态
+    article_service.mark_repos_extracted(article_id, success=True)
 ```
+
+#### 7.3.3 GitHub URL提取逻辑
+
+**文件位置**: `backend/app/services/github_extractor.py`
+
+**提取来源**:
+1. `<a href="...">` 标签中的GitHub链接
+2. 纯文本中的GitHub URL（正则匹配）
+
+**排除的非仓库路径** (`github_extractor.py:16-24`):
+```python
+EXCLUDED_PATHS = {
+    'about', 'pricing', 'features', 'enterprise', 'sponsors',
+    'marketplace', 'explore', 'topics', 'trending', 'collections',
+    'events', 'security', 'settings', 'notifications', 'login',
+    'join', 'organizations', 'orgs', 'users', 'apps', 'search',
+    'pulls', 'issues', 'gist', 'gists', 'stars', 'watching', ...
+}
+```
+
+**URL解析规则** (`parse_github_url`):
+- 验证域名: `github.com` 或 `www.github.com`
+- 提取路径: `/owner/repo/...` → `(owner, repo)`
+- 清理后缀: 移除 `.git`
+- 验证格式: owner符合GitHub用户名规则（字母数字+连字符，最长39字符）
+
+#### 7.3.4 中间表服务
+
+**文件位置**: `backend/app/services/db/article_repositories.py`
+
+| 方法 | 说明 |
+|------|------|
+| `link_article_to_repo()` | 单条关联（upsert） |
+| `bulk_link_repos()` | 批量关联 |
+| `get_repos_for_article()` | 获取文章关联的所有仓库 |
+| `get_articles_for_repo()` | 获取引用某仓库的所有文章 |
 
 ### 7.4 关键文件索引
 
@@ -989,7 +1080,27 @@ def do_extract_article_repos(article_id: str, user_id: str):
 | 数据库迁移 | `backend/scripts/027_add_repository_source_flags.sql` |
 | 数据库迁移 | `backend/scripts/028_add_repos_extracted_status.sql` |
 
-### 7.5 Beat定时任务
+### 7.5 Celery任务配置
+
+#### 7.5.1 extract_article_repos任务
+
+**文件位置**: `backend/app/celery_app/repo_extractor.py:217-242`
+
+```python
+@app.task(
+    bind=True,
+    name="extract_article_repos",
+    max_retries=2,
+    default_retry_delay=120,    # 2分钟后重试
+    retry_backoff=True,
+    time_limit=300,             # 硬超时5分钟
+    soft_time_limit=270,        # 软超时4.5分钟
+)
+def extract_article_repos(self, article_id: str, user_id: str):
+    ...
+```
+
+#### 7.5.2 Beat定时任务
 
 ```python
 # celery.py beat_schedule
@@ -1000,3 +1111,35 @@ def do_extract_article_repos(article_id: str, user_id: str):
 ```
 
 **补偿机制**: 每30分钟扫描 `images_processed=true AND repos_extracted IS NULL` 的文章。
+
+### 7.6 错误处理
+
+#### 7.6.1 GitHub API错误类型
+
+| 错误类型 | HTTP状态码 | 处理方式 |
+|---------|-----------|---------|
+| 仓库不存在 | 404 | 跳过，继续下一个 |
+| Rate Limit | 403 (remaining=0) | 抛出`RateLimitError`，触发重试 |
+| 其他403 | 403 | 记录警告，跳过 |
+| 超时 | - | 记录警告，跳过 |
+
+#### 7.6.2 重试策略
+
+| 配置 | 值 | 说明 |
+|------|-----|------|
+| max_retries | 2 | 最多重试2次 |
+| default_retry_delay | 120s | 初始重试延迟 |
+| retry_backoff | True | 指数退避 |
+
+#### 7.6.3 状态标记
+
+```python
+# 成功：无论提取到多少仓库
+article_service.mark_repos_extracted(article_id, success=True)
+
+# 失败：发生异常
+article_service.mark_repos_extracted(article_id, success=False)
+
+# Rate Limit：不标记，等待重试
+return {"success": False, "error": "rate_limit", "retry": True}
+```
