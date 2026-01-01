@@ -98,3 +98,33 @@ export interface RSSReaderState {
     githubToken?: string
   }
 }
+
+// GitHub Repository types
+export interface Repository {
+  id: string
+  githubId: number
+  name: string
+  fullName: string
+  description: string | null
+  htmlUrl: string
+  stargazersCount: number
+  language: string | null
+  topics: string[]
+  ownerLogin: string
+  ownerAvatarUrl: string | null
+  starredAt: string | null
+  githubUpdatedAt: string | null
+}
+
+export interface RepositoryCategory {
+  id: string
+  name: string
+  icon: string
+  keywords: string[]
+}
+
+export interface SyncResult {
+  total: number
+  newCount: number
+  updatedCount: number
+}
