@@ -90,6 +90,24 @@ def do_sync_repositories(user_id: str, github_token: str) -> Dict[str, Any]:
             readme_map = loop.run_until_complete(
                 _fetch_all_readmes(github_token, repos_to_fetch, concurrency=10)
             )
+
+        # --- Fetch README for extracted repos (not in starred) ---
+        starred_github_ids = {r.get("id") or r.get("github_id") for r in all_repos}
+        db_repos_without_readme = repo_service.get_repos_without_readme()
+        db_repos_needing_readme = [
+            r for r in db_repos_without_readme
+            if r["github_id"] not in starred_github_ids
+        ]
+
+        extracted_readme_map = {}
+        if db_repos_needing_readme:
+            repos_to_fetch_extracted = [
+                {"id": r["github_id"], "full_name": r["full_name"]}
+                for r in db_repos_needing_readme
+            ]
+            extracted_readme_map = loop.run_until_complete(
+                _fetch_all_readmes(github_token, repos_to_fetch_extracted, concurrency=10)
+            )
     finally:
         loop.close()
 
@@ -102,9 +120,16 @@ def do_sync_repositories(user_id: str, github_token: str) -> Dict[str, Any]:
     # Upsert to database (will clear AI fields for changed repos)
     result = repo_service.upsert_repositories(all_repos)
 
+    # Update readme_content for extracted repos (not in starred)
+    for db_repo in db_repos_needing_readme:
+        readme_content = extracted_readme_map.get(db_repo["github_id"])
+        if readme_content:
+            repo_service.update_readme_content(db_repo["id"], readme_content)
+
     logger.info(
         f"Sync completed: {result['total']} total, {result['new_count']} new, "
-        f"{len(github_ids_needing_readme)} needed README fetch"
+        f"{len(github_ids_needing_readme)} starred needed README, "
+        f"{len(extracted_readme_map)}/{len(db_repos_needing_readme)} extracted repos updated"
     )
 
     return result

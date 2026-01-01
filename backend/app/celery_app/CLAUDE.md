@@ -126,7 +126,7 @@ schedule_rag_for_articles (reuse existing)
 
 | Task | Mode | Description |
 |------|------|-------------|
-| `sync_repositories` | Both | Sync GitHub starred repos + fill README + AI analysis |
+| `sync_repositories` | Both | Sync GitHub starred repos + fill README for starred & extracted repos + AI analysis |
 
 ## Beat Schedule
 
