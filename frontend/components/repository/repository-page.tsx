@@ -8,6 +8,7 @@ import { CategorySidebar } from "./category-sidebar"
 import { RepositoryCard } from "./repository-card"
 import { RepositoryDetailDialog } from "./repository-detail-dialog"
 import { getCategoryCounts, filterByCategory } from "@/lib/repository-categories"
+import { realtimeWSManager } from "@/lib/realtime-ws"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import type { Repository } from "@/lib/types"
@@ -18,6 +19,8 @@ export function RepositoryPage() {
   const {
     repositories,
     isSyncing,
+    syncProgress,
+    setSyncProgress,
     loadRepositories,
     syncRepositories,
     settings,
@@ -53,6 +56,20 @@ export function RepositoryPage() {
     }
     load()
   }, [isStoreLoading, settings.githubToken, loadRepositories])
+
+  // Subscribe to sync progress via WebSocket
+  useEffect(() => {
+    if (!isSyncing) return
+
+    const unsubscribe = realtimeWSManager.subscribeToSyncProgress((progress) => {
+      setSyncProgress(progress)
+    })
+
+    return () => {
+      unsubscribe()
+      setSyncProgress(null)
+    }
+  }, [isSyncing, setSyncProgress])
 
   // Handle sync
   const handleSync = async () => {
@@ -168,6 +185,26 @@ export function RepositoryPage() {
             </Button>
           </div>
         </div>
+
+        {/* Sync Progress Bar */}
+        {isSyncing && syncProgress && (
+          <div className="px-6 py-3 border-b bg-muted/30">
+            <div className="flex items-center justify-between text-sm mb-2">
+              <span className="text-muted-foreground">
+                正在分析: <span className="text-foreground font-medium">{syncProgress.current}</span>
+              </span>
+              <span className="text-muted-foreground">
+                {syncProgress.completed} / {syncProgress.total}
+              </span>
+            </div>
+            <div className="h-2 bg-muted rounded-full overflow-hidden">
+              <div
+                className="h-full bg-primary transition-all duration-300 ease-out"
+                style={{ width: `${(syncProgress.completed / syncProgress.total) * 100}%` }}
+              />
+            </div>
+          </div>
+        )}
 
         {/* Repository Grid */}
         <div className="flex-1 overflow-y-auto p-6">

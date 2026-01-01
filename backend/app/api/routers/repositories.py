@@ -21,6 +21,7 @@ from app.services.db.repositories import RepositoryService
 from app.services.db.api_configs import ApiConfigService
 from app.services.db.settings import SettingsService
 from app.services.ai_service import create_ai_service_from_config
+from app.services.realtime import connection_manager
 from app.celery_app.repository_tasks import schedule_next_repo_sync
 
 logger = logging.getLogger(__name__)
@@ -95,11 +96,22 @@ async def sync_repositories(
                     limit=result["new_count"]
                 )
                 if new_repos:
+                    # Progress callback to send WebSocket updates
+                    async def on_progress(repo_name: str, completed: int, total: int):
+                        await connection_manager.send_to_user(user_id, {
+                            "type": "sync_progress",
+                            "phase": "analyzing",
+                            "current": repo_name,
+                            "completed": completed,
+                            "total": total,
+                        })
+
                     ai_service = create_ai_service_from_config(config)
                     analysis_results = await ai_service.analyze_repositories_batch(
                         repos=new_repos,
                         concurrency=5,
                         use_fallback=True,
+                        on_progress=on_progress,
                     )
                     for repo_id, analysis in analysis_results.items():
                         if analysis["success"]:

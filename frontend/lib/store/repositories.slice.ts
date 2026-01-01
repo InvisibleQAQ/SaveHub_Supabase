@@ -6,13 +6,22 @@ import type { StateCreator } from "zustand"
 import type { Repository, SyncResult } from "../types"
 import { repositoriesApi } from "../api/repositories"
 
+export interface SyncProgress {
+  phase: "analyzing"
+  current: string
+  completed: number
+  total: number
+}
+
 export interface RepositoriesSlice {
   repositories: Repository[]
   isSyncing: boolean
   isAnalyzing: boolean
+  syncProgress: SyncProgress | null
   lastSyncedAt: string | null
   loadRepositories: () => Promise<void>
   syncRepositories: () => Promise<SyncResult>
+  setSyncProgress: (progress: SyncProgress | null) => void
   setRepositories: (repos: Repository[]) => void
   updateRepository: (
     id: string,
@@ -34,6 +43,7 @@ export const createRepositoriesSlice: StateCreator<
   repositories: [],
   isSyncing: false,
   isAnalyzing: false,
+  syncProgress: null,
   lastSyncedAt: null,
 
   loadRepositories: async () => {
@@ -42,7 +52,7 @@ export const createRepositoriesSlice: StateCreator<
   },
 
   syncRepositories: async () => {
-    set({ isSyncing: true })
+    set({ isSyncing: true, syncProgress: null })
     try {
       const result = await repositoriesApi.sync()
       const repos = await repositoriesApi.getAll()
@@ -52,8 +62,12 @@ export const createRepositoriesSlice: StateCreator<
       })
       return result
     } finally {
-      set({ isSyncing: false })
+      set({ isSyncing: false, syncProgress: null })
     }
+  },
+
+  setSyncProgress: (progress) => {
+    set({ syncProgress: progress })
   },
 
   setRepositories: (repos: Repository[]) => {

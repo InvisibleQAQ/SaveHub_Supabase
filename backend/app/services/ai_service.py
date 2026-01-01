@@ -11,7 +11,7 @@ import logging
 import asyncio
 import httpx
 import json
-from typing import Optional
+from typing import Optional, Callable, Awaitable
 
 from app.services.encryption import decrypt, is_encrypted
 
@@ -78,11 +78,15 @@ class AIService:
 
         Args:
             api_key: Decrypted API key
-            api_base: Decrypted API base URL
+            api_base: Decrypted API base URL (e.g., https://api.openai.com/v1)
             model: Model name to use
         """
         self.api_key = api_key
-        self.api_base = api_base.rstrip("/")
+        # Normalize api_base: remove trailing slash and /chat/completions if present
+        api_base = api_base.rstrip("/")
+        if api_base.endswith("/chat/completions"):
+            api_base = api_base[:-len("/chat/completions")]
+        self.api_base = api_base
         self.model = model
 
     async def analyze_repository(
@@ -109,7 +113,7 @@ class AIService:
         user_message += f"\nREADME内容:\n{readme_content[:8000]}"  # Limit content
 
         try:
-            async with httpx.AsyncClient(timeout=60.0) as client:
+            async with httpx.AsyncClient(timeout=90.0) as client:
                 response = await client.post(
                     f"{self.api_base}/chat/completions",
                     headers={
@@ -129,8 +133,10 @@ class AIService:
 
                 if response.status_code != 200:
                     logger.error(
-                        f"AI API error: {response.status_code}",
-                        extra={"response": response.text[:500]}
+                        f"AI API error: {response.status_code} | "
+                        f"URL: {self.api_base}/chat/completions | "
+                        f"Model: {self.model} | "
+                        f"Response: {response.text[:500]}"
                     )
                     raise Exception(f"AI API error: {response.status_code}")
 
@@ -146,10 +152,13 @@ class AIService:
                 return result
 
         except httpx.TimeoutException:
-            logger.warning(f"AI API timeout for {repo_name}")
+            logger.warning(f"AI API timeout for {repo_name} (90s)")
             raise Exception("AI API timeout")
+        except httpx.RequestError as e:
+            logger.warning(f"AI API request error for {repo_name}: {type(e).__name__}: {e}")
+            raise
         except Exception as e:
-            logger.warning(f"AI analysis failed for {repo_name}: {e}")
+            logger.warning(f"AI analysis failed for {repo_name}: {type(e).__name__}: {e}")
             raise
 
     def _parse_response(self, content: str) -> dict:
@@ -253,6 +262,7 @@ class AIService:
         repos: list[dict],
         concurrency: int = 5,
         use_fallback: bool = True,
+        on_progress: Optional[Callable[[str, int, int], Awaitable[None]]] = None,
     ) -> dict[str, dict]:
         """
         Batch analyze repositories with concurrency control.
@@ -261,37 +271,49 @@ class AIService:
             repos: List of repo dicts with id, full_name, description, readme_content, language
             concurrency: Max concurrent AI API calls
             use_fallback: Use fallback analysis when AI fails or no README
+            on_progress: Optional async callback(repo_name, completed, total) called after each repo
 
         Returns:
             Dict mapping repo_id to {"success": bool, "data": dict}
         """
         semaphore = asyncio.Semaphore(concurrency)
         results: dict[str, dict] = {}
+        completed_count = [0]  # Use list for mutable closure
+        total = len(repos)
 
         async def analyze_one(repo: dict):
             async with semaphore:
                 repo_id = repo["id"]
+                repo_name = repo["full_name"]
                 try:
                     if repo.get("readme_content"):
                         result = await self.analyze_repository(
                             readme_content=repo["readme_content"],
-                            repo_name=repo["full_name"],
+                            repo_name=repo_name,
                             description=repo.get("description"),
                         )
                         results[repo_id] = {"success": True, "data": result}
                     elif use_fallback:
                         result = self.fallback_analysis(repo)
                         results[repo_id] = {"success": True, "data": result, "fallback": True}
-                        logger.info(f"Fallback analysis for {repo['full_name']} (no README)")
+                        logger.info(f"Fallback analysis for {repo_name} (no README)")
                     else:
                         results[repo_id] = {"success": False, "error": "No README"}
                 except Exception as e:
                     if use_fallback:
                         result = self.fallback_analysis(repo)
                         results[repo_id] = {"success": True, "data": result, "fallback": True}
-                        logger.info(f"Fallback analysis for {repo['full_name']} (AI failed)")
+                        logger.info(f"Fallback analysis for {repo_name} (AI failed)")
                     else:
                         results[repo_id] = {"success": False, "error": str(e)}
+
+                # Update progress
+                completed_count[0] += 1
+                if on_progress:
+                    try:
+                        await on_progress(repo_name, completed_count[0], total)
+                    except Exception as e:
+                        logger.warning(f"Progress callback failed: {e}")
 
                 await asyncio.sleep(0.1)  # Rate limiting
 
@@ -306,15 +328,21 @@ def create_ai_service_from_config(config: dict) -> AIService:
     Create AIService from API config dict.
 
     Handles decryption of api_key and api_base if encrypted.
+    Uses try-except pattern for reliable decryption (same as rag_processor.py).
     """
     api_key = config["api_key"]
     api_base = config["api_base"]
 
-    # Decrypt if encrypted
-    if is_encrypted(api_key):
+    # Try to decrypt, use original value if decryption fails (not encrypted)
+    try:
         api_key = decrypt(api_key)
-    if is_encrypted(api_base):
+    except Exception:
+        pass  # Not encrypted or decryption failed, use original
+
+    try:
         api_base = decrypt(api_base)
+    except Exception:
+        pass  # Not encrypted or decryption failed, use original
 
     return AIService(
         api_key=api_key,

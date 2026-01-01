@@ -178,6 +178,12 @@ class RepositoryService:
             "analysis_failed": False,
         }
 
+        logger.info(
+            f"Updating AI analysis for repo {repo_id}: "
+            f"summary_len={len(analysis.get('ai_summary', '') or '')}, "
+            f"tags={analysis.get('ai_tags', [])}"
+        )
+
         response = self.supabase.table("repositories") \
             .update(update_data) \
             .eq("id", repo_id) \
@@ -185,7 +191,10 @@ class RepositoryService:
             .execute()
 
         if response.data:
+            logger.info(f"AI analysis saved for repo {repo_id}")
             return self._row_to_dict(response.data[0])
+
+        logger.warning(f"AI analysis update returned no data for repo {repo_id}")
         return None
 
     def mark_analysis_failed(self, repo_id: str) -> dict | None:

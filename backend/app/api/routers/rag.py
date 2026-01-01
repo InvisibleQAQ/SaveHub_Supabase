@@ -86,9 +86,15 @@ def get_active_configs(
         except Exception:
             api_key = config["api_key"]
 
+        # 解密 API Base
+        try:
+            api_base = decrypt(config["api_base"])
+        except Exception:
+            api_base = config["api_base"]
+
         configs[config_type] = {
             "api_key": api_key,
-            "api_base": config["api_base"],
+            "api_base": api_base,
             "model": config["model"],
         }
 
