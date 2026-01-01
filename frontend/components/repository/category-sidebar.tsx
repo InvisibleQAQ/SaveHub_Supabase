@@ -10,6 +10,7 @@ import {
   Terminal,
   Package,
   Apple,
+  Search,
   type LucideIcon,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
@@ -131,12 +132,42 @@ export function CategorySidebar({
   selectedDynamicFilter,
   onSelectDynamicFilter,
 }: CategorySidebarProps) {
+  const [searchQuery, setSearchQuery] = useState("")
+
+  // 过滤分类
+  const filteredCategories = REPOSITORY_CATEGORIES.filter((category) =>
+    category.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+    category.id.toLowerCase().includes(searchQuery.toLowerCase())
+  )
+
+  const filteredPlatforms = platforms.filter((item) =>
+    item.value.toLowerCase().includes(searchQuery.toLowerCase())
+  )
+
+  const filteredTags = tags.filter((item) =>
+    item.value.toLowerCase().includes(searchQuery.toLowerCase())
+  )
+
   return (
     <div className="w-56 flex-shrink-0 space-y-1">
+      {/* 搜索框 */}
+      <div className="px-2 pb-2">
+        <div className="relative">
+          <Search className="absolute left-2 inset-y-0 my-auto w-4 h-4 text-muted-foreground pointer-events-none" />
+          <input
+            type="text"
+            placeholder="搜索分类..."
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            className="w-full pl-8 pr-3 py-1.5 text-sm bg-muted/50 border-0 rounded-md focus:outline-none focus:ring-1 focus:ring-primary/50 placeholder:text-muted-foreground/60"
+          />
+        </div>
+      </div>
+
       <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider px-3 py-2">
         分类
       </h3>
-      {REPOSITORY_CATEGORIES.map((category) => {
+      {filteredCategories.map((category) => {
         const count = counts[category.id] || 0
         const isSelected = selectedCategory === category.id && !selectedDynamicFilter
 
@@ -170,11 +201,11 @@ export function CategorySidebar({
       })}
 
       {/* Platform 分类 */}
-      {platforms.length > 0 && (
+      {filteredPlatforms.length > 0 && (
         <CollapsibleSection
           title="平台"
           icon="💻"
-          items={platforms}
+          items={filteredPlatforms}
           selectedValue={selectedDynamicFilter?.type === "platform" ? selectedDynamicFilter.value : null}
           onSelect={(value) => onSelectDynamicFilter("platform", value)}
           getItemIcon={getPlatformIcon}
@@ -182,15 +213,18 @@ export function CategorySidebar({
       )}
 
       {/* Tags 分类 */}
-      {tags.length > 0 && (
+      {filteredTags.length > 0 && (
         <CollapsibleSection
           title="标签"
           icon="🏷️"
-          items={tags}
+          items={filteredTags}
           selectedValue={selectedDynamicFilter?.type === "tag" ? selectedDynamicFilter.value : null}
           onSelect={(value) => onSelectDynamicFilter("tag", value)}
         />
       )}
+
+      {/* 底部留白 */}
+      <div className="h-8" />
     </div>
   )
 }
