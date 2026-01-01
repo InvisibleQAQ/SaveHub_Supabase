@@ -51,7 +51,10 @@ class ArticleService:
 
         logger.debug(f"Saving {len(articles)} articles for user {self.user_id}")
 
-        response = self.supabase.table("articles").upsert(db_rows).execute()
+        response = self.supabase.table("articles").upsert(
+            db_rows,
+            on_conflict="feed_id,content_hash"
+        ).execute()
 
         logger.info(f"Saved {len(response.data or [])} articles for user {self.user_id}")
 
