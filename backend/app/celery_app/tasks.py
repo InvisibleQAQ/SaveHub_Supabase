@@ -107,35 +107,43 @@ def do_refresh_feed(
         # Collect all article URLs for batch query
         article_urls = [a.get("url", "") for a in articles if a.get("url")]
 
-        # Query articles that have been successfully processed (images_processed = true)
-        # These should be skipped to protect their processed content
-        processed_urls = set()
+        # Query ALL existing articles to get their IDs and processing status
+        # CRITICAL: Must reuse existing IDs to avoid FK violations with article_embeddings
+        existing_articles = {}  # url -> {"id": ..., "images_processed": ...}
         if article_urls:
             existing_result = supabase.table("articles").select(
-                "url"
+                "id, url, images_processed"
             ).eq("feed_id", feed_id).in_(
                 "url", article_urls
-            ).eq("images_processed", True).execute()
+            ).execute()
 
-            processed_urls = {a["url"] for a in (existing_result.data or [])}
+            for a in (existing_result.data or []):
+                existing_articles[a["url"]] = {
+                    "id": a["id"],
+                    "images_processed": a.get("images_processed", False)
+                }
 
         # Build articles to upsert (skip successfully processed ones)
         articles_to_upsert = []
         for article in articles:
             url = article.get("url", "")
 
-            if url in processed_urls:
+            existing = existing_articles.get(url)
+            if existing and existing["images_processed"]:
                 # Successfully processed article: skip to protect replaced content
                 logger.debug(f"Skipping successfully processed article: {url[:80]}")
                 continue
 
-            # New, unprocessed, or failed articles: build full record
+            # Reuse existing ID if article exists, otherwise generate new one
+            # This prevents FK violations when article_embeddings references the old ID
+            article_id = existing["id"] if existing else (article.get("id") or str(uuid4()))
+
             published_at = article.get("publishedAt")
             if isinstance(published_at, datetime):
                 published_at = published_at.isoformat()
 
             articles_to_upsert.append({
-                "id": article.get("id") or str(uuid4()),
+                "id": article_id,
                 "feed_id": feed_id,
                 "user_id": user_id,
                 "title": article.get("title", "Untitled")[:500],
@@ -159,7 +167,8 @@ def do_refresh_feed(
         else:
             article_ids = []
 
-        logger.info(f"[IMAGE_DEBUG] Upserted {len(articles_to_upsert)} articles, skipped {len(processed_urls)} processed")
+        skipped_count = sum(1 for a in existing_articles.values() if a["images_processed"])
+        logger.info(f"[IMAGE_DEBUG] Upserted {len(articles_to_upsert)} articles, skipped {skipped_count} processed")
 
         # Schedule image processing for new articles (with chord -> RAG callback)
         # In batch_mode, image processing is handled by batch orchestrator
