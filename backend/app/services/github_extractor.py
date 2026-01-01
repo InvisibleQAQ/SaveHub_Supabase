@@ -253,11 +253,10 @@ async def extract_implicit_repos_with_ai(
             user_message += f"\n\n摘要：{summary}"
         user_message += "\n\n请识别文章中隐式提及但未直接链接的 GitHub 仓库。"
 
-        # Normalize API base URL
+        # Normalize API base URL (same logic as ai_service.py)
         api_base = api_base.rstrip('/')
-        for suffix in ['/chat/completions', '/embeddings', '/v1']:
-            if api_base.endswith(suffix):
-                api_base = api_base[:-len(suffix)]
+        if api_base.endswith('/chat/completions'):
+            api_base = api_base[:-len('/chat/completions')]
         if not api_base.startswith('http'):
             api_base = f"https://{api_base}"
 
