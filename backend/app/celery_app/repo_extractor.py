@@ -158,10 +158,10 @@ def do_extract_article_repos(article_id: str, user_id: str) -> Dict[str, Any]:
     link_service = ArticleRepositoryService(supabase, user_id)
 
     try:
-        # 1. Get article content
+        # 1. Get article content (maybe_single handles deleted articles gracefully)
         result = supabase.table("articles").select(
             "id, content, summary"
-        ).eq("id", article_id).eq("user_id", user_id).single().execute()
+        ).eq("id", article_id).eq("user_id", user_id).maybe_single().execute()
 
         if not result.data:
             logger.warning(f"Article not found: {article_id}")
