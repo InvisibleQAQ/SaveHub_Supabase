@@ -1,7 +1,6 @@
 "use client"
 
-import ReactMarkdown from "react-markdown"
-import remarkGfm from "remark-gfm"
+import { useMemo } from "react"
 import { Star, ExternalLink } from "lucide-react"
 import {
   Dialog,
@@ -11,6 +10,7 @@ import {
 } from "@/components/ui/dialog"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import type { Repository } from "@/lib/types"
+import { renderMarkdown } from "@/lib/markdown-renderer"
 
 interface RepositoryDetailDialogProps {
   repository: Repository | null
@@ -25,16 +25,26 @@ export function RepositoryDetailDialog({
 }: RepositoryDetailDialogProps) {
   if (!repository) return null
 
+  // Render markdown to sanitized HTML
+  const renderedContent = useMemo(() => {
+    if (!repository.readmeContent) return null
+    const baseUrl = `https://raw.githubusercontent.com/${repository.fullName}/main`
+    return renderMarkdown(repository.readmeContent, { baseUrl })
+  }, [repository.readmeContent, repository.fullName])
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-4xl max-h-[85vh] flex flex-col">
-        <DialogHeader>
+      <DialogContent
+        className="h-[90vh] max-h-[90vh] flex flex-col p-0 gap-0"
+        style={{ width: '75vw', maxWidth: '75vw' }}
+      >
+        <DialogHeader className="px-6 pt-6 pb-4 border-b flex-shrink-0">
           <DialogTitle className="flex items-center gap-3">
             {repository.ownerAvatarUrl && (
               <img
                 src={repository.ownerAvatarUrl}
                 alt={repository.ownerLogin}
-                className="w-8 h-8 rounded-full"
+                className="w-8 h-8 rounded-full flex-shrink-0"
               />
             )}
             <span className="truncate">{repository.fullName}</span>
@@ -42,7 +52,7 @@ export function RepositoryDetailDialog({
               href={repository.htmlUrl}
               target="_blank"
               rel="noopener noreferrer"
-              className="text-muted-foreground hover:text-primary"
+              className="text-muted-foreground hover:text-primary flex-shrink-0"
               onClick={(e) => e.stopPropagation()}
             >
               <ExternalLink className="w-4 h-4" />
@@ -64,19 +74,25 @@ export function RepositoryDetailDialog({
           </div>
         </DialogHeader>
 
-        <ScrollArea className="flex-1 mt-4 h-[60vh]">
-          {repository.readmeContent ? (
-            <article className="prose prose-sm dark:prose-invert max-w-none pr-4">
-              <ReactMarkdown remarkPlugins={[remarkGfm]}>
-                {repository.readmeContent}
-              </ReactMarkdown>
-            </article>
+        <div className="flex-1 overflow-y-auto px-6 py-4 min-h-0">
+          {renderedContent ? (
+            <>
+              {renderedContent.error && (
+                <div className="mb-4 p-3 rounded-lg bg-destructive/10 text-destructive text-sm">
+                  渲染失败: {renderedContent.error}
+                </div>
+              )}
+              <article
+                className="prose prose-sm dark:prose-invert max-w-none pb-4"
+                dangerouslySetInnerHTML={{ __html: renderedContent.html }}
+              />
+            </>
           ) : (
             <div className="text-center text-muted-foreground py-8">
               该仓库没有 README 文件
             </div>
           )}
-        </ScrollArea>
+        </div>
       </DialogContent>
     </Dialog>
   )
