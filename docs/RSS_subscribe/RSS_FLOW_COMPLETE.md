@@ -81,7 +81,7 @@ flowchart TB
             R --> S[生成Caption]
             S --> T[语义分块]
             T --> U[生成Embedding]
-            U --> V[保存到 article_embeddings]
+            U --> V[保存到 all_embeddings]
         end
 
         subgraph RepoExtraction["GitHub仓库提取"]
@@ -464,11 +464,11 @@ flowchart TB
     D --> E[将Caption替换到原位置]
     E --> F[语义分块]
     F --> G[批量生成Embedding]
-    G --> H[保存到article_embeddings表]
+    G --> H[保存到all_embeddings表]
     H --> I[更新rag_processed状态]
 ```
 
-#### 2.6.3 article_embeddings表插入
+#### 2.6.3 all_embeddings表插入
 
 **文件位置**: `backend/app/services/db/rag.py` (第27-87行)
 
@@ -476,7 +476,7 @@ flowchart TB
 def save_embeddings(self, article_id: str, embeddings: List[Dict]) -> int:
     """保存文章的embeddings"""
     # 1. 删除现有embeddings（幂等性）
-    self.supabase.table("article_embeddings") \
+    self.supabase.table("all_embeddings") \
         .delete() \
         .eq("article_id", article_id) \
         .eq("user_id", self.user_id) \
@@ -492,11 +492,11 @@ def save_embeddings(self, article_id: str, embeddings: List[Dict]) -> int:
     } for emb in embeddings]
 
     # 3. 批量插入
-    result = self.supabase.table("article_embeddings").insert(rows).execute()
+    result = self.supabase.table("all_embeddings").insert(rows).execute()
     return len(result.data)
 ```
 
-**article_embeddings表结构**:
+**all_embeddings表结构**:
 
 | 字段 | 类型 | 说明 |
 |------|------|------|

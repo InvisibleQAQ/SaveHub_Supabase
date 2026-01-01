@@ -1,7 +1,7 @@
 """
 RAG 数据库服务。
 
-管理 article_embeddings 表的 CRUD 操作和查询。
+管理 all_embeddings 表的 CRUD 操作和查询。
 """
 
 import logging
@@ -51,7 +51,7 @@ class RagService:
 
         try:
             # 1. 删除现有 embeddings
-            self.supabase.table("article_embeddings") \
+            self.supabase.table("all_embeddings") \
                 .delete() \
                 .eq("article_id", article_id) \
                 .eq("user_id", self.user_id) \
@@ -71,7 +71,7 @@ class RagService:
                 rows.append(row)
 
             # 3. 批量插入
-            result = self.supabase.table("article_embeddings") \
+            result = self.supabase.table("all_embeddings") \
                 .insert(rows) \
                 .execute()
 
@@ -86,7 +86,7 @@ class RagService:
             logger.error(f"Failed to save embeddings: {e}", extra={"article_id": article_id})
             raise
 
-    def delete_article_embeddings(self, article_id: str) -> None:
+    def delete_all_embeddings(self, article_id: str) -> None:
         """
         删除文章的所有 embeddings。
 
@@ -94,7 +94,7 @@ class RagService:
             article_id: 文章 ID
         """
         try:
-            self.supabase.table("article_embeddings") \
+            self.supabase.table("all_embeddings") \
                 .delete() \
                 .eq("article_id", article_id) \
                 .eq("user_id", self.user_id) \
@@ -106,7 +106,7 @@ class RagService:
             logger.error(f"Failed to delete embeddings: {e}", extra={"article_id": article_id})
             raise
 
-    def get_article_embeddings(self, article_id: str) -> List[Dict[str, Any]]:
+    def get_all_embeddings(self, article_id: str) -> List[Dict[str, Any]]:
         """
         获取文章的所有 embeddings（不含向量数据）。
 
@@ -116,7 +116,7 @@ class RagService:
         Returns:
             embedding 记录列表
         """
-        result = self.supabase.table("article_embeddings") \
+        result = self.supabase.table("all_embeddings") \
             .select("id, chunk_index, content, created_at") \
             .eq("article_id", article_id) \
             .eq("user_id", self.user_id) \
@@ -205,7 +205,7 @@ class RagService:
             )
 
             # Embedding 统计
-            embeddings_result = self.supabase.table("article_embeddings") \
+            embeddings_result = self.supabase.table("all_embeddings") \
                 .select("id", count="exact") \
                 .eq("user_id", self.user_id) \
                 .execute()

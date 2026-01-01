@@ -108,7 +108,7 @@ def do_refresh_feed(
         article_urls = [a.get("url", "") for a in articles if a.get("url")]
 
         # Query ALL existing articles to get their IDs and processing status
-        # CRITICAL: Must reuse existing IDs to avoid FK violations with article_embeddings
+        # CRITICAL: Must reuse existing IDs to avoid FK violations with all_embeddings
         existing_articles = {}  # url -> {"id": ..., "images_processed": ...}
         if article_urls:
             existing_result = supabase.table("articles").select(
@@ -135,7 +135,7 @@ def do_refresh_feed(
                 continue
 
             # Reuse existing ID if article exists, otherwise generate new one
-            # This prevents FK violations when article_embeddings references the old ID
+            # This prevents FK violations when all_embeddings references the old ID
             article_id = existing["id"] if existing else (article.get("id") or str(uuid4()))
 
             published_at = article.get("publishedAt")
@@ -158,7 +158,7 @@ def do_refresh_feed(
             })
 
         # Upsert new, unprocessed, or failed articles
-        # CRITICAL: Use on_conflict="id" to prevent FK violations with article_embeddings
+        # CRITICAL: Use on_conflict="id" to prevent FK violations with all_embeddings
         # Using "feed_id,url" causes PostgreSQL to UPDATE the id field when URL matching
         # fails, which violates FK constraint (no ON UPDATE CASCADE)
         if articles_to_upsert:

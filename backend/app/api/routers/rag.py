@@ -213,7 +213,7 @@ async def reindex_article(
         if request.force:
             # 重置状态，允许重新处理
             rag_service.reset_article_rag_status(article_id_str)
-            rag_service.delete_article_embeddings(article_id_str)
+            rag_service.delete_all_embeddings(article_id_str)
 
         # 创建处理任务
         task = process_article_rag.apply_async(
@@ -237,13 +237,13 @@ async def reindex_article(
 
 
 @router.get("/embeddings/{article_id}", response_model=ArticleEmbeddingsResponse)
-async def get_article_embeddings(
+async def get_all_embeddings(
     article_id: UUID,
     rag_service: RagService = Depends(get_rag_service),
 ):
     """获取文章的所有 embeddings（不含向量数据）"""
     try:
-        embeddings = rag_service.get_article_embeddings(str(article_id))
+        embeddings = rag_service.get_all_embeddings(str(article_id))
 
         items = [
             EmbeddingItem(

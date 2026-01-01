@@ -52,7 +52,7 @@ def search_embeddings(
         # 使用 RPC 调用执行向量搜索
         # 注意：需要在 Supabase 中创建对应的函数
         result = supabase.rpc(
-            "search_article_embeddings",
+            "search_all_embeddings",
             {
                 "query_embedding": query_embedding,
                 "match_user_id": user_id,
@@ -103,7 +103,7 @@ def search_embeddings_raw(
 
         # 使用 Supabase 的 select 查询（带原生 SQL 表达式）
         # 注意：这种方式可能不完全支持向量操作，建议使用 RPC
-        result = supabase.table("article_embeddings") \
+        result = supabase.table("all_embeddings") \
             .select(
                 "id, article_id, chunk_index, content_type, content, source_url, "
                 "articles(title, url)"
@@ -182,7 +182,7 @@ def get_context_for_answer(
 # SQL 函数定义（需要在 Supabase 中执行）
 SEARCH_FUNCTION_SQL = """
 -- 创建向量搜索函数
-CREATE OR REPLACE FUNCTION search_article_embeddings(
+CREATE OR REPLACE FUNCTION search_all_embeddings(
     query_embedding vector(1536),
     match_user_id uuid,
     match_count int DEFAULT 10,
@@ -216,7 +216,7 @@ BEGIN
         1 - (e.embedding <=> query_embedding) AS score,
         a.title AS article_title,
         a.url AS article_url
-    FROM article_embeddings e
+    FROM all_embeddings e
     JOIN articles a ON e.article_id = a.id
     WHERE e.user_id = match_user_id
       AND (match_feed_id IS NULL OR a.feed_id = match_feed_id)
@@ -227,6 +227,6 @@ END;
 $$;
 
 -- 授予执行权限
-GRANT EXECUTE ON FUNCTION search_article_embeddings TO authenticated;
-GRANT EXECUTE ON FUNCTION search_article_embeddings TO service_role;
+GRANT EXECUTE ON FUNCTION search_all_embeddings TO authenticated;
+GRANT EXECUTE ON FUNCTION search_all_embeddings TO service_role;
 """
