@@ -12,7 +12,7 @@ import { useRSSStore } from "@/lib/store"
 import { useSidebarState } from "./use-sidebar-state"
 
 export function Sidebar() {
-  const { articles, getUnreadCount, isSidebarCollapsed, toggleSidebar, renameFolder, updateFeed, settings, updateSettings } = useRSSStore()
+  const { articles, repositories, getUnreadCount, isSidebarCollapsed, toggleSidebar, renameFolder, updateFeed, settings, updateSettings } = useRSSStore()
 
   const {
     showAddFeed,
@@ -39,6 +39,7 @@ export function Sidebar() {
   const totalArticles = articles.length
   const totalUnread = getUnreadCount()
   const totalStarred = articles.filter((a) => a.isStarred).length
+  const totalRepositories = repositories.length
 
   const handleRenameFolder = async (newName: string) => {
     renameFolder(renameDialog.id, newName)
@@ -59,6 +60,7 @@ export function Sidebar() {
         totalArticles={totalArticles}
         totalUnread={totalUnread}
         totalStarred={totalStarred}
+        totalRepositories={totalRepositories}
       />
     )
   }
@@ -83,6 +85,7 @@ export function Sidebar() {
         totalArticles={totalArticles}
         totalUnread={totalUnread}
         totalStarred={totalStarred}
+        totalRepositories={totalRepositories}
         sidebarPinned={settings.sidebarPinned}
         onTogglePin={handleTogglePin}
       />

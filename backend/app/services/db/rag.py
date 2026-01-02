@@ -1,7 +1,7 @@
 """
 RAG 数据库服务。
 
-管理 article_embeddings 表的 CRUD 操作和查询。
+管理 all_embeddings 表的 CRUD 操作和查询。
 """
 
 import logging
@@ -51,7 +51,7 @@ class RagService:
 
         try:
             # 1. 删除现有 embeddings
-            self.supabase.table("article_embeddings") \
+            self.supabase.table("all_embeddings") \
                 .delete() \
                 .eq("article_id", article_id) \
                 .eq("user_id", self.user_id) \
@@ -71,7 +71,7 @@ class RagService:
                 rows.append(row)
 
             # 3. 批量插入
-            result = self.supabase.table("article_embeddings") \
+            result = self.supabase.table("all_embeddings") \
                 .insert(rows) \
                 .execute()
 
@@ -86,7 +86,7 @@ class RagService:
             logger.error(f"Failed to save embeddings: {e}", extra={"article_id": article_id})
             raise
 
-    def delete_article_embeddings(self, article_id: str) -> None:
+    def delete_all_embeddings(self, article_id: str) -> None:
         """
         删除文章的所有 embeddings。
 
@@ -94,7 +94,7 @@ class RagService:
             article_id: 文章 ID
         """
         try:
-            self.supabase.table("article_embeddings") \
+            self.supabase.table("all_embeddings") \
                 .delete() \
                 .eq("article_id", article_id) \
                 .eq("user_id", self.user_id) \
@@ -106,7 +106,7 @@ class RagService:
             logger.error(f"Failed to delete embeddings: {e}", extra={"article_id": article_id})
             raise
 
-    def get_article_embeddings(self, article_id: str) -> List[Dict[str, Any]]:
+    def get_all_embeddings(self, article_id: str) -> List[Dict[str, Any]]:
         """
         获取文章的所有 embeddings（不含向量数据）。
 
@@ -116,7 +116,7 @@ class RagService:
         Returns:
             embedding 记录列表
         """
-        result = self.supabase.table("article_embeddings") \
+        result = self.supabase.table("all_embeddings") \
             .select("id, chunk_index, content, created_at") \
             .eq("article_id", article_id) \
             .eq("user_id", self.user_id) \
@@ -205,7 +205,7 @@ class RagService:
             )
 
             # Embedding 统计
-            embeddings_result = self.supabase.table("article_embeddings") \
+            embeddings_result = self.supabase.table("all_embeddings") \
                 .select("id", count="exact") \
                 .eq("user_id", self.user_id) \
                 .execute()
@@ -261,3 +261,96 @@ class RagService:
             feed_id=feed_id,
             min_score=min_score,
         )
+
+    # =========================================================================
+    # Repository Embedding CRUD
+    # =========================================================================
+
+    def save_repository_embeddings(
+        self,
+        repository_id: str,
+        embeddings: List[Dict[str, Any]],
+    ) -> int:
+        """
+        保存仓库的 embeddings。
+
+        跳过条件（满足任一则跳过）：
+        1. readme_content 为空
+        2. repository_id 已在 all_embeddings 表中存在
+        """
+        if not embeddings:
+            logger.warning(f"No embeddings to save for repository {repository_id}")
+            return 0
+
+        try:
+            # 检查 1: readme_content 是否为空
+            repo_result = self.supabase.table("repositories") \
+                .select("readme_content") \
+                .eq("id", repository_id) \
+                .eq("user_id", self.user_id) \
+                .single() \
+                .execute()
+
+            if not repo_result.data or not repo_result.data.get("readme_content"):
+                logger.info(f"Skip: repository {repository_id} has no readme_content")
+                return 0
+
+            # 检查 2: repository_id 是否已存在于 all_embeddings
+            existing = self.supabase.table("all_embeddings") \
+                .select("id") \
+                .eq("repository_id", repository_id) \
+                .eq("user_id", self.user_id) \
+                .limit(1) \
+                .execute()
+
+            if existing.data and len(existing.data) > 0:
+                logger.info(f"Skip: repository {repository_id} already has embeddings")
+                return 0
+
+            # 插入新的 embeddings
+            rows = [{
+                "repository_id": repository_id,
+                "user_id": self.user_id,
+                "chunk_index": emb["chunk_index"],
+                "content": emb["content"],
+                "embedding": emb["embedding"],
+                "metadata": emb.get("metadata"),
+            } for emb in embeddings]
+
+            result = self.supabase.table("all_embeddings").insert(rows).execute()
+            count = len(result.data) if result.data else 0
+            logger.info(f"Saved {count} embeddings for repository {repository_id}")
+            return count
+        except Exception as e:
+            logger.error(f"Failed to save repository embeddings: {e}")
+            raise
+
+    def delete_repository_embeddings(self, repository_id: str) -> None:
+        """删除仓库的所有 embeddings。"""
+        try:
+            self.supabase.table("all_embeddings") \
+                .delete() \
+                .eq("repository_id", repository_id) \
+                .eq("user_id", self.user_id) \
+                .execute()
+            logger.info(f"Deleted embeddings for repository {repository_id}")
+        except Exception as e:
+            logger.error(f"Failed to delete repository embeddings: {e}")
+            raise
+
+    def mark_repository_embedding_processed(
+        self,
+        repository_id: str,
+        success: bool = True,
+    ) -> None:
+        """标记仓库的 embedding 处理状态。"""
+        update_data = {
+            "embedding_processed": success,
+            "embedding_processed_at": datetime.now(timezone.utc).isoformat(),
+        }
+        self.supabase.table("repositories") \
+            .update(update_data) \
+            .eq("id", repository_id) \
+            .eq("user_id", self.user_id) \
+            .execute()
+        logger.debug(f"Marked repository {repository_id} embedding_processed={success}")

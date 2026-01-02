@@ -114,6 +114,20 @@ schedule_rag_for_articles (reuse existing)
 | `schedule_rag_for_articles` | Both | Schedule RAG tasks with staggered delays |
 | `scan_pending_rag_articles` | Fallback | Beat task, scan missed articles |
 
+### repo_extractor.py
+
+| Task | Mode | Description |
+|------|------|-------------|
+| `extract_article_repos` | Both | Extract GitHub repos from article, auto-triggers `sync_repositories` |
+| `schedule_repo_extraction_for_articles` | Both | Schedule extraction for batch of articles |
+| `scan_pending_repo_extraction` | Fallback | Beat task, scan missed extractions |
+
+### repository_tasks.py
+
+| Task | Mode | Description |
+|------|------|-------------|
+| `sync_repositories` | Both | Sync GitHub starred repos + fill README for starred & extracted repos + AI analysis |
+
 ## Beat Schedule
 
 | Task | Schedule | Purpose |
@@ -132,3 +146,4 @@ schedule_rag_for_articles (reuse existing)
 1. **Feed-level lock**: `refresh_feed` and `refresh_feed_batch` share same lock key `feed:{feed_id}`
 2. **Beat overlap lock**: `scan_due_feeds` uses lock with 55s TTL
 3. **New feed handling**: `POST /feeds` sets `last_fetched = now` before scheduling, preventing Beat re-trigger
+4. **Deleted feed handling**: Tasks check if feed exists before refresh; if deleted, skip with `feed_deleted` and terminate chain (tasks.py:286-302, 671-680)

@@ -18,6 +18,37 @@ class RepositoryService:
         self.supabase = supabase
         self.user_id = user_id
 
+    @classmethod
+    def upsert_repositories_static(
+        cls, supabase: Client, user_id: str, repos: List[dict]
+    ) -> dict:
+        """
+        Static method for upsert - used by Celery tasks.
+        Allows Celery tasks to use service_role client without full service instantiation.
+        """
+        service = cls(supabase, user_id)
+        return service.upsert_repositories(repos)
+
+    def get_existing_pushed_at(self) -> dict[int, dict]:
+        """
+        Get existing repositories' github_id -> {pushed_at, has_readme} mapping.
+        Used to detect which repos need README re-fetch.
+
+        Returns:
+            {github_id: {"pushed_at": str | None, "has_readme": bool}}
+        """
+        response = self.supabase.table("repositories") \
+            .select("github_id, github_pushed_at, readme_content") \
+            .eq("user_id", self.user_id) \
+            .execute()
+        return {
+            row["github_id"]: {
+                "pushed_at": row.get("github_pushed_at"),
+                "has_readme": bool(row.get("readme_content")),
+            }
+            for row in (response.data or [])
+        }
+
     def load_repositories(self) -> List[dict]:
         """
         Load all repositories for current user.
@@ -42,32 +73,67 @@ class RepositoryService:
         """
         Upsert multiple repositories.
 
+        Only upserts repos that have changes:
+        - New repos: always upsert
+        - Existing repos: only upsert if readme_content changed
+
         Args:
             repos: List of repository dictionaries from GitHub API
 
         Returns:
-            dict with total, new_count, updated_count
+            dict with total, new_count, updated_count, changed_github_ids, skipped_count
         """
         if not repos:
-            return {"total": 0, "new_count": 0, "updated_count": 0}
+            return {"total": 0, "new_count": 0, "updated_count": 0, "changed_github_ids": [], "skipped_count": 0}
 
-        # Get existing github_ids
+        # Get existing github_ids, github_pushed_at, and readme_content
         existing_response = self.supabase.table("repositories") \
-            .select("github_id") \
+            .select("github_id, github_pushed_at, readme_content") \
             .eq("user_id", self.user_id) \
             .execute()
 
-        existing_ids = {row["github_id"] for row in (existing_response.data or [])}
+        existing_map = {
+            row["github_id"]: {
+                "github_pushed_at": row.get("github_pushed_at"),
+                "readme_content": row.get("readme_content"),
+            }
+            for row in (existing_response.data or [])
+        }
 
-        # Prepare rows for upsert
+        # Prepare rows for upsert and detect changes
         db_rows = []
         new_count = 0
+        changed_github_ids = []
+        skipped_count = 0
+
         for repo in repos:
             github_id = repo.get("id") or repo.get("github_id")
-            if github_id not in existing_ids:
-                new_count += 1
+            new_pushed_at = repo.get("pushed_at")
+            new_readme = repo.get("readme_content")
+            is_new = github_id not in existing_map
 
-            db_rows.append({
+            if is_new:
+                new_count += 1
+            else:
+                existing = existing_map[github_id]
+                old_readme = existing.get("readme_content")
+
+                # Skip if no new readme fetched (None means not fetched)
+                if new_readme is None:
+                    skipped_count += 1
+                    continue
+
+                # Skip if readme_content unchanged
+                if new_readme == old_readme:
+                    skipped_count += 1
+                    continue
+
+                # Detect pushed_at change (code update) for AI analysis reset
+                old_pushed_at = existing.get("github_pushed_at")
+                if old_pushed_at is not None and old_pushed_at != new_pushed_at:
+                    changed_github_ids.append(github_id)
+
+            row = {
                 "user_id": self.user_id,
                 "github_id": github_id,
                 "name": repo.get("name"),
@@ -82,13 +148,35 @@ class RepositoryService:
                 "starred_at": repo.get("starred_at"),
                 "github_created_at": repo.get("created_at"),
                 "github_updated_at": repo.get("updated_at"),
+                "github_pushed_at": new_pushed_at,
                 "readme_content": repo.get("readme_content"),
-            })
+                "is_starred": True,  # Mark as starred repo
+            }
+
+            # Clear AI fields for repos with pushed_at change
+            if github_id in changed_github_ids:
+                row["ai_summary"] = None
+                row["ai_tags"] = None
+                row["ai_platforms"] = None
+                row["analyzed_at"] = None
+                row["analysis_failed"] = None
+
+            db_rows.append(row)
 
         logger.info(
-            f"Upserting {len(db_rows)} repositories ({new_count} new)",
+            f"Upserting {len(db_rows)} repositories ({new_count} new, {len(changed_github_ids)} changed, {skipped_count} skipped)",
             extra={'user_id': self.user_id}
         )
+
+        # Skip upsert if no rows to insert (Supabase doesn't support empty array)
+        if not db_rows:
+            return {
+                "total": 0,
+                "new_count": 0,
+                "updated_count": 0,
+                "changed_github_ids": [],
+                "skipped_count": skipped_count,
+            }
 
         # Upsert with conflict on (user_id, github_id)
         response = self.supabase.table("repositories") \
@@ -106,7 +194,9 @@ class RepositoryService:
         return {
             "total": total,
             "new_count": new_count,
-            "updated_count": updated_count
+            "updated_count": updated_count,
+            "changed_github_ids": changed_github_ids,
+            "skipped_count": skipped_count,
         }
 
     def get_count(self) -> int:
@@ -129,6 +219,48 @@ class RepositoryService:
 
         if response.data:
             return self._row_to_dict(response.data)
+        return None
+
+    def get_by_github_id(self, github_id: int) -> dict | None:
+        """
+        Get a repository by GitHub ID.
+
+        Args:
+            github_id: GitHub's numeric repository ID
+
+        Returns:
+            Repository dict or None if not found
+        """
+        response = self.supabase.table("repositories") \
+            .select("*") \
+            .eq("user_id", self.user_id) \
+            .eq("github_id", github_id) \
+            .limit(1) \
+            .execute()
+
+        if response.data and len(response.data) > 0:
+            return self._row_to_dict(response.data[0])
+        return None
+
+    def get_by_full_name(self, full_name: str) -> dict | None:
+        """
+        Get a repository by full_name (owner/repo).
+
+        Args:
+            full_name: Repository full name (e.g., "owner/repo")
+
+        Returns:
+            Repository dict or None if not found
+        """
+        response = self.supabase.table("repositories") \
+            .select("*") \
+            .eq("user_id", self.user_id) \
+            .eq("full_name", full_name) \
+            .limit(1) \
+            .execute()
+
+        if response.data and len(response.data) > 0:
+            return self._row_to_dict(response.data[0])
         return None
 
     def update_repository(self, repo_id: str, data: dict) -> dict | None:
@@ -160,13 +292,14 @@ class RepositoryService:
             return self._row_to_dict(response.data[0])
         return None
 
-    def update_ai_analysis(self, repo_id: str, analysis: dict) -> dict | None:
+    def update_ai_analysis(self, repo_id: str, analysis: dict, is_fallback: bool = False) -> dict | None:
         """
         Update repository AI analysis results.
 
         Args:
             repo_id: Repository UUID
             analysis: Dict with ai_summary, ai_tags, ai_platforms
+            is_fallback: If True, marks analysis_failed=True (AI failed, used fallback)
         """
         from datetime import datetime, timezone
 
@@ -175,7 +308,7 @@ class RepositoryService:
             "ai_tags": analysis.get("ai_tags", []),
             "ai_platforms": analysis.get("ai_platforms", []),
             "analyzed_at": datetime.now(timezone.utc).isoformat(),
-            "analysis_failed": False,
+            "analysis_failed": is_fallback,
         }
 
         logger.info(
@@ -216,6 +349,14 @@ class RepositoryService:
             return self._row_to_dict(response.data[0])
         return None
 
+    def reset_analysis_failed(self, repo_id: str) -> None:
+        """Reset analysis_failed flag before retry."""
+        self.supabase.table("repositories") \
+            .update({"analysis_failed": False, "analyzed_at": None}) \
+            .eq("id", repo_id) \
+            .eq("user_id", self.user_id) \
+            .execute()
+
     def get_unanalyzed_repositories(self, limit: int = 50) -> List[dict]:
         """
         Get repositories that haven't been analyzed yet.
@@ -236,6 +377,111 @@ class RepositoryService:
 
         return response.data or []
 
+    def get_repositories_needing_analysis(self) -> List[dict]:
+        """
+        Get repositories that need AI analysis.
+
+        Conditions (OR):
+        - ai_summary IS NULL
+        - ai_tags IS NULL OR ai_tags = ''
+        - analysis_failed = TRUE (retry)
+
+        Returns:
+            List of repo dicts with id, full_name, description, readme_content, language, name, analysis_failed
+        """
+        response = self.supabase.table("repositories") \
+            .select("id, full_name, description, readme_content, language, name, analysis_failed") \
+            .eq("user_id", self.user_id) \
+            .or_("ai_summary.is.null,ai_tags.is.null,ai_tags.eq.{},analysis_failed.eq.true") \
+            .execute()
+
+        return response.data or []
+
+    def get_repos_without_readme(self) -> List[dict]:
+        """
+        Get repositories that have empty readme_content.
+
+        Returns:
+            List of repo dicts with id, github_id, full_name for README fetching
+        """
+        response = self.supabase.table("repositories") \
+            .select("id, github_id, full_name") \
+            .eq("user_id", self.user_id) \
+            .or_("readme_content.is.null,readme_content.eq.") \
+            .execute()
+
+        return response.data or []
+
+    def update_readme_content(self, repo_id: str, readme_content: str) -> bool:
+        """
+        Update only the readme_content field for a repository.
+
+        Args:
+            repo_id: Repository UUID
+            readme_content: README content to set
+
+        Returns:
+            True if update succeeded, False otherwise
+        """
+        response = self.supabase.table("repositories") \
+            .update({"readme_content": readme_content}) \
+            .eq("id", repo_id) \
+            .eq("user_id", self.user_id) \
+            .execute()
+
+        return bool(response.data)
+
+    def upsert_extracted_repository(self, repo_data: dict) -> dict | None:
+        """
+        Upsert a repository extracted from article content.
+
+        Sets is_extracted=True. If repo already exists, updates is_extracted flag.
+
+        Args:
+            repo_data: Dict with github_id, name, full_name, description,
+                      html_url, stargazers_count, language, topics, owner, etc.
+
+        Returns:
+            Upserted repository dict or None on failure
+        """
+        github_id = repo_data.get("id") or repo_data.get("github_id")
+        if not github_id:
+            logger.error("Cannot upsert extracted repo: missing github_id")
+            return None
+
+        row = {
+            "user_id": self.user_id,
+            "github_id": github_id,
+            "name": repo_data.get("name"),
+            "full_name": repo_data.get("full_name"),
+            "description": repo_data.get("description"),
+            "html_url": repo_data.get("html_url"),
+            "stargazers_count": repo_data.get("stargazers_count", 0),
+            "language": repo_data.get("language"),
+            "topics": repo_data.get("topics", []),
+            "owner_login": repo_data.get("owner", {}).get("login", ""),
+            "owner_avatar_url": repo_data.get("owner", {}).get("avatar_url"),
+            "github_created_at": repo_data.get("created_at"),
+            "github_updated_at": repo_data.get("updated_at"),
+            "github_pushed_at": repo_data.get("pushed_at"),
+            "readme_content": repo_data.get("readme_content"),
+            "is_extracted": True,
+        }
+
+        try:
+            response = self.supabase.table("repositories") \
+                .upsert(row, on_conflict="user_id,github_id") \
+                .execute()
+
+            if response.data and len(response.data) > 0:
+                logger.info(f"Upserted extracted repo: {repo_data.get('full_name')}")
+                return self._row_to_dict(response.data[0])
+            return None
+
+        except Exception as e:
+            logger.error(f"Failed to upsert extracted repo: {e}")
+            return None
+
     def _row_to_dict(self, row: dict) -> dict:
         """Convert database row to response dict."""
         return {
@@ -252,6 +498,7 @@ class RepositoryService:
             "owner_avatar_url": row.get("owner_avatar_url"),
             "starred_at": row.get("starred_at"),
             "github_updated_at": row.get("github_updated_at"),
+            "github_pushed_at": row.get("github_pushed_at"),
             "readme_content": row.get("readme_content"),
             # AI analysis fields
             "ai_summary": row.get("ai_summary"),
@@ -264,4 +511,54 @@ class RepositoryService:
             "custom_tags": row.get("custom_tags") or [],
             "custom_category": row.get("custom_category"),
             "last_edited": row.get("last_edited"),
+            # Source tracking fields
+            "is_starred": row.get("is_starred") or False,
+            "is_extracted": row.get("is_extracted") or False,
+            # OpenRank
+            "openrank": row.get("openrank"),
         }
+
+    def get_all_repos_for_openrank(self) -> List[dict]:
+        """
+        Get all repositories' basic info for OpenRank fetching.
+
+        Returns:
+            List of {github_id, full_name} dicts
+        """
+        response = self.supabase.table("repositories") \
+            .select("github_id, full_name") \
+            .eq("user_id", self.user_id) \
+            .execute()
+
+        return response.data or []
+
+    def batch_update_openrank(self, openrank_map: dict[int, float]) -> int:
+        """
+        Batch update OpenRank values for repositories.
+
+        Args:
+            openrank_map: {github_id: openrank_value} mapping
+
+        Returns:
+            Number of repositories updated
+        """
+        if not openrank_map:
+            return 0
+
+        updated_count = 0
+        for github_id, openrank_value in openrank_map.items():
+            try:
+                response = self.supabase.table("repositories") \
+                    .update({"openrank": openrank_value}) \
+                    .eq("user_id", self.user_id) \
+                    .eq("github_id", github_id) \
+                    .execute()
+
+                if response.data:
+                    updated_count += 1
+            except Exception as e:
+                logger.warning(f"Failed to update OpenRank for github_id {github_id}: {e}")
+
+        logger.info(f"Updated OpenRank for {updated_count}/{len(openrank_map)} repositories")
+        return updated_count
+

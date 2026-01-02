@@ -21,6 +21,7 @@ class RepositoryResponse(BaseModel):
     owner_avatar_url: str | None = None
     starred_at: datetime | None = None
     github_updated_at: datetime | None = None
+    github_pushed_at: datetime | None = None
     readme_content: str | None = None
     # AI analysis fields
     ai_summary: str | None = None
@@ -28,6 +29,8 @@ class RepositoryResponse(BaseModel):
     ai_platforms: list[str] = []
     analyzed_at: datetime | None = None
     analysis_failed: bool = False
+    # OpenRank
+    openrank: float | None = None
     # Custom edit fields
     custom_description: str | None = None
     custom_tags: list[str] = []

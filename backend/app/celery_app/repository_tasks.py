@@ -19,6 +19,8 @@ from celery.exceptions import Reject
 from .celery import app
 from .task_lock import get_task_lock
 from .supabase_client import get_supabase_service
+from app.services.repository_analyzer import analyze_repositories_needing_analysis
+from app.services.db.repositories import RepositoryService
 
 logger = logging.getLogger(__name__)
 
@@ -36,91 +38,360 @@ def do_sync_repositories(user_id: str, github_token: str) -> Dict[str, Any]:
 
     Fetches starred repos from GitHub and upserts to database.
     Only adds/updates, never deletes (preserves unstarred repos).
+    Only fetches README for new repos or repos with pushed_at change.
 
     Args:
         user_id: User UUID
         github_token: GitHub personal access token
 
     Returns:
-        {"total": N, "new_count": N, "updated_count": N}
+        {"total": N, "new_count": N, "updated_count": N, "changed_github_ids": [...]}
     """
+    supabase = get_supabase_service()
+    repo_service = RepositoryService(supabase, user_id)
+
     # Run async code in sync context
     loop = asyncio.new_event_loop()
     asyncio.set_event_loop(loop)
     try:
         all_repos = loop.run_until_complete(_fetch_all_starred_repos(github_token))
-        readme_map = loop.run_until_complete(
-            _fetch_all_readmes(github_token, all_repos, concurrency=10)
-        )
+
+        # Get existing repo info to detect changes
+        existing_repo_info = repo_service.get_existing_pushed_at()
+
+        # Find repos needing README fetch:
+        # 1. New repo (not in DB)
+        # 2. pushed_at changed (code update)
+        # 3. readme_content is empty
+        github_ids_needing_readme = set()
+        for repo in all_repos:
+            github_id = repo.get("id") or repo.get("github_id")
+            new_pushed_at = repo.get("pushed_at")
+
+            if github_id not in existing_repo_info:
+                # New repo
+                github_ids_needing_readme.add(github_id)
+            else:
+                info = existing_repo_info[github_id]
+                if info["pushed_at"] != new_pushed_at:
+                    # pushed_at changed (code update)
+                    github_ids_needing_readme.add(github_id)
+                elif not info["has_readme"]:
+                    # readme_content is empty
+                    github_ids_needing_readme.add(github_id)
+
+        # Fetch README only for repos that need it
+        readme_map = {}
+        if github_ids_needing_readme:
+            repos_to_fetch = [
+                r for r in all_repos
+                if (r.get("id") or r.get("github_id")) in github_ids_needing_readme
+            ]
+            readme_map = loop.run_until_complete(
+                _fetch_all_readmes(github_token, repos_to_fetch, concurrency=10)
+            )
+
+        # --- Fetch README for extracted repos (not in starred) ---
+        starred_github_ids = {r.get("id") or r.get("github_id") for r in all_repos}
+        db_repos_without_readme = repo_service.get_repos_without_readme()
+        db_repos_needing_readme = [
+            r for r in db_repos_without_readme
+            if r["github_id"] not in starred_github_ids
+        ]
+
+        extracted_readme_map = {}
+        if db_repos_needing_readme:
+            repos_to_fetch_extracted = [
+                {"id": r["github_id"], "full_name": r["full_name"]}
+                for r in db_repos_needing_readme
+            ]
+            extracted_readme_map = loop.run_until_complete(
+                _fetch_all_readmes(github_token, repos_to_fetch_extracted, concurrency=10)
+            )
     finally:
         loop.close()
 
-    # Merge readme_content into repo data
+    # Merge readme_content into repo data (only for fetched repos)
     for repo in all_repos:
         github_id = repo.get("id") or repo.get("github_id")
-        repo["readme_content"] = readme_map.get(github_id)
+        if github_id in github_ids_needing_readme:
+            repo["readme_content"] = readme_map.get(github_id)
 
-    # Upsert to database
-    supabase = get_supabase_service()
-    result = _upsert_repositories(supabase, user_id, all_repos)
+    # Upsert to database (will clear AI fields for changed repos)
+    result = repo_service.upsert_repositories(all_repos)
+
+    # Update readme_content for extracted repos (not in starred)
+    for db_repo in db_repos_needing_readme:
+        readme_content = extracted_readme_map.get(db_repo["github_id"])
+        if readme_content:
+            repo_service.update_readme_content(db_repo["id"], readme_content)
+
+    logger.info(
+        f"Sync completed: {result['total']} total, {result['new_count']} new, "
+        f"{len(github_ids_needing_readme)} starred needed README, "
+        f"{len(extracted_readme_map)}/{len(db_repos_needing_readme)} extracted repos updated"
+    )
 
     return result
 
 
-def _upsert_repositories(supabase, user_id: str, repos: List[dict]) -> Dict[str, Any]:
-    """Upsert repositories to database."""
-    if not repos:
-        return {"total": 0, "new_count": 0, "updated_count": 0}
+def do_ai_analysis(user_id: str) -> Dict[str, Any]:
+    """
+    AI analyze repositories needing analysis.
+    Wrapper that runs async analyze_repositories_needing_analysis in sync context.
 
-    # Get existing github_ids
-    existing_response = supabase.table("repositories") \
-        .select("github_id") \
-        .eq("user_id", user_id) \
-        .execute()
+    Args:
+        user_id: User UUID
 
-    existing_ids = {row["github_id"] for row in (existing_response.data or [])}
+    Returns:
+        {"analyzed": N, "failed": N, "skipped": bool, "total_candidates": N}
+    """
+    supabase = get_supabase_service()
 
-    # Prepare rows for upsert
-    db_rows = []
-    new_count = 0
-    for repo in repos:
-        github_id = repo.get("id") or repo.get("github_id")
-        if github_id not in existing_ids:
-            new_count += 1
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+    try:
+        result = loop.run_until_complete(
+            analyze_repositories_needing_analysis(
+                supabase=supabase,
+                user_id=user_id,
+                on_progress=None,
+            )
+        )
+    finally:
+        loop.close()
 
-        db_rows.append({
-            "user_id": user_id,
-            "github_id": github_id,
-            "name": repo.get("name"),
-            "full_name": repo.get("full_name"),
-            "description": repo.get("description"),
-            "html_url": repo.get("html_url"),
-            "stargazers_count": repo.get("stargazers_count", 0),
-            "language": repo.get("language"),
-            "topics": repo.get("topics", []),
-            "owner_login": repo.get("owner", {}).get("login", ""),
-            "owner_avatar_url": repo.get("owner", {}).get("avatar_url"),
-            "starred_at": repo.get("starred_at"),
-            "github_created_at": repo.get("created_at"),
-            "github_updated_at": repo.get("updated_at"),
-            "readme_content": repo.get("readme_content"),
-        })
+    return result
 
-    # Upsert with conflict on (user_id, github_id)
-    response = supabase.table("repositories") \
-        .upsert(db_rows, on_conflict="user_id,github_id") \
-        .execute()
 
-    total = len(response.data or [])
-    updated_count = total - new_count
+def do_openrank_update(user_id: str) -> Dict[str, Any]:
+    """
+    Fetch and update OpenRank values for all user repositories.
 
-    logger.info(f"Upserted {total} repositories ({new_count} new) for user {user_id}")
+    Args:
+        user_id: User UUID
+
+    Returns:
+        {"openrank_updated": N, "openrank_total": N}
+    """
+    from app.services.openrank_service import fetch_all_openranks
+
+    supabase = get_supabase_service()
+    repo_service = RepositoryService(supabase, user_id)
+
+    all_repos = repo_service.get_all_repos_for_openrank()
+    if not all_repos:
+        return {"openrank_updated": 0, "openrank_total": 0}
+
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+    try:
+        openrank_map = loop.run_until_complete(
+            fetch_all_openranks(all_repos, concurrency=5)
+        )
+    finally:
+        loop.close()
+
+    updated_count = repo_service.batch_update_openrank(openrank_map)
+
+    logger.info(f"OpenRank update completed: {updated_count}/{len(all_repos)}")
 
     return {
-        "total": total,
-        "new_count": new_count,
-        "updated_count": updated_count
+        "openrank_updated": updated_count,
+        "openrank_total": len(all_repos),
     }
+
+
+def do_repository_embedding(
+    user_id: str,
+    on_progress: callable = None,
+) -> Dict[str, Any]:
+    """
+    为用户的仓库生成 embeddings。
+
+    Args:
+        user_id: 用户 UUID
+        on_progress: 进度回调函数 (repo_name, completed, total) -> None
+
+    Returns:
+        {"embedding_processed": N, "embedding_failed": N, "embedding_total": N}
+    """
+    from app.services.rag.chunker import chunk_text_semantic, fallback_chunk_text
+    from app.services.rag.embedder import embed_texts
+    from app.services.db.rag import RagService
+    from app.celery_app.rag_processor import get_user_api_configs, ConfigError
+
+    supabase = get_supabase_service()
+    rag_service = RagService(supabase, user_id)
+
+    # 1. 获取待处理仓库
+    repos = _get_repos_needing_embedding(supabase, user_id)
+    if not repos:
+        return {"embedding_processed": 0, "embedding_failed": 0, "embedding_total": 0}
+
+    # 2. 获取 API 配置
+    try:
+        configs = get_user_api_configs(user_id)
+    except ConfigError as e:
+        logger.warning(f"No embedding config for user {user_id}: {e}")
+        return {
+            "embedding_processed": 0,
+            "embedding_failed": 0,
+            "embedding_total": len(repos),
+            "skipped": True,
+            "reason": str(e),
+        }
+
+    embedding_config = configs["embedding"]
+    processed = 0
+    failed = 0
+    total = len(repos)
+
+    # 3. 处理每个仓库
+    for i, repo in enumerate(repos):
+        # 报告进度
+        if on_progress:
+            try:
+                on_progress(repo.get("full_name", ""), i, total)
+            except Exception as e:
+                logger.debug(f"Progress callback failed: {e}")
+
+        try:
+            result = _process_single_repository_embedding(
+                repo, embedding_config, rag_service
+            )
+            if result["success"]:
+                processed += 1
+            else:
+                failed += 1
+        except Exception as e:
+            logger.error(f"Failed to process embedding for repo {repo['id']}: {e}")
+            rag_service.mark_repository_embedding_processed(repo["id"], success=False)
+            failed += 1
+
+    logger.info(f"Repository embedding completed: {processed}/{total}, {failed} failed")
+
+    return {
+        "embedding_processed": processed,
+        "embedding_failed": failed,
+        "embedding_total": total,
+    }
+
+
+def _get_repos_needing_embedding(supabase, user_id: str) -> List[dict]:
+    """获取需要生成 embedding 的仓库列表。"""
+    result = supabase.table("repositories") \
+        .select("id, full_name, description, html_url, owner_login, topics, "
+                "ai_tags, language, readme_content, ai_summary") \
+        .eq("user_id", user_id) \
+        .is_("embedding_processed", "null") \
+        .not_.is_("readme_content", "null") \
+        .limit(50) \
+        .execute()
+    return result.data or []
+
+
+def _build_repository_text(repo: dict) -> str:
+    """组合仓库文本用于 embedding。"""
+    parts = []
+    parts.append(f"仓库名称: {repo.get('full_name', '')}")
+
+    if repo.get("description"):
+        parts.append(f"描述: {repo['description']}")
+    if repo.get("html_url"):
+        parts.append(f"链接: {repo['html_url']}")
+    if repo.get("owner_login"):
+        parts.append(f"所有者: {repo['owner_login']}")
+
+    topics = repo.get("topics") or []
+    if topics:
+        parts.append(f"标签: {', '.join(topics)}")
+
+    ai_tags = repo.get("ai_tags") or []
+    if ai_tags:
+        parts.append(f"AI标签: {', '.join(ai_tags)}")
+
+    if repo.get("language"):
+        parts.append(f"主要语言: {repo['language']}")
+
+    if repo.get("readme_content"):
+        parts.append(f"\nREADME内容:\n{repo['readme_content']}")
+
+    if repo.get("ai_summary"):
+        parts.append(f"\nAI摘要:\n{repo['ai_summary']}")
+
+    return "\n".join(parts)
+
+
+def _process_single_repository_embedding(
+    repo: dict,
+    embedding_config: dict,
+    rag_service,
+) -> Dict[str, Any]:
+    """处理单个仓库的 embedding 生成。"""
+    from app.services.rag.chunker import chunk_text_semantic, fallback_chunk_text
+    from app.services.rag.embedder import embed_texts
+
+    repository_id = repo["id"]
+
+    try:
+        # 1. 组合文本
+        full_text = _build_repository_text(repo)
+        if not full_text.strip():
+            rag_service.mark_repository_embedding_processed(repository_id, success=True)
+            return {"success": True, "chunks": 0}
+
+        # 2. 语义分块
+        try:
+            text_chunks = chunk_text_semantic(
+                full_text,
+                embedding_config["api_key"],
+                embedding_config["api_base"],
+                embedding_config["model"],
+            )
+        except Exception as e:
+            logger.warning(f"Semantic chunking failed for repo {repository_id}: {e}")
+            text_chunks = fallback_chunk_text(full_text)
+
+        if not text_chunks:
+            rag_service.mark_repository_embedding_processed(repository_id, success=True)
+            return {"success": True, "chunks": 0}
+
+        # 3. 构建 chunk 数据
+        final_chunks = [
+            {"chunk_index": i, "content": chunk.strip()}
+            for i, chunk in enumerate(text_chunks) if chunk.strip()
+        ]
+
+        if not final_chunks:
+            rag_service.mark_repository_embedding_processed(repository_id, success=True)
+            return {"success": True, "chunks": 0}
+
+        # 4. 批量生成 embeddings
+        texts = [c["content"] for c in final_chunks]
+        embeddings = embed_texts(
+            texts,
+            embedding_config["api_key"],
+            embedding_config["api_base"],
+            embedding_config["model"],
+        )
+
+        for i, chunk in enumerate(final_chunks):
+            chunk["embedding"] = embeddings[i]
+
+        # 5. 保存到数据库
+        saved_count = rag_service.save_repository_embeddings(repository_id, final_chunks)
+
+        # 6. 更新状态
+        rag_service.mark_repository_embedding_processed(repository_id, success=True)
+
+        logger.info(f"Processed repository {repo['full_name']}: chunks={saved_count}")
+        return {"success": True, "chunks": saved_count}
+
+    except Exception as e:
+        logger.error(f"Repository embedding failed for {repository_id}: {e}")
+        rag_service.mark_repository_embedding_processed(repository_id, success=False)
+        return {"success": False, "error": str(e)}
 
 
 async def _fetch_all_starred_repos(token: str) -> List[dict]:
@@ -299,6 +570,30 @@ def sync_repositories(
             }
         )
 
+        # AI analyze repositories needing analysis (no condition check)
+        ai_result = {"ai_analyzed": 0, "ai_failed": 0, "ai_candidates": 0}
+        try:
+            ai_analysis = do_ai_analysis(user_id)
+            ai_result["ai_analyzed"] = ai_analysis["analyzed"]
+            ai_result["ai_failed"] = ai_analysis["failed"]
+            ai_result["ai_candidates"] = ai_analysis.get("total_candidates", 0)
+        except Exception as e:
+            logger.warning(f"AI analysis during sync failed: {e}")
+
+        # Fetch OpenRank for all repositories
+        openrank_result = {"openrank_updated": 0, "openrank_total": 0}
+        try:
+            openrank_result = do_openrank_update(user_id)
+        except Exception as e:
+            logger.warning(f"OpenRank update during sync failed: {e}")
+
+        # Generate embeddings for repositories
+        embedding_result = {"embedding_processed": 0, "embedding_failed": 0, "embedding_total": 0}
+        try:
+            embedding_result = do_repository_embedding(user_id)
+        except Exception as e:
+            logger.warning(f"Repository embedding during sync failed: {e}")
+
         # Schedule next auto-sync in 1 hour
         schedule_next_repo_sync(user_id)
 
@@ -308,7 +603,10 @@ def sync_repositories(
             "total": result["total"],
             "new_count": result["new_count"],
             "updated_count": result["updated_count"],
-            "duration_ms": duration_ms
+            "duration_ms": duration_ms,
+            **ai_result,
+            **openrank_result,
+            **embedding_result,
         }
 
     except ValueError as e:

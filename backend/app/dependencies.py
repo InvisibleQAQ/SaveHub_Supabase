@@ -1,6 +1,7 @@
 import os
+import time
 import logging
-from typing import Optional
+from typing import Optional, Tuple, Any
 from fastapi import Depends, HTTPException, Request
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from supabase import create_client, Client
@@ -20,6 +21,47 @@ security = HTTPBearer(auto_error=False)
 # Cookie names (must match auth router)
 COOKIE_NAME_ACCESS = "sb_access_token"
 COOKIE_NAME_REFRESH = "sb_refresh_token"
+
+# Auth retry configuration
+AUTH_MAX_RETRIES = 3
+AUTH_RETRY_BASE_DELAY = 0.5  # seconds
+
+
+def _is_network_error(error: Exception) -> bool:
+    """Check if error is network/SSL related (retryable)."""
+    error_str = str(error).lower()
+    patterns = ["ssl", "handshake", "timed out", "timeout", "connection"]
+    return any(p in error_str for p in patterns)
+
+
+def _verify_token_with_retry(token: str) -> Tuple[Any, str | None]:
+    """
+    Verify token with exponential backoff retry for network errors.
+
+    Returns:
+        (user_response, error_message) - error_message is None on success
+    """
+    last_error = None
+    for attempt in range(AUTH_MAX_RETRIES):
+        try:
+            user_response = supabase.auth.get_user(token)
+            if user_response and user_response.user:
+                return user_response, None
+            return None, "Invalid token response"
+        except Exception as e:
+            last_error = e
+            if _is_network_error(e) and attempt < AUTH_MAX_RETRIES - 1:
+                delay = AUTH_RETRY_BASE_DELAY * (2 ** attempt)
+                logger.warning(
+                    f"Auth retry {attempt + 1}/{AUTH_MAX_RETRIES} in {delay}s: {e}"
+                )
+                time.sleep(delay)
+            else:
+                break
+
+    if _is_network_error(last_error):
+        return None, f"Network timeout after {AUTH_MAX_RETRIES} retries: {last_error}"
+    return None, f"Token validation failed: {last_error}"
 
 
 def verify_jwt(credentials: HTTPAuthorizationCredentials = Depends(security)):
@@ -98,36 +140,36 @@ def verify_auth(
     """
     Verify authentication from either cookie or Authorization header.
     Prioritizes cookie-based auth, falls back to header-based auth.
+    Includes retry logic for network/SSL timeout errors.
     """
     cookie_error = None
     header_error = None
 
-    # First try cookie
+    # First try cookie with retry
     access_token = request.cookies.get(COOKIE_NAME_ACCESS)
     if access_token:
-        try:
-            user_response = supabase.auth.get_user(access_token)
-            if user_response and user_response.user:
-                return user_response
-        except Exception as e:
-            cookie_error = str(e)
-            logger.warning(f"Cookie auth failed: {cookie_error}")
+        user_response, error = _verify_token_with_retry(access_token)
+        if user_response:
+            return user_response
+        cookie_error = error
+        logger.warning(f"Cookie auth failed: {cookie_error}")
 
-    # Then try Authorization header
+    # Then try Authorization header with retry
     if credentials:
-        try:
-            user_response = supabase.auth.get_user(credentials.credentials)
-            if user_response and user_response.user:
-                return user_response
-        except Exception as e:
-            header_error = str(e)
-            logger.warning(f"Header auth failed: {header_error}")
+        user_response, error = _verify_token_with_retry(credentials.credentials)
+        if user_response:
+            return user_response
+        header_error = error
+        logger.warning(f"Header auth failed: {header_error}")
 
-    # Build detailed error message
+    # Build detailed error message with clear distinction
     if not access_token and not credentials:
         detail = "No credentials provided (no cookie or header)"
     elif cookie_error:
-        detail = f"Token expired or invalid: {cookie_error}"
+        if "Network timeout" in cookie_error:
+            detail = f"Authentication service unavailable: {cookie_error}"
+        else:
+            detail = f"Token expired or invalid: {cookie_error}"
     elif header_error:
         detail = f"Header auth failed: {header_error}"
     else:

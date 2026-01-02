@@ -6,6 +6,14 @@ import { Repository, SyncResult } from "@/lib/types"
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000"
 
+/** SSE progress event from sync endpoint */
+export interface SyncProgressEvent {
+  phase: "fetching" | "fetched" | "analyzing"
+  total?: number
+  current?: string
+  completed?: number
+}
+
 export const repositoriesApi = {
   /**
    * Get all repositories for current user
@@ -13,6 +21,7 @@ export const repositoriesApi = {
   async getAll(): Promise<Repository[]> {
     const response = await fetch(`${API_BASE}/api/repositories`, {
       credentials: "include",
+      cache: "no-store",
     })
 
     if (!response.ok) {
@@ -24,9 +33,11 @@ export const repositoriesApi = {
   },
 
   /**
-   * Sync repositories from GitHub
+   * Sync repositories from GitHub with SSE progress updates
    */
-  async sync(): Promise<SyncResult> {
+  async syncWithProgress(
+    onProgress: (progress: SyncProgressEvent) => void
+  ): Promise<SyncResult> {
     const response = await fetch(`${API_BASE}/api/repositories/sync`, {
       method: "POST",
       credentials: "include",
@@ -37,12 +48,45 @@ export const repositoriesApi = {
       throw new Error(error.detail || `Sync failed: ${response.status}`)
     }
 
-    const data = await response.json()
-    return {
-      total: data.total,
-      newCount: data.new_count,
-      updatedCount: data.updated_count,
+    const reader = response.body?.getReader()
+    if (!reader) throw new Error("No response body")
+
+    const decoder = new TextDecoder()
+    let buffer = ""
+    let result: SyncResult | null = null
+    let currentEvent = ""
+
+    while (true) {
+      const { done, value } = await reader.read()
+      if (done) break
+
+      buffer += decoder.decode(value, { stream: true })
+      const lines = buffer.split("\n")
+      buffer = lines.pop() || ""
+
+      for (const line of lines) {
+        if (line.startsWith("event: ")) {
+          currentEvent = line.slice(7).trim()
+        } else if (line.startsWith("data: ")) {
+          const data = JSON.parse(line.slice(6))
+
+          if (currentEvent === "progress") {
+            onProgress(data as SyncProgressEvent)
+          } else if (currentEvent === "done") {
+            result = {
+              total: data.total,
+              newCount: data.new_count,
+              updatedCount: data.updated_count,
+            }
+          } else if (currentEvent === "error") {
+            throw new Error(data.message || "Sync failed")
+          }
+        }
+      }
     }
+
+    if (!result) throw new Error("Sync completed without result")
+    return result
   },
 
   /**
@@ -111,6 +155,7 @@ function mapResponseToRepository(data: Record<string, unknown>): Repository {
     ownerAvatarUrl: data.owner_avatar_url as string | null,
     starredAt: data.starred_at as string | null,
     githubUpdatedAt: data.github_updated_at as string | null,
+    githubPushedAt: data.github_pushed_at as string | null,
     readmeContent: data.readme_content as string | null,
     // AI analysis fields
     aiSummary: data.ai_summary as string | null,
@@ -118,6 +163,8 @@ function mapResponseToRepository(data: Record<string, unknown>): Repository {
     aiPlatforms: (data.ai_platforms as string[]) || [],
     analyzedAt: data.analyzed_at as string | null,
     analysisFailed: (data.analysis_failed as boolean) || false,
+    // OpenRank
+    openrank: data.openrank as number | null,
     // Custom edit fields
     customDescription: data.custom_description as string | null,
     customTags: (data.custom_tags as string[]) || [],

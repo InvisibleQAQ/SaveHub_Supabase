@@ -6,22 +6,22 @@ Provides endpoints for fetching and syncing user's starred repositories.
 
 import logging
 import asyncio
+import json
 from typing import List
 from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi.responses import StreamingResponse
 import httpx
 
 from app.dependencies import verify_auth, COOKIE_NAME_ACCESS
 from app.supabase_client import get_supabase_client
 from app.schemas.repositories import (
     RepositoryResponse,
-    SyncResponse,
     RepositoryUpdateRequest,
 )
 from app.services.db.repositories import RepositoryService
-from app.services.db.api_configs import ApiConfigService
 from app.services.db.settings import SettingsService
-from app.services.ai_service import create_ai_service_from_config
-from app.services.realtime import connection_manager
+from app.services.db.api_configs import ApiConfigService
+from app.services.repository_analyzer import analyze_repositories_needing_analysis
 from app.celery_app.repository_tasks import schedule_next_repo_sync
 
 logger = logging.getLogger(__name__)
@@ -45,21 +45,25 @@ async def get_repositories(
     return repos
 
 
-@router.post("/sync", response_model=SyncResponse)
+@router.post("/sync")
 async def sync_repositories(
     request: Request,
     user=Depends(verify_auth)
 ):
     """
     Sync starred repositories from GitHub.
+    Returns SSE stream with progress updates.
 
-    Fetches all starred repos using pagination and upserts to database.
+    Events:
+    - progress: {phase: "fetching"|"fetched"|"analyzing"|"saving", ...}
+    - done: {total, new_count, updated_count}
+    - error: {message}
     """
     access_token = request.cookies.get(COOKIE_NAME_ACCESS)
     supabase = get_supabase_client(access_token)
     user_id = user.user.id
 
-    # Get GitHub token from settings
+    # Get GitHub token from settings (validate before starting SSE)
     settings_service = SettingsService(supabase, user_id)
     settings = settings_service.load_settings()
 
@@ -70,69 +74,231 @@ async def sync_repositories(
             detail="GitHub token not configured. Please add it in Settings."
         )
 
-    # Fetch all starred repos from GitHub
-    all_repos = await _fetch_all_starred_repos(github_token)
+    # Create progress queue for SSE
+    progress_queue: asyncio.Queue = asyncio.Queue()
 
-    # Fetch README content for all repos (with concurrency control)
-    readme_map = await _fetch_all_readmes(github_token, all_repos, concurrency=10)
-
-    # Merge readme_content into repo data
-    for repo in all_repos:
-        github_id = repo.get("id") or repo.get("github_id")
-        repo["readme_content"] = readme_map.get(github_id)
-
-    # Upsert to database
-    repo_service = RepositoryService(supabase, user_id)
-    result = repo_service.upsert_repositories(all_repos)
-
-    # AI analyze new repositories
-    if result["new_count"] > 0:
+    async def sync_task():
+        """Execute sync and push progress to queue."""
         try:
-            api_config_service = ApiConfigService(supabase, user_id)
-            config = api_config_service.get_active_config("chat")
+            # Phase: fetching
+            await progress_queue.put({
+                "event": "progress",
+                "data": {"phase": "fetching"}
+            })
 
-            if config:
-                new_repos = repo_service.get_unanalyzed_repositories(
-                    limit=result["new_count"]
-                )
-                if new_repos:
-                    # Progress callback to send WebSocket updates
-                    async def on_progress(repo_name: str, completed: int, total: int):
-                        await connection_manager.send_to_user(user_id, {
-                            "type": "sync_progress",
+            starred_repos = await _fetch_all_starred_repos(github_token)
+
+            # Get existing repo info to detect changes
+            repo_service = RepositoryService(supabase, user_id)
+            existing_repo_info = repo_service.get_existing_pushed_at()
+
+            # Find starred repos needing README fetch (new or pushed_at changed)
+            starred_github_ids = set()
+            starred_ids_needing_readme = set()
+            for repo in starred_repos:
+                github_id = repo.get("id") or repo.get("github_id")
+                starred_github_ids.add(github_id)
+                new_pushed_at = repo.get("pushed_at")
+
+                if github_id not in existing_repo_info:
+                    # New repo
+                    starred_ids_needing_readme.add(github_id)
+                else:
+                    info = existing_repo_info[github_id]
+                    if info["pushed_at"] != new_pushed_at:
+                        # pushed_at changed (code update)
+                        starred_ids_needing_readme.add(github_id)
+
+            # Find db repos without readme (excluding starred repos)
+            db_repos_without_readme = repo_service.get_repos_without_readme()
+            db_repos_needing_readme = [
+                r for r in db_repos_without_readme
+                if r["github_id"] not in starred_github_ids
+            ]
+
+            # Phase: fetched
+            total_needing_readme = len(starred_ids_needing_readme) + len(db_repos_needing_readme)
+            await progress_queue.put({
+                "event": "progress",
+                "data": {
+                    "phase": "fetched",
+                    "total": len(starred_repos),
+                    "needsReadme": total_needing_readme
+                }
+            })
+
+            # Fetch README for repos that need it (starred + db repos)
+            readme_map = {}
+            if total_needing_readme > 0:
+                # Build list of repos to fetch README for
+                repos_to_fetch = []
+
+                # Add starred repos needing README
+                for repo in starred_repos:
+                    github_id = repo.get("id") or repo.get("github_id")
+                    if github_id in starred_ids_needing_readme:
+                        repos_to_fetch.append(repo)
+
+                # Add db repos needing README (use full_name for fetching)
+                for db_repo in db_repos_needing_readme:
+                    repos_to_fetch.append({
+                        "id": db_repo["github_id"],
+                        "full_name": db_repo["full_name"]
+                    })
+
+                readme_map = await _fetch_all_readmes(github_token, repos_to_fetch, concurrency=10)
+
+            # Merge readme_content into starred_repos
+            for repo in starred_repos:
+                github_id = repo.get("id") or repo.get("github_id")
+                if github_id in starred_ids_needing_readme:
+                    repo["readme_content"] = readme_map.get(github_id)
+
+            # Upsert starred_repos to database
+            result = repo_service.upsert_repositories(starred_repos)
+
+            # Update readme_content for db repos (not in starred)
+            for db_repo in db_repos_needing_readme:
+                readme_content = readme_map.get(db_repo["github_id"])
+                if readme_content:
+                    repo_service.update_readme_content(db_repo["id"], readme_content)
+
+            # AI analyze repositories needing analysis (no condition check)
+            try:
+                async def on_progress(repo_name: str, completed: int, total: int):
+                    await progress_queue.put({
+                        "event": "progress",
+                        "data": {
                             "phase": "analyzing",
                             "current": repo_name,
                             "completed": completed,
-                            "total": total,
-                        })
+                            "total": total
+                        }
+                    })
 
-                    ai_service = create_ai_service_from_config(config)
-                    analysis_results = await ai_service.analyze_repositories_batch(
-                        repos=new_repos,
-                        concurrency=5,
-                        use_fallback=True,
-                        on_progress=on_progress,
+                async def on_save_progress(saved_count: int, save_total: int):
+                    await progress_queue.put({
+                        "event": "progress",
+                        "data": {
+                            "phase": "saving",
+                            "savedCount": saved_count,
+                            "saveTotal": save_total
+                        }
+                    })
+
+                await analyze_repositories_needing_analysis(
+                    supabase=supabase,
+                    user_id=user_id,
+                    on_progress=on_progress,
+                    on_save_progress=on_save_progress,
+                )
+            except Exception as e:
+                logger.warning(f"AI analysis during sync failed: {e}")
+
+            # Fetch OpenRank for all repositories
+            try:
+                from app.services.openrank_service import fetch_all_openranks
+
+                await progress_queue.put({
+                    "event": "progress",
+                    "data": {"phase": "openrank"}
+                })
+
+                all_repos = repo_service.get_all_repos_for_openrank()
+                openrank_map = await fetch_all_openranks(all_repos, concurrency=5)
+
+                if openrank_map:
+                    repo_service.batch_update_openrank(openrank_map)
+                    logger.info(f"OpenRank updated for {len(openrank_map)} repositories")
+            except Exception as e:
+                logger.warning(f"OpenRank fetch during sync failed: {e}")
+
+            # Generate embeddings for repositories
+            try:
+                from app.celery_app.repository_tasks import do_repository_embedding
+                import asyncio
+                import functools
+
+                async def on_embedding_progress(repo_name: str, completed: int, total: int):
+                    await progress_queue.put({
+                        "event": "progress",
+                        "data": {
+                            "phase": "embedding",
+                            "current": repo_name,
+                            "completed": completed,
+                            "total": total
+                        }
+                    })
+
+                # 创建同步回调包装器
+                loop = asyncio.get_event_loop()
+
+                def sync_progress_callback(repo_name: str, completed: int, total: int):
+                    asyncio.run_coroutine_threadsafe(
+                        on_embedding_progress(repo_name, completed, total),
+                        loop
                     )
-                    for repo_id, analysis in analysis_results.items():
-                        if analysis["success"]:
-                            repo_service.update_ai_analysis(repo_id, analysis["data"])
-                        else:
-                            repo_service.mark_analysis_failed(repo_id)
-                    logger.info(
-                        f"AI analysis completed for {len(analysis_results)} new repos"
-                    )
+
+                embedding_result = await loop.run_in_executor(
+                    None,
+                    functools.partial(do_repository_embedding, user_id, sync_progress_callback)
+                )
+                logger.info(
+                    f"Repository embedding completed: "
+                    f"{embedding_result.get('embedding_processed', 0)} processed"
+                )
+            except Exception as e:
+                logger.warning(f"Repository embedding during sync failed: {e}")
+
+            # Schedule next auto-sync
+            try:
+                schedule_next_repo_sync(user_id)
+                logger.info(f"Scheduled next repo sync for user {user_id} in 1 hour")
+            except Exception as e:
+                logger.warning(f"Failed to schedule next repo sync: {e}")
+
+            # Done
+            await progress_queue.put({
+                "event": "done",
+                "data": result
+            })
+
+        except HTTPException as e:
+            await progress_queue.put({
+                "event": "error",
+                "data": {"message": e.detail}
+            })
         except Exception as e:
-            logger.warning(f"AI analysis during sync failed: {e}")
+            logger.error(f"Sync failed: {e}")
+            await progress_queue.put({
+                "event": "error",
+                "data": {"message": str(e)}
+            })
+        finally:
+            await progress_queue.put(None)  # End signal
 
-    # Schedule next auto-sync in 1 hour (resets timer if already scheduled)
-    try:
-        schedule_next_repo_sync(user_id)
-        logger.info(f"Scheduled next repo sync for user {user_id} in 1 hour")
-    except Exception as e:
-        # Don't fail the sync if scheduling fails
-        logger.warning(f"Failed to schedule next repo sync: {e}")
+    async def generate_events():
+        """SSE event generator."""
+        task = asyncio.create_task(sync_task())
+        try:
+            while True:
+                item = await progress_queue.get()
+                if item is None:
+                    break
+                yield f"event: {item['event']}\ndata: {json.dumps(item['data'])}\n\n"
+        finally:
+            if not task.done():
+                task.cancel()
 
-    return SyncResponse(**result)
+    return StreamingResponse(
+        generate_events(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",  # Disable nginx buffering
+        }
+    )
 
 
 async def _fetch_all_starred_repos(token: str) -> List[dict]:

@@ -51,7 +51,10 @@ class ArticleService:
 
         logger.debug(f"Saving {len(articles)} articles for user {self.user_id}")
 
-        response = self.supabase.table("articles").upsert(db_rows).execute()
+        response = self.supabase.table("articles").upsert(
+            db_rows,
+            on_conflict="feed_id,content_hash"
+        ).execute()
 
         logger.info(f"Saved {len(response.data or [])} articles for user {self.user_id}")
 
@@ -74,7 +77,7 @@ class ArticleService:
         logger.debug(f"Loading articles: feed_id={feed_id}, limit={limit}")
 
         query = self.supabase.table("articles") \
-            .select("*") \
+            .select("*, article_repositories(count)") \
             .eq("user_id", self.user_id) \
             .order("published_at", desc=True)
 
@@ -88,6 +91,11 @@ class ArticleService:
 
         articles = []
         for row in response.data or []:
+            # 提取关联仓库数量
+            repo_count = 0
+            if row.get("article_repositories"):
+                repo_count = row["article_repositories"][0].get("count", 0)
+
             articles.append({
                 "id": row["id"],
                 "feed_id": row["feed_id"],
@@ -103,6 +111,7 @@ class ArticleService:
                 "content_hash": row.get("content_hash"),
                 "user_id": row["user_id"],
                 "created_at": row.get("created_at"),
+                "repository_count": repo_count,
             })
 
         logger.debug(f"Loaded {len(articles)} articles")
@@ -252,3 +261,51 @@ class ArticleService:
 
         logger.debug(f"Stats: total={stats['total']}, unread={stats['unread']}, starred={stats['starred']}")
         return stats
+
+    def get_articles_needing_repo_extraction(self, limit: int = 50) -> List[dict]:
+        """
+        Get articles that need GitHub repo extraction.
+
+        Conditions:
+        - images_processed = true (content is finalized)
+        - repos_extracted IS NULL (not yet attempted)
+
+        Args:
+            limit: Max number of articles to return
+
+        Returns:
+            List of dicts with id, user_id, content, summary
+        """
+        response = self.supabase.table("articles") \
+            .select("id, user_id, content, summary") \
+            .eq("user_id", self.user_id) \
+            .eq("images_processed", True) \
+            .is_("repos_extracted", "null") \
+            .order("created_at", desc=True) \
+            .limit(limit) \
+            .execute()
+
+        return response.data or []
+
+    def mark_repos_extracted(self, article_id: str, success: bool) -> None:
+        """
+        Update article's repo extraction status.
+
+        Args:
+            article_id: Article UUID
+            success: True if extraction succeeded, False if failed
+        """
+        from datetime import timezone
+
+        update_data = {
+            "repos_extracted": success,
+            "repos_extracted_at": datetime.now(timezone.utc).isoformat(),
+        }
+
+        self.supabase.table("articles") \
+            .update(update_data) \
+            .eq("id", article_id) \
+            .eq("user_id", self.user_id) \
+            .execute()
+
+        logger.debug(f"Marked article {article_id} repos_extracted={success}")

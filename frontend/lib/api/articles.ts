@@ -3,7 +3,7 @@
  * Uses HttpOnly cookies for authentication.
  */
 
-import type { Article } from "../types"
+import type { Article, Repository } from "../types"
 
 const API_BASE = "/api/backend/articles"
 
@@ -49,6 +49,7 @@ function transformArticle(raw: Record<string, unknown>): Article {
     isStarred: (raw.is_starred as boolean) ?? false,
     thumbnail: raw.thumbnail as string | undefined,
     contentHash: raw.content_hash as string | undefined,
+    repositoryCount: (raw.repository_count as number) ?? 0,
   }
 }
 
@@ -76,6 +77,38 @@ function toApiFormat(article: Partial<Article>): Record<string, unknown> {
   if (article.contentHash !== undefined) result.content_hash = article.contentHash
 
   return result
+}
+
+/**
+ * Transform backend snake_case repository to frontend camelCase.
+ */
+function transformRepository(raw: Record<string, unknown>): Repository {
+  return {
+    id: raw.id as string,
+    githubId: raw.github_id as number,
+    name: raw.name as string,
+    fullName: raw.full_name as string,
+    description: raw.description as string | null,
+    htmlUrl: raw.html_url as string,
+    stargazersCount: raw.stargazers_count as number,
+    language: raw.language as string | null,
+    topics: (raw.topics as string[]) || [],
+    ownerLogin: raw.owner_login as string,
+    ownerAvatarUrl: raw.owner_avatar_url as string | null,
+    starredAt: raw.starred_at as string | null,
+    githubUpdatedAt: raw.github_updated_at as string | null,
+    githubPushedAt: raw.github_pushed_at as string | null,
+    readmeContent: raw.readme_content as string | null,
+    aiSummary: raw.ai_summary as string | null,
+    aiTags: (raw.ai_tags as string[]) || [],
+    aiPlatforms: (raw.ai_platforms as string[]) || [],
+    analyzedAt: raw.analyzed_at as string | null,
+    analysisFailed: (raw.analysis_failed as boolean) || false,
+    customDescription: raw.custom_description as string | null,
+    customTags: (raw.custom_tags as string[]) || [],
+    customCategory: raw.custom_category as string | null,
+    lastEdited: raw.last_edited as string | null,
+  }
 }
 
 /**
@@ -219,6 +252,25 @@ export async function getArticleStats(): Promise<ArticleStats> {
 }
 
 /**
+ * Get repositories linked to an article.
+ * Returns repositories extracted from the article content.
+ */
+export async function getArticleRepositories(articleId: string): Promise<Repository[]> {
+  const response = await fetch(`${API_BASE}/${articleId}/repositories`, {
+    method: "GET",
+    credentials: "include",
+  })
+
+  if (!response.ok) {
+    const error: ApiError = await response.json()
+    throw new Error(error.detail || "Failed to get article repositories")
+  }
+
+  const data = await response.json()
+  return data.map(transformRepository)
+}
+
+/**
  * Articles API namespace for easy import.
  */
 export const articlesApi = {
@@ -228,4 +280,5 @@ export const articlesApi = {
   updateArticle,
   clearOldArticles,
   getArticleStats,
+  getArticleRepositories,
 }

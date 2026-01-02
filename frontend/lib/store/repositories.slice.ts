@@ -7,10 +7,13 @@ import type { Repository, SyncResult } from "../types"
 import { repositoriesApi } from "../api/repositories"
 
 export interface SyncProgress {
-  phase: "analyzing"
-  current: string
-  completed: number
-  total: number
+  phase: "fetching" | "fetched" | "analyzing" | "saving"
+  total?: number
+  current?: string
+  completed?: number
+  // Saving phase fields
+  savedCount?: number
+  saveTotal?: number
 }
 
 export interface RepositoriesSlice {
@@ -54,7 +57,9 @@ export const createRepositoriesSlice: StateCreator<
   syncRepositories: async () => {
     set({ isSyncing: true, syncProgress: null })
     try {
-      const result = await repositoriesApi.sync()
+      const result = await repositoriesApi.syncWithProgress((progress) => {
+        set({ syncProgress: progress })
+      })
       const repos = await repositoriesApi.getAll()
       set({
         repositories: repos,

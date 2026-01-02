@@ -4,6 +4,21 @@
 
 import type { Repository, RepositoryCategory } from "./types"
 
+/** 动态分类项 */
+export interface DynamicCategoryItem {
+  value: string
+  count: number
+}
+
+/**
+ * 标准化字符串用于匹配比较
+ * - 转小写
+ * - 移除空格和连字符
+ */
+function normalizeForMatch(str: string): string {
+  return str.toLowerCase().replace(/[\s-]/g, "")
+}
+
 export const REPOSITORY_CATEGORIES: RepositoryCategory[] = [
   { id: "all", name: "全部分类", icon: "📁", keywords: [] },
   { id: "web", name: "Web应用", icon: "🌐", keywords: ["web", "frontend", "react", "vue", "angular", "nextjs", "nuxt"] },
@@ -22,34 +37,70 @@ export const REPOSITORY_CATEGORIES: RepositoryCategory[] = [
 ]
 
 /**
- * Match a repository to a category based on keywords
+ * 匹配仓库到所有符合条件的分类
+ * @returns 匹配的分类 ID 数组（不包含 "all"）
  */
-export function matchCategory(repo: Repository): string {
-  const searchText = [
-    repo.name,
-    repo.fullName,
-    repo.description || "",
-    repo.language || "",
-    ...(repo.topics || []),
-  ].join(" ").toLowerCase()
+export function matchCategories(repo: Repository): string[] {
+  // 1. 收集所有匹配源并标准化
+  const matchSources: string[] = []
+
+  // 基础字段
+  if (repo.name) matchSources.push(normalizeForMatch(repo.name))
+  if (repo.fullName) matchSources.push(normalizeForMatch(repo.fullName))
+  if (repo.description) matchSources.push(normalizeForMatch(repo.description))
+  if (repo.language) matchSources.push(normalizeForMatch(repo.language))
+
+  // 数组字段
+  for (const topic of repo.topics || []) {
+    matchSources.push(normalizeForMatch(topic))
+  }
+  for (const tag of repo.aiTags || []) {
+    matchSources.push(normalizeForMatch(tag))
+  }
+  for (const platform of repo.aiPlatforms || []) {
+    matchSources.push(normalizeForMatch(platform))
+  }
+  for (const tag of repo.customTags || []) {
+    matchSources.push(normalizeForMatch(tag))
+  }
+  if (repo.customCategory) {
+    matchSources.push(normalizeForMatch(repo.customCategory))
+  }
+
+  // 2. 合并为搜索文本
+  const searchText = matchSources.join(" ")
+
+  // 3. 收集所有匹配的分类
+  const matchedCategories: string[] = []
 
   for (const category of REPOSITORY_CATEGORIES) {
     if (category.id === "all") continue
 
-    const hasMatch = category.keywords.some(keyword =>
-      searchText.includes(keyword.toLowerCase())
-    )
+    const hasMatch = category.keywords.some(keyword => {
+      const normalizedKeyword = normalizeForMatch(keyword)
+      return searchText.includes(normalizedKeyword)
+    })
 
     if (hasMatch) {
-      return category.id
+      matchedCategories.push(category.id)
     }
   }
 
-  return "all"
+  return matchedCategories
+}
+
+/**
+ * Match a repository to a category based on keywords
+ * @deprecated 使用 matchCategories() 获取所有匹配分类
+ */
+export function matchCategory(repo: Repository): string {
+  const categories = matchCategories(repo)
+  return categories.length > 0 ? categories[0] : "all"
 }
 
 /**
  * Get category counts for all repositories
+ * 注意：一个仓库可能被多个分类计数
  */
 export function getCategoryCounts(repos: Repository[]): Record<string, number> {
   const counts: Record<string, number> = { all: repos.length }
@@ -60,9 +111,9 @@ export function getCategoryCounts(repos: Repository[]): Record<string, number> {
   }
 
   for (const repo of repos) {
-    const categoryId = matchCategory(repo)
-    if (categoryId !== "all") {
-      counts[categoryId] = (counts[categoryId] || 0) + 1
+    const matchedCategories = matchCategories(repo)
+    for (const categoryId of matchedCategories) {
+      counts[categoryId]++
     }
   }
 
@@ -71,9 +122,64 @@ export function getCategoryCounts(repos: Repository[]): Record<string, number> {
 
 /**
  * Filter repositories by category
+ * 仓库只要匹配该分类即可（不要求唯一匹配）
  */
 export function filterByCategory(repos: Repository[], categoryId: string): Repository[] {
   if (categoryId === "all") return repos
 
-  return repos.filter(repo => matchCategory(repo) === categoryId)
+  return repos.filter(repo => {
+    const matchedCategories = matchCategories(repo)
+    return matchedCategories.includes(categoryId)
+  })
+}
+
+/**
+ * 聚合仓库的指定字段值，按出现次数降序排序
+ */
+function aggregateField(
+  repos: Repository[],
+  extractor: (repo: Repository) => string[]
+): DynamicCategoryItem[] {
+  const countMap = new Map<string, number>()
+
+  for (const repo of repos) {
+    const values = extractor(repo)
+    for (const value of values) {
+      if (value) {
+        countMap.set(value, (countMap.get(value) || 0) + 1)
+      }
+    }
+  }
+
+  return Array.from(countMap.entries())
+    .map(([value, count]) => ({ value, count }))
+    .sort((a, b) => b.count - a.count)
+}
+
+/** 聚合所有 platforms */
+export function getPlatformCounts(repos: Repository[]): DynamicCategoryItem[] {
+  return aggregateField(repos, (repo) => repo.aiPlatforms || [])
+}
+
+/** 聚合所有 tags (ai_tags + custom_tags 合并) */
+export function getTagCounts(repos: Repository[]): DynamicCategoryItem[] {
+  return aggregateField(repos, (repo) => [
+    ...(repo.aiTags || []),
+    ...(repo.customTags || []),
+  ])
+}
+
+/** 按动态分类过滤仓库 */
+export function filterByDynamic(
+  repos: Repository[],
+  type: "platform" | "tag",
+  value: string
+): Repository[] {
+  return repos.filter((repo) => {
+    if (type === "platform") {
+      return repo.aiPlatforms?.includes(value)
+    } else {
+      return repo.aiTags?.includes(value) || repo.customTags?.includes(value)
+    }
+  })
 }

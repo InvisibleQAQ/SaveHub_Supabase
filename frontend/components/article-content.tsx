@@ -14,6 +14,7 @@ import { useRSSStore } from "@/lib/store"
 import { cn } from "@/lib/utils"
 import { formatDistanceToNow, formatFullDate, sanitizeHTML, estimateReadingTime, getProxiedImageUrl } from "@/lib/utils"
 import { useToast } from "@/hooks/use-toast"
+import { ArticleRepositories } from "./article-repositories"
 
 export function ArticleContent() {
   const { articles, feeds, selectedArticleId, markAsRead, markAsUnread, toggleStar, settings, updateSettings, isSidebarCollapsed, setSidebarCollapsed } =
@@ -238,6 +239,9 @@ export function ArticleContent() {
               style={{ fontSize: `${settings.fontSize}px`, lineHeight: 1.6 }}
               dangerouslySetInnerHTML={{ __html: sanitizedContent }}
             />
+
+            {/* Related GitHub Repositories */}
+            <ArticleRepositories articleId={selectedArticle.id} />
 
             {/* Footer */}
             <div className="mt-8 pt-6 border-t border-border">

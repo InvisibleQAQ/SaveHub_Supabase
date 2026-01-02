@@ -4,6 +4,7 @@ import { foldersApi } from "../api/folders"
 import { feedsApi } from "../api/feeds"
 import { articlesApi } from "../api/articles"
 import { settingsApi } from "../api/settings"
+import { repositoriesApi } from "../api/repositories"
 
 // Default settings for new users
 const defaultSettings = {
@@ -77,11 +78,12 @@ export const createDatabaseSlice: StateCreator<
       set({ isLoading: true } as any)
 
       // Load all data from FastAPI backend in parallel
-      const [folders, feeds, articles, settings] = await Promise.all([
+      const [folders, feeds, articles, settings, repositories] = await Promise.all([
         foldersApi.getFolders(),
         feedsApi.getFeeds(),
         articlesApi.getArticles(),
         settingsApi.getSettings().catch(() => null),
+        repositoriesApi.getAll().catch(() => []),
       ])
 
       console.log('[Store] Loaded data via API')
@@ -90,6 +92,7 @@ export const createDatabaseSlice: StateCreator<
         folders: folders || [],
         feeds: feeds || [],
         articles: articles || [],
+        repositories: repositories || [],
         settings: settings || defaultSettings,
         apiConfigsGrouped: { chat: [], embedding: [], rerank: [] },
         isLoading: false,
