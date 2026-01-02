@@ -14,6 +14,7 @@ import {
   Terminal,
   Package,
   Apple,
+  TrendingUp,
 } from "lucide-react"
 import type { Repository } from "@/lib/types"
 import { formatDistanceToNow } from "date-fns"
@@ -327,6 +328,12 @@ export function RepositoryCard({
               <Star className="w-4 h-4 text-amber-500" />
               {formatNumber(repository.stargazersCount)}
             </span>
+            {repository.openrank !== null && (
+              <span className="flex items-center gap-1" title="OpenRank Score">
+                <TrendingUp className="w-4 h-4 text-blue-500" />
+                {repository.openrank.toFixed(2)}
+              </span>
+            )}
           </div>
           <div className="flex items-center gap-2">
             {repository.lastEdited && (

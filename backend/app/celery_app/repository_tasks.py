@@ -164,6 +164,44 @@ def do_ai_analysis(user_id: str) -> Dict[str, Any]:
     return result
 
 
+def do_openrank_update(user_id: str) -> Dict[str, Any]:
+    """
+    Fetch and update OpenRank values for all user repositories.
+
+    Args:
+        user_id: User UUID
+
+    Returns:
+        {"openrank_updated": N, "openrank_total": N}
+    """
+    from app.services.openrank_service import fetch_all_openranks
+
+    supabase = get_supabase_service()
+    repo_service = RepositoryService(supabase, user_id)
+
+    all_repos = repo_service.get_all_repos_for_openrank()
+    if not all_repos:
+        return {"openrank_updated": 0, "openrank_total": 0}
+
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+    try:
+        openrank_map = loop.run_until_complete(
+            fetch_all_openranks(all_repos, concurrency=5)
+        )
+    finally:
+        loop.close()
+
+    updated_count = repo_service.batch_update_openrank(openrank_map)
+
+    logger.info(f"OpenRank update completed: {updated_count}/{len(all_repos)}")
+
+    return {
+        "openrank_updated": updated_count,
+        "openrank_total": len(all_repos),
+    }
+
+
 async def _fetch_all_starred_repos(token: str) -> List[dict]:
     """Fetch all starred repositories from GitHub API with pagination."""
     all_repos = []
@@ -350,6 +388,13 @@ def sync_repositories(
         except Exception as e:
             logger.warning(f"AI analysis during sync failed: {e}")
 
+        # Fetch OpenRank for all repositories
+        openrank_result = {"openrank_updated": 0, "openrank_total": 0}
+        try:
+            openrank_result = do_openrank_update(user_id)
+        except Exception as e:
+            logger.warning(f"OpenRank update during sync failed: {e}")
+
         # Schedule next auto-sync in 1 hour
         schedule_next_repo_sync(user_id)
 
@@ -361,6 +406,7 @@ def sync_repositories(
             "updated_count": result["updated_count"],
             "duration_ms": duration_ms,
             **ai_result,
+            **openrank_result,
         }
 
     except ValueError as e:

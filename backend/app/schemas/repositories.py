@@ -29,6 +29,8 @@ class RepositoryResponse(BaseModel):
     ai_platforms: list[str] = []
     analyzed_at: datetime | None = None
     analysis_failed: bool = False
+    # OpenRank
+    openrank: float | None = None
     # Custom edit fields
     custom_description: str | None = None
     custom_tags: list[str] = []

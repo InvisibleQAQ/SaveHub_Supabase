@@ -195,6 +195,24 @@ async def sync_repositories(
             except Exception as e:
                 logger.warning(f"AI analysis during sync failed: {e}")
 
+            # Fetch OpenRank for all repositories
+            try:
+                from app.services.openrank_service import fetch_all_openranks
+
+                await progress_queue.put({
+                    "event": "progress",
+                    "data": {"phase": "openrank"}
+                })
+
+                all_repos = repo_service.get_all_repos_for_openrank()
+                openrank_map = await fetch_all_openranks(all_repos, concurrency=5)
+
+                if openrank_map:
+                    repo_service.batch_update_openrank(openrank_map)
+                    logger.info(f"OpenRank updated for {len(openrank_map)} repositories")
+            except Exception as e:
+                logger.warning(f"OpenRank fetch during sync failed: {e}")
+
             # Schedule next auto-sync
             try:
                 schedule_next_repo_sync(user_id)

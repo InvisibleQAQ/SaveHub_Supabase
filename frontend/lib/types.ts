@@ -123,6 +123,8 @@ export interface Repository {
   aiPlatforms: string[]
   analyzedAt: string | null
   analysisFailed: boolean
+  // OpenRank
+  openrank: number | null
   // Custom edit fields
   customDescription: string | null
   customTags: string[]

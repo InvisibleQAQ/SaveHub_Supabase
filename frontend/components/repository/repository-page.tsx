@@ -13,7 +13,7 @@ import { Input } from "@/components/ui/input"
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import type { Repository } from "@/lib/types"
 
-type SortField = "stars" | "starredAt" | "updatedAt" | "pushedAt" | "name"
+type SortField = "stars" | "starredAt" | "updatedAt" | "pushedAt" | "name" | "openrank"
 type SortDirection = "asc" | "desc"
 
 export function RepositoryPage() {
@@ -142,6 +142,13 @@ export function RepositoryPage() {
           break
         case "name":
           cmp = a.name.localeCompare(b.name)
+          break
+        case "openrank":
+          // null values go to the end
+          if (a.openrank === null && b.openrank === null) cmp = 0
+          else if (a.openrank === null) cmp = 1
+          else if (b.openrank === null) cmp = -1
+          else cmp = a.openrank - b.openrank
           break
       }
       return direction === "asc" ? cmp : -cmp
@@ -279,6 +286,9 @@ export function RepositoryPage() {
               </TabsTrigger>
               <TabsTrigger value="name" className="text-xs px-3 h-7 data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:font-medium">
                 名称
+              </TabsTrigger>
+              <TabsTrigger value="openrank" className="text-xs px-3 h-7 data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:font-medium">
+                OpenRank
               </TabsTrigger>
             </TabsList>
           </Tabs>

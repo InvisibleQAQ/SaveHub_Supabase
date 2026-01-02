@@ -514,4 +514,51 @@ class RepositoryService:
             # Source tracking fields
             "is_starred": row.get("is_starred") or False,
             "is_extracted": row.get("is_extracted") or False,
+            # OpenRank
+            "openrank": row.get("openrank"),
         }
+
+    def get_all_repos_for_openrank(self) -> List[dict]:
+        """
+        Get all repositories' basic info for OpenRank fetching.
+
+        Returns:
+            List of {github_id, full_name} dicts
+        """
+        response = self.supabase.table("repositories") \
+            .select("github_id, full_name") \
+            .eq("user_id", self.user_id) \
+            .execute()
+
+        return response.data or []
+
+    def batch_update_openrank(self, openrank_map: dict[int, float]) -> int:
+        """
+        Batch update OpenRank values for repositories.
+
+        Args:
+            openrank_map: {github_id: openrank_value} mapping
+
+        Returns:
+            Number of repositories updated
+        """
+        if not openrank_map:
+            return 0
+
+        updated_count = 0
+        for github_id, openrank_value in openrank_map.items():
+            try:
+                response = self.supabase.table("repositories") \
+                    .update({"openrank": openrank_value}) \
+                    .eq("user_id", self.user_id) \
+                    .eq("github_id", github_id) \
+                    .execute()
+
+                if response.data:
+                    updated_count += 1
+            except Exception as e:
+                logger.warning(f"Failed to update OpenRank for github_id {github_id}: {e}")
+
+        logger.info(f"Updated OpenRank for {updated_count}/{len(openrank_map)} repositories")
+        return updated_count
+

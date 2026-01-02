@@ -163,6 +163,8 @@ function mapResponseToRepository(data: Record<string, unknown>): Repository {
     aiPlatforms: (data.ai_platforms as string[]) || [],
     analyzedAt: data.analyzed_at as string | null,
     analysisFailed: (data.analysis_failed as boolean) || false,
+    // OpenRank
+    openrank: data.openrank as number | null,
     // Custom edit fields
     customDescription: data.custom_description as string | null,
     customTags: (data.custom_tags as string[]) || [],
