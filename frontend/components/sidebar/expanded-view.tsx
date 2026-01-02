@@ -34,6 +34,7 @@ interface ExpandedViewProps {
   totalArticles: number
   totalUnread: number
   totalStarred: number
+  totalRepositories: number
   sidebarPinned: boolean
   onTogglePin: () => void
 }
@@ -53,6 +54,7 @@ export function ExpandedView({
   totalArticles,
   totalUnread,
   totalStarred,
+  totalRepositories,
   sidebarPinned,
   onTogglePin,
 }: ExpandedViewProps) {
@@ -194,7 +196,7 @@ export function ExpandedView({
         <ViewButton href="/unread" icon={Rss} label="Unread" count={totalUnread} isActive={pathname === "/unread"} variant="full" />
         <ViewButton href="/starred" icon={Star} label="Starred" count={totalStarred} isActive={pathname === "/starred"} variant="full" />
         <ViewButton href="/chat" icon={MessageSquare} label="Chat" isActive={pathname === "/chat"} variant="full" />
-        <ViewButton href="/repository" icon={Github} label="Repository" isActive={pathname === "/repository"} variant="full" />
+        <ViewButton href="/repository" icon={Github} label="Repository" count={totalRepositories} isActive={pathname === "/repository"} variant="full" />
 
         <Button
           variant="ghost"

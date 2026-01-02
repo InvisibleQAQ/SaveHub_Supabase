@@ -15,9 +15,10 @@ interface CollapsedViewProps {
   totalArticles: number
   totalUnread: number
   totalStarred: number
+  totalRepositories: number
 }
 
-export function CollapsedView({ onExpand, totalArticles, totalUnread, totalStarred }: CollapsedViewProps) {
+export function CollapsedView({ onExpand, totalArticles, totalUnread, totalStarred, totalRepositories }: CollapsedViewProps) {
   const pathname = usePathname()
   const { logout } = useAuth()
   const { feeds, getUnreadCount } = useRSSStore()
@@ -49,7 +50,7 @@ export function CollapsedView({ onExpand, totalArticles, totalUnread, totalStarr
         <ViewButton href="/unread" icon={Rss} label="Unread" count={totalUnread} isActive={pathname === "/unread"} variant="icon" />
         <ViewButton href="/starred" icon={Star} label="Starred" count={totalStarred} isActive={pathname === "/starred"} variant="icon" />
         <ViewButton href="/chat" icon={MessageSquare} label="Chat" isActive={pathname === "/chat"} variant="icon" />
-        <ViewButton href="/repository" icon={Github} label="Repository" isActive={pathname === "/repository"} variant="icon" />
+        <ViewButton href="/repository" icon={Github} label="Repository" count={totalRepositories} isActive={pathname === "/repository"} variant="icon" />
       </div>
 
       <Separator className="my-2 bg-sidebar-border w-8" />
