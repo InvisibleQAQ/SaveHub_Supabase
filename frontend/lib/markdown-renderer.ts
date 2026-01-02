@@ -58,12 +58,12 @@ export function renderMarkdown(
     // Custom code block renderer
     renderer.code = ({ text, lang }) => {
       const language = lang || 'plaintext'
-      return `<pre class="overflow-x-auto p-4 rounded-lg bg-muted/50 border"><code class="language-${escapeHtml(language)}">${escapeHtml(text)}</code></pre>`
+      return `<pre class="overflow-x-auto p-4 rounded-lg bg-muted/50 border text-foreground"><code class="language-${escapeHtml(language)}">${escapeHtml(text)}</code></pre>`
     }
 
     // Custom inline code renderer
     renderer.codespan = ({ text }) => {
-      return `<code class="px-1.5 py-0.5 rounded bg-muted text-sm font-mono">${escapeHtml(text)}</code>`
+      return `<code class="px-1.5 py-0.5 rounded bg-muted text-foreground text-sm font-mono">${escapeHtml(text)}</code>`
     }
 
     // Parse markdown to HTML
