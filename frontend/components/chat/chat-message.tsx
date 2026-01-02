@@ -34,7 +34,7 @@ export function ChatMessage({ message, sources }: ChatMessageProps) {
           <div className="whitespace-pre-wrap text-sm">{message.content}</div>
         ) : (
           <div
-            className="prose prose-sm dark:prose-invert max-w-none"
+            className="prose prose-sm dark:prose-invert max-w-none prose-pre:bg-background prose-pre:text-foreground prose-code:text-foreground"
             dangerouslySetInnerHTML={{ __html: renderMarkdown(message.content).html }}
           />
         )}

@@ -149,7 +149,7 @@ export function ExpandedView({
       {/* Header */}
       <div className="p-4 border-b border-sidebar-border">
         <div className="flex items-center justify-between mb-4">
-          <h1 className="text-lg font-semibold text-sidebar-foreground">RSS Reader</h1>
+          <h1 className="text-lg font-semibold text-sidebar-foreground">SaveHub</h1>
           <div className="flex items-center gap-1">
             <Button
               variant="ghost"

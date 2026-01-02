@@ -4,7 +4,6 @@ import { useState, useRef, useEffect } from "react"
 import { Send, Loader2, MessageSquare, Sparkles } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Textarea } from "@/components/ui/textarea"
-import { ScrollArea } from "@/components/ui/scroll-area"
 import { ChatMessage } from "./chat-message"
 import { ChatStatus } from "./chat-status"
 import {
@@ -135,7 +134,7 @@ export function ChatPage() {
   }
 
   return (
-    <div className="flex-1 flex flex-col h-full bg-background">
+    <div className="flex-1 flex flex-col h-full overflow-hidden bg-background">
       {/* Header */}
       <div className="border-b px-6 py-4 flex items-center gap-3">
         <div className="p-2 rounded-lg bg-primary/10">
@@ -150,7 +149,7 @@ export function ChatPage() {
       </div>
 
       {/* Messages */}
-      <ScrollArea className="flex-1 px-6">
+      <div className="flex-1 overflow-y-auto px-6">
         <div className="max-w-3xl mx-auto py-6 space-y-6">
           {state.messages.length === 0 ? (
             <div className="text-center py-12">
@@ -177,7 +176,7 @@ export function ChatPage() {
           )}
           <div ref={scrollRef} />
         </div>
-      </ScrollArea>
+      </div>
 
       {/* Input */}
       <div className="border-t px-6 py-4">
