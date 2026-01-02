@@ -202,6 +202,198 @@ def do_openrank_update(user_id: str) -> Dict[str, Any]:
     }
 
 
+def do_repository_embedding(
+    user_id: str,
+    on_progress: callable = None,
+) -> Dict[str, Any]:
+    """
+    为用户的仓库生成 embeddings。
+
+    Args:
+        user_id: 用户 UUID
+        on_progress: 进度回调函数 (repo_name, completed, total) -> None
+
+    Returns:
+        {"embedding_processed": N, "embedding_failed": N, "embedding_total": N}
+    """
+    from app.services.rag.chunker import chunk_text_semantic, fallback_chunk_text
+    from app.services.rag.embedder import embed_texts
+    from app.services.db.rag import RagService
+    from app.celery_app.rag_processor import get_user_api_configs, ConfigError
+
+    supabase = get_supabase_service()
+    rag_service = RagService(supabase, user_id)
+
+    # 1. 获取待处理仓库
+    repos = _get_repos_needing_embedding(supabase, user_id)
+    if not repos:
+        return {"embedding_processed": 0, "embedding_failed": 0, "embedding_total": 0}
+
+    # 2. 获取 API 配置
+    try:
+        configs = get_user_api_configs(user_id)
+    except ConfigError as e:
+        logger.warning(f"No embedding config for user {user_id}: {e}")
+        return {
+            "embedding_processed": 0,
+            "embedding_failed": 0,
+            "embedding_total": len(repos),
+            "skipped": True,
+            "reason": str(e),
+        }
+
+    embedding_config = configs["embedding"]
+    processed = 0
+    failed = 0
+    total = len(repos)
+
+    # 3. 处理每个仓库
+    for i, repo in enumerate(repos):
+        # 报告进度
+        if on_progress:
+            try:
+                on_progress(repo.get("full_name", ""), i, total)
+            except Exception as e:
+                logger.debug(f"Progress callback failed: {e}")
+
+        try:
+            result = _process_single_repository_embedding(
+                repo, embedding_config, rag_service
+            )
+            if result["success"]:
+                processed += 1
+            else:
+                failed += 1
+        except Exception as e:
+            logger.error(f"Failed to process embedding for repo {repo['id']}: {e}")
+            rag_service.mark_repository_embedding_processed(repo["id"], success=False)
+            failed += 1
+
+    logger.info(f"Repository embedding completed: {processed}/{total}, {failed} failed")
+
+    return {
+        "embedding_processed": processed,
+        "embedding_failed": failed,
+        "embedding_total": total,
+    }
+
+
+def _get_repos_needing_embedding(supabase, user_id: str) -> List[dict]:
+    """获取需要生成 embedding 的仓库列表。"""
+    result = supabase.table("repositories") \
+        .select("id, full_name, description, html_url, owner_login, topics, "
+                "ai_tags, language, readme_content, ai_summary") \
+        .eq("user_id", user_id) \
+        .is_("embedding_processed", "null") \
+        .not_.is_("readme_content", "null") \
+        .limit(50) \
+        .execute()
+    return result.data or []
+
+
+def _build_repository_text(repo: dict) -> str:
+    """组合仓库文本用于 embedding。"""
+    parts = []
+    parts.append(f"仓库名称: {repo.get('full_name', '')}")
+
+    if repo.get("description"):
+        parts.append(f"描述: {repo['description']}")
+    if repo.get("html_url"):
+        parts.append(f"链接: {repo['html_url']}")
+    if repo.get("owner_login"):
+        parts.append(f"所有者: {repo['owner_login']}")
+
+    topics = repo.get("topics") or []
+    if topics:
+        parts.append(f"标签: {', '.join(topics)}")
+
+    ai_tags = repo.get("ai_tags") or []
+    if ai_tags:
+        parts.append(f"AI标签: {', '.join(ai_tags)}")
+
+    if repo.get("language"):
+        parts.append(f"主要语言: {repo['language']}")
+
+    if repo.get("readme_content"):
+        parts.append(f"\nREADME内容:\n{repo['readme_content']}")
+
+    if repo.get("ai_summary"):
+        parts.append(f"\nAI摘要:\n{repo['ai_summary']}")
+
+    return "\n".join(parts)
+
+
+def _process_single_repository_embedding(
+    repo: dict,
+    embedding_config: dict,
+    rag_service,
+) -> Dict[str, Any]:
+    """处理单个仓库的 embedding 生成。"""
+    from app.services.rag.chunker import chunk_text_semantic, fallback_chunk_text
+    from app.services.rag.embedder import embed_texts
+
+    repository_id = repo["id"]
+
+    try:
+        # 1. 组合文本
+        full_text = _build_repository_text(repo)
+        if not full_text.strip():
+            rag_service.mark_repository_embedding_processed(repository_id, success=True)
+            return {"success": True, "chunks": 0}
+
+        # 2. 语义分块
+        try:
+            text_chunks = chunk_text_semantic(
+                full_text,
+                embedding_config["api_key"],
+                embedding_config["api_base"],
+                embedding_config["model"],
+            )
+        except Exception as e:
+            logger.warning(f"Semantic chunking failed for repo {repository_id}: {e}")
+            text_chunks = fallback_chunk_text(full_text)
+
+        if not text_chunks:
+            rag_service.mark_repository_embedding_processed(repository_id, success=True)
+            return {"success": True, "chunks": 0}
+
+        # 3. 构建 chunk 数据
+        final_chunks = [
+            {"chunk_index": i, "content": chunk.strip()}
+            for i, chunk in enumerate(text_chunks) if chunk.strip()
+        ]
+
+        if not final_chunks:
+            rag_service.mark_repository_embedding_processed(repository_id, success=True)
+            return {"success": True, "chunks": 0}
+
+        # 4. 批量生成 embeddings
+        texts = [c["content"] for c in final_chunks]
+        embeddings = embed_texts(
+            texts,
+            embedding_config["api_key"],
+            embedding_config["api_base"],
+            embedding_config["model"],
+        )
+
+        for i, chunk in enumerate(final_chunks):
+            chunk["embedding"] = embeddings[i]
+
+        # 5. 保存到数据库
+        saved_count = rag_service.save_repository_embeddings(repository_id, final_chunks)
+
+        # 6. 更新状态
+        rag_service.mark_repository_embedding_processed(repository_id, success=True)
+
+        logger.info(f"Processed repository {repo['full_name']}: chunks={saved_count}")
+        return {"success": True, "chunks": saved_count}
+
+    except Exception as e:
+        logger.error(f"Repository embedding failed for {repository_id}: {e}")
+        rag_service.mark_repository_embedding_processed(repository_id, success=False)
+        return {"success": False, "error": str(e)}
+
+
 async def _fetch_all_starred_repos(token: str) -> List[dict]:
     """Fetch all starred repositories from GitHub API with pagination."""
     all_repos = []
@@ -395,6 +587,13 @@ def sync_repositories(
         except Exception as e:
             logger.warning(f"OpenRank update during sync failed: {e}")
 
+        # Generate embeddings for repositories
+        embedding_result = {"embedding_processed": 0, "embedding_failed": 0, "embedding_total": 0}
+        try:
+            embedding_result = do_repository_embedding(user_id)
+        except Exception as e:
+            logger.warning(f"Repository embedding during sync failed: {e}")
+
         # Schedule next auto-sync in 1 hour
         schedule_next_repo_sync(user_id)
 
@@ -407,6 +606,7 @@ def sync_repositories(
             "duration_ms": duration_ms,
             **ai_result,
             **openrank_result,
+            **embedding_result,
         }
 
     except ValueError as e:

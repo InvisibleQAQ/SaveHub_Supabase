@@ -326,6 +326,10 @@ export function RepositoryPage() {
                   <>正在分析: <span className="text-foreground font-medium">{syncProgress.current}</span></>
                 )}
                 {syncProgress.phase === "saving" && "正在保存分析结果..."}
+                {syncProgress.phase === "openrank" && "正在获取 OpenRank 指标..."}
+                {syncProgress.phase === "embedding" && (
+                  <>正在生成向量: <span className="text-foreground font-medium">{syncProgress.current}</span></>
+                )}
               </span>
               {syncProgress.phase === "analyzing" && syncProgress.completed !== undefined && syncProgress.total !== undefined && (
                 <span className="text-muted-foreground">
@@ -337,8 +341,13 @@ export function RepositoryPage() {
                   已保存 {syncProgress.savedCount} / {syncProgress.saveTotal}
                 </span>
               )}
+              {syncProgress.phase === "embedding" && syncProgress.completed !== undefined && syncProgress.total !== undefined && (
+                <span className="text-muted-foreground">
+                  {syncProgress.completed} / {syncProgress.total}
+                </span>
+              )}
             </div>
-            {/* Two-phase progress bar: analyzing 0-95%, saving 95-100% */}
+            {/* Progress bar for analyzing/saving */}
             {(syncProgress.phase === "analyzing" || syncProgress.phase === "saving") && (
               <div className="h-2 bg-muted rounded-full overflow-hidden">
                 <div
@@ -352,6 +361,21 @@ export function RepositoryPage() {
                         : (95 + (syncProgress.savedCount !== undefined && syncProgress.saveTotal !== undefined && syncProgress.saveTotal > 0
                             ? (syncProgress.savedCount / syncProgress.saveTotal) * 5
                             : 0))
+                    }%`
+                  }}
+                />
+              </div>
+            )}
+            {/* Progress bar for embedding */}
+            {syncProgress.phase === "embedding" && (
+              <div className="h-2 bg-muted rounded-full overflow-hidden">
+                <div
+                  className="h-full bg-green-500 transition-all duration-300 ease-out"
+                  style={{
+                    width: `${
+                      syncProgress.completed !== undefined && syncProgress.total !== undefined && syncProgress.total > 0
+                        ? (syncProgress.completed / syncProgress.total) * 100
+                        : 0
                     }%`
                   }}
                 />

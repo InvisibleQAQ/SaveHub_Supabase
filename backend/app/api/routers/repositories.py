@@ -213,6 +213,43 @@ async def sync_repositories(
             except Exception as e:
                 logger.warning(f"OpenRank fetch during sync failed: {e}")
 
+            # Generate embeddings for repositories
+            try:
+                from app.celery_app.repository_tasks import do_repository_embedding
+                import asyncio
+                import functools
+
+                async def on_embedding_progress(repo_name: str, completed: int, total: int):
+                    await progress_queue.put({
+                        "event": "progress",
+                        "data": {
+                            "phase": "embedding",
+                            "current": repo_name,
+                            "completed": completed,
+                            "total": total
+                        }
+                    })
+
+                # 创建同步回调包装器
+                loop = asyncio.get_event_loop()
+
+                def sync_progress_callback(repo_name: str, completed: int, total: int):
+                    asyncio.run_coroutine_threadsafe(
+                        on_embedding_progress(repo_name, completed, total),
+                        loop
+                    )
+
+                embedding_result = await loop.run_in_executor(
+                    None,
+                    functools.partial(do_repository_embedding, user_id, sync_progress_callback)
+                )
+                logger.info(
+                    f"Repository embedding completed: "
+                    f"{embedding_result.get('embedding_processed', 0)} processed"
+                )
+            except Exception as e:
+                logger.warning(f"Repository embedding during sync failed: {e}")
+
             # Schedule next auto-sync
             try:
                 schedule_next_repo_sync(user_id)
