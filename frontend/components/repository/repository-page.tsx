@@ -144,11 +144,11 @@ export function RepositoryPage() {
           cmp = a.name.localeCompare(b.name)
           break
         case "openrank":
-          // null values go to the end
-          if (a.openrank === null && b.openrank === null) cmp = 0
-          else if (a.openrank === null) cmp = 1
-          else if (b.openrank === null) cmp = -1
-          else cmp = a.openrank - b.openrank
+          // null values always go to the end, regardless of sort direction
+          if (a.openrank === null && b.openrank === null) return 0
+          if (a.openrank === null) return 1
+          if (b.openrank === null) return -1
+          cmp = a.openrank - b.openrank
           break
       }
       return direction === "asc" ? cmp : -cmp
