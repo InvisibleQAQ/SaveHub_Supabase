@@ -57,7 +57,7 @@
 - **开源项目聚焦**：围绕开源生态构建的垂直知识库
 
 <p align="center">
-  <img src="./image/RAG问答截图.png" alt="Self-RAG 智能问答示例" width="800" />
+  <img src="https://typora-makedown-picture.oss-cn-shanghai.aliyuncs.com/img/2022/RAG问答截图.png" alt="Self-RAG 智能问答示例" width="800" />
   <br/>
   <em>Self-RAG 智能问答：带引用标记的精准回答</em>
 </p>
@@ -107,13 +107,13 @@
 ## 界面预览
 
 <p align="center">
-  <img src="./image/article_view.png" alt="文章阅读视图" width="800" />
+  <img src="https://typora-makedown-picture.oss-cn-shanghai.aliyuncs.com/img/2022/article_view.png" alt="文章阅读视图" width="800" />
   <br/>
   <em>文章阅读视图：沉浸式阅读体验，支持翻译、摘要、标签等 AI 功能</em>
 </p>
 
 <p align="center">
-  <img src="./image/RepositoryGallery.png" alt="仓库画廊" width="800" />
+  <img src="https://typora-makedown-picture.oss-cn-shanghai.aliyuncs.com/img/2022/RepositoryGallery.png" alt="仓库画廊" width="800" />
   <br/>
   <em>仓库画廊：可视化管理收藏的 GitHub 仓库，集成 OpenDigger 分析</em>
 </p>
