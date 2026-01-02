@@ -1,0 +1,280 @@
+"""
+Self-RAG 服务层。
+
+实现 Self-RAG 的核心逻辑：检索决策、文档检索、相关性评估、响应生成、质量评估。
+"""
+
+import json
+import logging
+from typing import AsyncGenerator, List, Dict, Any, Optional, Tuple
+
+import httpx
+from openai import AsyncOpenAI
+from supabase import Client
+
+from app.services.rag.embedder import embed_text, _normalize_base_url
+from app.services.rag.retriever import search_embeddings
+from app.schemas.rag_chat import RetrievedSource
+
+logger = logging.getLogger(__name__)
+
+# 网络配置
+DEFAULT_TIMEOUT = httpx.Timeout(90.0, connect=30.0)
+
+
+class SelfRagService:
+    """Self-RAG 服务"""
+
+    def __init__(
+        self,
+        chat_config: Dict[str, str],
+        embedding_config: Dict[str, str],
+        supabase: Client,
+        user_id: str,
+    ):
+        """
+        初始化 Self-RAG 服务。
+
+        Args:
+            chat_config: Chat API 配置 {api_key, api_base, model}
+            embedding_config: Embedding API 配置 {api_key, api_base, model}
+            supabase: Supabase 客户端
+            user_id: 用户 ID
+        """
+        self.chat_config = chat_config
+        self.embedding_config = embedding_config
+        self.supabase = supabase
+        self.user_id = user_id
+
+        # 初始化异步 OpenAI 客户端
+        normalized_url = _normalize_base_url(chat_config["api_base"])
+        self.chat_client = AsyncOpenAI(
+            api_key=chat_config["api_key"],
+            base_url=normalized_url,
+            timeout=DEFAULT_TIMEOUT,
+        )
+
+    async def stream_chat(
+        self,
+        messages: List[Dict[str, str]],
+        top_k: int = 10,
+        min_score: float = 0.3,
+    ) -> AsyncGenerator[Dict[str, Any], None]:
+        """
+        Self-RAG 流式问答。
+
+        Yields:
+            SSE 事件字典 {event: str, data: dict}
+        """
+        user_query = messages[-1]["content"]
+
+        # Step 1: 检索决策
+        needs_retrieval, reason = await self._retrieval_decision(user_query)
+        yield {"event": "decision", "data": {
+            "needs_retrieval": needs_retrieval,
+            "reason": reason
+        }}
+
+        context = ""
+        sources: List[RetrievedSource] = []
+
+        if needs_retrieval:
+            # Step 2-3: 检索 + 相关性评估
+            sources, context = await self._retrieve_and_filter(
+                user_query, top_k, min_score
+            )
+            yield {"event": "retrieval", "data": {
+                "total": len(sources),
+                "sources": [s.model_dump() for s in sources[:5]]
+            }}
+
+        # Step 4: 流式生成响应
+        full_response = ""
+        async for chunk in self._generate_response_stream(
+            messages, context, needs_retrieval
+        ):
+            full_response += chunk
+            yield {"event": "content", "data": {"delta": chunk}}
+
+        # Step 5-6: 质量评估
+        if needs_retrieval and sources:
+            supported, utility = await self._assess_quality(
+                user_query, full_response, context
+            )
+        else:
+            supported, utility = True, 0.8
+
+        yield {"event": "assessment", "data": {
+            "supported": supported,
+            "utility": utility
+        }}
+
+        yield {"event": "done", "data": {"message": "completed"}}
+
+    async def _retrieval_decision(self, query: str) -> Tuple[bool, str]:
+        """
+        判断是否需要检索。
+
+        简单问候、闲聊、通用知识问题不需要检索。
+        """
+        prompt = """判断以下用户问题是否需要从知识库检索信息来回答。
+
+规则：
+- 问候语（你好、谢谢等）→ 不需要检索
+- 闲聊（天气、心情等）→ 不需要检索
+- 通用知识（什么是Python等）→ 不需要检索
+- 涉及具体文章/仓库/技术细节 → 需要检索
+
+用户问题：{query}
+
+只返回 JSON：{{"needs_retrieval": true/false, "reason": "简短原因"}}"""
+
+        try:
+            response = await self.chat_client.chat.completions.create(
+                model=self.chat_config["model"],
+                messages=[{"role": "user", "content": prompt.format(query=query)}],
+                temperature=0,
+                max_tokens=100,
+            )
+
+            content = response.choices[0].message.content or "{}"
+            # 清理可能的 markdown 代码块
+            content = content.strip()
+            if content.startswith("```"):
+                content = content.split("\n", 1)[-1]
+            if content.endswith("```"):
+                content = content.rsplit("```", 1)[0]
+            content = content.strip()
+
+            result = json.loads(content)
+            return result.get("needs_retrieval", True), result.get("reason", "")
+        except Exception as e:
+            logger.warning(f"Retrieval decision failed: {e}, defaulting to True")
+            return True, "默认检索"
+
+    async def _retrieve_and_filter(
+        self, query: str, top_k: int, min_score: float
+    ) -> Tuple[List[RetrievedSource], str]:
+        """检索并过滤相关文档。"""
+        # 生成查询向量
+        query_embedding = embed_text(
+            query,
+            self.embedding_config["api_key"],
+            self.embedding_config["api_base"],
+            self.embedding_config["model"],
+        )
+
+        # 向量搜索
+        hits = search_embeddings(
+            self.supabase,
+            query_embedding,
+            self.user_id,
+            top_k=top_k,
+            min_score=min_score,
+        )
+
+        # 转换为 Source 对象并构建上下文
+        sources = []
+        context_parts = []
+
+        for i, hit in enumerate(hits, 1):
+            # 判断来源类型
+            if hit.get("article_id"):
+                source_type = "article"
+                title = hit.get("article_title") or "未知文章"
+                url = hit.get("article_url")
+            else:
+                source_type = "repository"
+                title = hit.get("repository_name") or "未知仓库"
+                url = hit.get("repository_url")
+
+            source = RetrievedSource(
+                id=str(hit["id"]),
+                content=hit.get("content", "")[:500],
+                score=hit.get("score", 0),
+                source_type=source_type,
+                title=title,
+                url=url,
+            )
+            sources.append(source)
+
+            context_parts.append(
+                f"[来源 {i}] ({source_type}, 相关度: {source.score:.2f})\n"
+                f"标题: {title}\n"
+                f"内容: {hit.get('content', '')[:800]}\n"
+            )
+
+        context = "\n---\n".join(context_parts)
+        return sources, context
+
+    async def _generate_response_stream(
+        self,
+        messages: List[Dict[str, str]],
+        context: str,
+        needs_retrieval: bool,
+    ) -> AsyncGenerator[str, None]:
+        """流式生成响应。"""
+        if needs_retrieval and context:
+            system_prompt = f"""你是一个基于用户知识库的智能助手。请根据提供的上下文回答问题。
+
+要求：
+1. 优先使用上下文中的信息
+2. 引用来源时使用 [来源 N] 格式
+3. 如果上下文信息不足，可以结合通用知识补充
+4. 回答要准确、有条理
+
+上下文：
+{context}"""
+        else:
+            system_prompt = "你是一个友好的助手，请自然地回答用户问题。"
+
+        chat_messages = [
+            {"role": "system", "content": system_prompt},
+            *messages
+        ]
+
+        stream = await self.chat_client.chat.completions.create(
+            model=self.chat_config["model"],
+            messages=chat_messages,
+            stream=True,
+            max_tokens=2048,
+        )
+
+        async for chunk in stream:
+            if chunk.choices[0].delta.content:
+                yield chunk.choices[0].delta.content
+
+    async def _assess_quality(
+        self, query: str, response: str, context: str
+    ) -> Tuple[bool, float]:
+        """评估响应质量。"""
+        prompt = f"""评估以下回答的质量。
+
+问题：{query}
+上下文：{context[:2000]}
+回答：{response[:1000]}
+
+评估：
+1. supported: 回答是否被上下文支持（true/false）
+2. utility: 回答的实用性（0-1分）
+
+只返回 JSON：{{"supported": true, "utility": 0.8}}"""
+
+        try:
+            result = await self.chat_client.chat.completions.create(
+                model=self.chat_config["model"],
+                messages=[{"role": "user", "content": prompt}],
+                temperature=0,
+                max_tokens=50,
+            )
+            content = result.choices[0].message.content or "{}"
+            content = content.strip()
+            if content.startswith("```"):
+                content = content.split("\n", 1)[-1]
+            if content.endswith("```"):
+                content = content.rsplit("```", 1)[0]
+            data = json.loads(content.strip())
+            return data.get("supported", True), data.get("utility", 0.7)
+        except Exception as e:
+            logger.warning(f"Quality assessment failed: {e}")
+            return True, 0.7

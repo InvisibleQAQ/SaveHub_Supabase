@@ -1,7 +1,7 @@
 "use client"
 
 import { usePathname } from "next/navigation"
-import { ChevronRight, BookOpen, Rss, Star, Github, Settings, LogOut } from "lucide-react"
+import { ChevronRight, BookOpen, Rss, Star, Github, Settings, LogOut, MessageSquare } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Separator } from "@/components/ui/separator"
 import { ScrollArea } from "@/components/ui/scroll-area"
@@ -48,6 +48,7 @@ export function CollapsedView({ onExpand, totalArticles, totalUnread, totalStarr
         <ViewButton href="/all" icon={BookOpen} label="All Articles" count={totalArticles} isActive={pathname === "/all"} variant="icon" />
         <ViewButton href="/unread" icon={Rss} label="Unread" count={totalUnread} isActive={pathname === "/unread"} variant="icon" />
         <ViewButton href="/starred" icon={Star} label="Starred" count={totalStarred} isActive={pathname === "/starred"} variant="icon" />
+        <ViewButton href="/chat" icon={MessageSquare} label="Chat" isActive={pathname === "/chat"} variant="icon" />
         <ViewButton href="/repository" icon={Github} label="Repository" isActive={pathname === "/repository"} variant="icon" />
       </div>
 
