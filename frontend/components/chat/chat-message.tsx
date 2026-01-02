@@ -3,6 +3,7 @@
 import { User, Bot } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { ChatSources } from "./chat-sources"
+import { renderMarkdown } from "@/lib/markdown-renderer"
 import type { ChatMessage as Message, RetrievedSource } from "@/lib/api/rag-chat"
 
 interface ChatMessageProps {
@@ -29,7 +30,14 @@ export function ChatMessage({ message, sources }: ChatMessageProps) {
           isUser ? "bg-primary text-primary-foreground" : "bg-muted"
         )}
       >
-        <div className="whitespace-pre-wrap text-sm">{message.content}</div>
+        {isUser ? (
+          <div className="whitespace-pre-wrap text-sm">{message.content}</div>
+        ) : (
+          <div
+            className="prose prose-sm dark:prose-invert max-w-none"
+            dangerouslySetInnerHTML={{ __html: renderMarkdown(message.content).html }}
+          />
+        )}
         {!isUser && sources && <ChatSources sources={sources} />}
       </div>
     </div>
