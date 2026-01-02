@@ -3,6 +3,7 @@
 import { User, Bot } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { ChatSources } from "./chat-sources"
+import { ReferencedContent } from "./referenced-content"
 import { renderMarkdown } from "@/lib/markdown-renderer"
 import type { ChatMessage as Message, RetrievedSource } from "@/lib/api/rag-chat"
 
@@ -32,7 +33,11 @@ export function ChatMessage({ message, sources }: ChatMessageProps) {
       >
         {isUser ? (
           <div className="whitespace-pre-wrap text-sm">{message.content}</div>
+        ) : sources && sources.length > 0 ? (
+          // 有来源时使用带引用的渲染
+          <ReferencedContent content={message.content} sources={sources} />
         ) : (
+          // 无来源时使用普通 Markdown 渲染
           <div
             className="prose prose-sm dark:prose-invert max-w-none prose-pre:bg-background prose-pre:text-foreground prose-code:text-foreground"
             dangerouslySetInnerHTML={{ __html: renderMarkdown(message.content).html }}

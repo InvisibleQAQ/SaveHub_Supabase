@@ -13,11 +13,18 @@ export interface ChatMessage {
 
 export interface RetrievedSource {
   id: string
+  index: number // 来源索引，从1开始，用于引用标记
   content: string
   score: number
   source_type: "article" | "repository"
   title: string
   url?: string
+  // Repository 专用字段（用于引用卡片显示）
+  owner_login?: string
+  owner_avatar_url?: string
+  stargazers_count?: number
+  language?: string
+  description?: string
 }
 
 export type StreamEventType =

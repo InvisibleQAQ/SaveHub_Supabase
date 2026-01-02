@@ -183,19 +183,35 @@ class SelfRagService:
                 source_type = "article"
                 title = hit.get("article_title") or "未知文章"
                 url = hit.get("article_url")
+                # Article 不需要 repository 专用字段
+                source = RetrievedSource(
+                    id=str(hit["id"]),
+                    index=i,
+                    content=hit.get("content", "")[:500],
+                    score=hit.get("score", 0),
+                    source_type=source_type,
+                    title=title,
+                    url=url,
+                )
             else:
                 source_type = "repository"
                 title = hit.get("repository_name") or "未知仓库"
                 url = hit.get("repository_url")
-
-            source = RetrievedSource(
-                id=str(hit["id"]),
-                content=hit.get("content", "")[:500],
-                score=hit.get("score", 0),
-                source_type=source_type,
-                title=title,
-                url=url,
-            )
+                # Repository 包含额外字段用于引用卡片显示
+                source = RetrievedSource(
+                    id=str(hit["id"]),
+                    index=i,
+                    content=hit.get("content", "")[:500],
+                    score=hit.get("score", 0),
+                    source_type=source_type,
+                    title=title,
+                    url=url,
+                    owner_login=hit.get("repository_owner_login"),
+                    owner_avatar_url=hit.get("repository_owner_avatar_url"),
+                    stargazers_count=hit.get("repository_stargazers_count"),
+                    language=hit.get("repository_language"),
+                    description=hit.get("repository_description"),
+                )
             sources.append(source)
 
             context_parts.append(
@@ -218,10 +234,19 @@ class SelfRagService:
             system_prompt = f"""你是一个基于用户知识库的智能助手。请根据提供的上下文回答问题。
 
 要求：
-1. 优先使用上下文中的信息
-2. 引用来源时使用 [来源 N] 格式
-3. 如果上下文信息不足，可以结合通用知识补充
-4. 回答要准确、有条理
+1. 优先使用上下文中的信息回答问题
+2. 当引用来源信息时，必须在相关内容后插入引用标记 [ref:N]，N 是来源编号
+3. 引用标记规则：
+   - 使用 [ref:1]、[ref:2] 等格式
+   - 可以在一处引用多个来源，如 [ref:1][ref:2]
+   - 只引用你实际使用的来源，不要引用未使用的
+   - 引用标记紧跟在相关陈述之后
+4. 如果上下文信息不足，可以结合通用知识补充，但不要为通用知识添加引用
+5. 回答要准确、有条理
+
+示例：
+- "根据资料，React 18 引入了并发渲染特性[ref:1]，这使得..."
+- "该项目支持 macOS 和 Windows 平台[ref:2][ref:3]"
 
 上下文：
 {context}"""
