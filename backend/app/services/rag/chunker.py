@@ -294,10 +294,10 @@ def chunk_text_semantic(
     try:
         from langchain_experimental.text_splitter import SemanticChunker
         from langchain_openai import OpenAIEmbeddings
-        from app.services.rag.embedder import _normalize_base_url
+        from app.services.ai import normalize_base_url
 
         # 规范化 base_url（移除 /embeddings 等后缀）
-        normalized_base_url = _normalize_base_url(api_base)
+        normalized_base_url = normalize_base_url(api_base)
 
         # 创建 embeddings 实例
         embeddings = OpenAIEmbeddings(

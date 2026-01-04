@@ -8,18 +8,13 @@ import json
 import logging
 from typing import AsyncGenerator, List, Dict, Any, Optional, Tuple
 
-import httpx
-from openai import AsyncOpenAI
 from supabase import Client
 
-from app.services.rag.embedder import embed_text, _normalize_base_url
+from app.services.ai import ChatClient, EmbeddingClient
 from app.services.rag.retriever import search_embeddings
 from app.schemas.rag_chat import RetrievedSource
 
 logger = logging.getLogger(__name__)
-
-# 网络配置
-DEFAULT_TIMEOUT = httpx.Timeout(90.0, connect=30.0)
 
 
 class SelfRagService:
@@ -46,12 +41,16 @@ class SelfRagService:
         self.supabase = supabase
         self.user_id = user_id
 
-        # 初始化异步 OpenAI 客户端
-        normalized_url = _normalize_base_url(chat_config["api_base"])
-        self.chat_client = AsyncOpenAI(
+        # 初始化 AI 客户端
+        self.chat_client = ChatClient(
             api_key=chat_config["api_key"],
-            base_url=normalized_url,
-            timeout=DEFAULT_TIMEOUT,
+            api_base=chat_config["api_base"],
+            model=chat_config["model"],
+        )
+        self.embedding_client = EmbeddingClient(
+            api_key=embedding_config["api_key"],
+            api_base=embedding_config["api_base"],
+            model=embedding_config["model"],
         )
 
     async def stream_chat(
@@ -130,14 +129,12 @@ class SelfRagService:
 只返回 JSON：{{"needs_retrieval": true/false, "reason": "简短原因"}}"""
 
         try:
-            response = await self.chat_client.chat.completions.create(
-                model=self.chat_config["model"],
+            content = await self.chat_client.complete(
                 messages=[{"role": "user", "content": prompt.format(query=query)}],
                 temperature=0,
                 max_tokens=100,
             )
 
-            content = response.choices[0].message.content or "{}"
             # 清理可能的 markdown 代码块
             content = content.strip()
             if content.startswith("```"):
@@ -156,13 +153,8 @@ class SelfRagService:
         self, query: str, top_k: int, min_score: float
     ) -> Tuple[List[RetrievedSource], str]:
         """检索并过滤相关文档。"""
-        # 生成查询向量
-        query_embedding = embed_text(
-            query,
-            self.embedding_config["api_key"],
-            self.embedding_config["api_base"],
-            self.embedding_config["model"],
-        )
+        # 生成查询向量（异步）
+        query_embedding = await self.embedding_client.embed(query)
 
         # 向量搜索
         hits = search_embeddings(
@@ -258,16 +250,11 @@ class SelfRagService:
             *messages
         ]
 
-        stream = await self.chat_client.chat.completions.create(
-            model=self.chat_config["model"],
+        async for chunk in self.chat_client.stream(
             messages=chat_messages,
-            stream=True,
             max_tokens=2048,
-        )
-
-        async for chunk in stream:
-            if chunk.choices[0].delta.content:
-                yield chunk.choices[0].delta.content
+        ):
+            yield chunk
 
     async def _assess_quality(
         self, query: str, response: str, context: str
@@ -286,13 +273,11 @@ class SelfRagService:
 只返回 JSON：{{"supported": true, "utility": 0.8}}"""
 
         try:
-            result = await self.chat_client.chat.completions.create(
-                model=self.chat_config["model"],
+            content = await self.chat_client.complete(
                 messages=[{"role": "user", "content": prompt}],
                 temperature=0,
                 max_tokens=50,
             )
-            content = result.choices[0].message.content or "{}"
             content = content.strip()
             if content.startswith("```"):
                 content = content.split("\n", 1)[-1]

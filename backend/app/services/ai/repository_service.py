@@ -1,7 +1,7 @@
 """
-AI Service for repository analysis.
+Repository AI analysis service.
 
-Analyzes README content using OpenAI-compatible API to extract:
+Analyzes README content using ChatClient to extract:
 - Summary: Brief description of the repository
 - Tags: Technical tags/keywords
 - Platforms: Supported platforms (Windows, macOS, Linux, Web, etc.)
@@ -9,40 +9,28 @@ Analyzes README content using OpenAI-compatible API to extract:
 
 import logging
 import asyncio
-import httpx
 import json
 from typing import Optional, Callable, Awaitable
 
-from app.services.encryption import decrypt, is_encrypted
+from .clients import ChatClient
 
 logger = logging.getLogger(__name__)
 
 
 def _format_error_chain(e: Exception) -> str:
-    """
-    Extract full error chain for detailed logging.
-
-    Checks __cause__ (explicit), __context__ (implicit), and args.
-    """
+    """Extract full error chain for detailed logging."""
     def format_single(ex: Exception) -> str:
-        """Format a single exception with all available info."""
         name = type(ex).__name__
         msg = str(ex)
-
-        # If str(ex) is empty, try args
         if not msg and ex.args:
             msg = str(ex.args[0]) if len(ex.args) == 1 else str(ex.args)
-
-        # If still empty, try repr
         if not msg:
             msg = repr(ex)
-
         return f"{name}: {msg}"
 
     parts = [format_single(e)]
     seen = {id(e)}
 
-    # Walk both __cause__ and __context__
     current = e
     while True:
         next_ex = current.__cause__ or current.__context__
@@ -73,7 +61,7 @@ ANALYSIS_PROMPT = """你是一个专业的GitHub仓库分析助手。请分析�
 如果无法确定某个字段，使用空数组或空字符串。"""
 
 
-class AIService:
+class RepositoryAnalyzerService:
     """Service for AI-powered repository analysis."""
 
     # Language to platform mapping for fallback analysis
@@ -98,34 +86,45 @@ class AIService:
     KEYWORD_PLATFORM_MAP = {
         "web": ["Web"],
         "frontend": ["Web"],
+        "browser": ["Web"],
+        "react": ["Web"],
+        "vue": ["Web"],
+        "angular": ["Web"],
+        "ios": ["Ios"],
+        "iphone": ["Ios"],
+        "ipad": ["Ios"],
+        "android": ["Android"],
+        "mobile": ["Ios", "Android"],
+        "desktop": ["Windows", "Macos", "Linux"],
+        "electron": ["Windows", "Macos", "Linux"],
+        "tauri": ["Windows", "Macos", "Linux"],
         "cli": ["Cli"],
-        "command": ["Cli"],
+        "terminal": ["Cli"],
+        "command-line": ["Cli"],
         "docker": ["Docker"],
         "container": ["Docker"],
-        "android": ["Android"],
-        "ios": ["Ios"],
+        "kubernetes": ["Docker"],
+        "windows": ["Windows"],
         "macos": ["Macos"],
         "mac": ["Macos"],
-        "windows": ["Windows"],
         "linux": ["Linux"],
+        "ubuntu": ["Linux"],
     }
 
     def __init__(self, api_key: str, api_base: str, model: str):
         """
-        Initialize AI service.
+        Initialize the repository analyzer service.
 
         Args:
-            api_key: Decrypted API key
-            api_base: Decrypted API base URL (e.g., https://api.openai.com/v1)
+            api_key: API key (already decrypted)
+            api_base: API base URL (already normalized)
             model: Model name to use
         """
-        self.api_key = api_key
-        # Normalize api_base: remove trailing slash and /chat/completions if present
-        api_base = api_base.rstrip("/")
-        if api_base.endswith("/chat/completions"):
-            api_base = api_base[:-len("/chat/completions")]
-        self.api_base = api_base
-        self.model = model
+        self.chat_client = ChatClient(
+            api_key=api_key,
+            api_base=api_base,
+            model=model,
+        )
 
     async def analyze_repository(
         self,
@@ -142,93 +141,41 @@ class AIService:
             description: Optional repository description
 
         Returns:
-            Dict with summary, tags, platforms
+            Dict with ai_summary, ai_tags, ai_platforms
         """
         # Build user message
         user_message = f"仓库名称: {repo_name}\n"
         if description:
             user_message += f"仓库描述: {description}\n"
-        user_message += f"\nREADME内容:\n{readme_content[:8000]}"  # Limit content
+        user_message += f"\nREADME内容:\n{readme_content[:8000]}"
 
-        # Retry with exponential backoff for transient SSL/network errors
-        max_retries = 3
+        try:
+            content = await self.chat_client.complete(
+                messages=[
+                    {"role": "system", "content": ANALYSIS_PROMPT},
+                    {"role": "user", "content": user_message},
+                ],
+                temperature=0.3,
+                max_tokens=2048,
+            )
 
-        for attempt in range(max_retries):
-            try:
-                async with httpx.AsyncClient(timeout=90.0) as client:
-                    response = await client.post(
-                        f"{self.api_base}/chat/completions",
-                        headers={
-                            "Authorization": f"Bearer {self.api_key}",
-                            "Content-Type": "application/json",
-                        },
-                        json={
-                            "model": self.model,
-                            "messages": [
-                                {"role": "system", "content": ANALYSIS_PROMPT},
-                                {"role": "user", "content": user_message},
-                            ],
-                            "temperature": 0.3,
-                            "max_tokens": 2048,
-                        },
-                    )
+            result = self._parse_response(content)
+            logger.info(
+                f"Repository analyzed: {repo_name}",
+                extra={"tags": result.get("ai_tags", [])}
+            )
+            return result
 
-                    if response.status_code != 200:
-                        logger.error(
-                            f"AI API error: {response.status_code} | "
-                            f"URL: {self.api_base}/chat/completions | "
-                            f"Model: {self.model} | "
-                            f"Response: {response.text[:500]}"
-                        )
-                        raise Exception(f"AI API error: {response.status_code}")
-
-                    data = response.json()
-                    content = data["choices"][0]["message"]["content"]
-
-                    # Parse JSON response
-                    result = self._parse_response(content)
-                    logger.info(
-                        f"Repository analyzed: {repo_name}",
-                        extra={"tags": result.get("tags", [])}
-                    )
-                    return result
-
-            except httpx.TimeoutException:
-                logger.warning(f"AI API timeout for {repo_name} (90s)")
-                raise Exception("AI API timeout")
-            except (httpx.ConnectError, httpx.RemoteProtocolError) as e:
-                # SSL/connection errors - retry with backoff
-                if attempt < max_retries - 1:
-                    wait_time = (2 ** attempt) + 0.5  # 1.5s, 2.5s, 4.5s
-                    logger.warning(
-                        f"AI API connection error for {repo_name} "
-                        f"(attempt {attempt + 1}/{max_retries}), "
-                        f"retrying in {wait_time}s: {type(e).__name__}"
-                    )
-                    await asyncio.sleep(wait_time)
-                else:
-                    logger.warning(
-                        f"AI API request error for {repo_name}: "
-                        f"{_format_error_chain(e)}"
-                    )
-                    raise
-            except httpx.RequestError as e:
-                logger.warning(
-                    f"AI API request error for {repo_name}: "
-                    f"{_format_error_chain(e)}"
-                )
-                raise
-            except Exception as e:
-                logger.warning(
-                    f"AI analysis failed for {repo_name}: "
-                    f"{type(e).__name__}: {e}"
-                )
-                raise
+        except Exception as e:
+            logger.warning(
+                f"AI analysis failed for {repo_name}: "
+                f"{_format_error_chain(e)}"
+            )
+            raise
 
     def _parse_response(self, content: str) -> dict:
         """Parse AI response JSON."""
         try:
-            # Try to extract JSON from response
             content = content.strip()
 
             # Handle markdown code blocks
@@ -248,10 +195,9 @@ class AIService:
 
             result = json.loads(content)
 
-            # Validate and normalize
             return {
                 "ai_summary": result.get("summary", ""),
-                "ai_tags": result.get("tags", [])[:10],  # Limit tags
+                "ai_tags": result.get("tags", [])[:10],
                 "ai_platforms": self._normalize_platforms(
                     result.get("platforms", [])
                 ),
@@ -273,7 +219,6 @@ class AIService:
         normalized = []
         for p in platforms:
             p_lower = p.lower().strip()
-            # Map common variations
             if p_lower in ("mac", "osx"):
                 p_lower = "macos"
             elif p_lower in ("win", "win32", "win64"):
@@ -284,7 +229,7 @@ class AIService:
             if p_lower in valid_platforms and p_lower not in normalized:
                 normalized.append(p_lower.capitalize())
 
-        return normalized[:6]  # Limit platforms
+        return normalized[:6]
 
     def fallback_analysis(self, repo: dict) -> dict:
         """
@@ -335,14 +280,14 @@ class AIService:
             repos: List of repo dicts with id, full_name, description, readme_content, language
             concurrency: Max concurrent AI API calls
             use_fallback: Use fallback analysis when AI fails or no README
-            on_progress: Optional async callback(repo_name, completed, total) called after each repo
+            on_progress: Optional async callback(repo_name, completed, total)
 
         Returns:
             Dict mapping repo_id to {"success": bool, "data": dict}
         """
         semaphore = asyncio.Semaphore(concurrency)
         results: dict[str, dict] = {}
-        completed_count = [0]  # Use list for mutable closure
+        completed_count = [0]
         total = len(repos)
 
         async def analyze_one(repo: dict):
@@ -371,7 +316,6 @@ class AIService:
                     else:
                         results[repo_id] = {"success": False, "error": str(e)}
 
-                # Update progress
                 completed_count[0] += 1
                 if on_progress:
                     try:
@@ -379,37 +323,9 @@ class AIService:
                     except Exception as e:
                         logger.warning(f"Progress callback failed: {e}")
 
-                await asyncio.sleep(0.1)  # Rate limiting
+                await asyncio.sleep(0.1)
 
         tasks = [analyze_one(repo) for repo in repos]
         await asyncio.gather(*tasks, return_exceptions=True)
 
         return results
-
-
-def create_ai_service_from_config(config: dict) -> AIService:
-    """
-    Create AIService from API config dict.
-
-    Handles decryption of api_key and api_base if encrypted.
-    Uses try-except pattern for reliable decryption (same as rag_processor.py).
-    """
-    api_key = config["api_key"]
-    api_base = config["api_base"]
-
-    # Try to decrypt, use original value if decryption fails (not encrypted)
-    try:
-        api_key = decrypt(api_key)
-    except Exception:
-        pass  # Not encrypted or decryption failed, use original
-
-    try:
-        api_base = decrypt(api_base)
-    except Exception:
-        pass  # Not encrypted or decryption failed, use original
-
-    return AIService(
-        api_key=api_key,
-        api_base=api_base,
-        model=config["model"],
-    )

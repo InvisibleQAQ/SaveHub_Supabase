@@ -9,14 +9,11 @@ from typing import Optional
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Request
-from openai import OpenAI
 
 from app.dependencies import verify_auth, COOKIE_NAME_ACCESS
 from app.supabase_client import get_supabase_client
 from app.services.db.rag import RagService
-from app.services.db.api_configs import ApiConfigService
-from app.services.encryption import decrypt
-from app.services.rag.embedder import embed_text
+from app.services.ai import EmbeddingClient, ChatClient, get_active_config, normalize_base_url
 from app.services.rag.retriever import get_context_for_answer
 from app.schemas.rag import (
     RagQueryRequest,
@@ -48,18 +45,9 @@ def get_rag_service(
     return RagService(supabase, auth_response.user.id)
 
 
-def get_api_config_service(
+def get_active_configs(
     request: Request,
     auth_response=Depends(verify_auth),
-) -> ApiConfigService:
-    """获取 ApiConfigService 依赖"""
-    access_token = request.cookies.get(COOKIE_NAME_ACCESS)
-    supabase = get_supabase_client(access_token)
-    return ApiConfigService(supabase, auth_response.user.id)
-
-
-def get_active_configs(
-    api_service: ApiConfigService,
 ) -> dict:
     """
     获取用户的活跃 API 配置。
@@ -70,33 +58,20 @@ def get_active_configs(
     Raises:
         HTTPException: 配置不存在
     """
+    access_token = request.cookies.get(COOKIE_NAME_ACCESS)
+    supabase = get_supabase_client(access_token)
+    user_id = str(auth_response.user.id)
+
     configs = {}
 
     for config_type in ["chat", "embedding"]:
-        config = api_service.get_active_config(config_type)
+        config = get_active_config(supabase, user_id, config_type)
         if not config:
             raise HTTPException(
                 status_code=400,
                 detail=f"请先配置 {config_type} 类型的 API"
             )
-
-        # 解密 API Key
-        try:
-            api_key = decrypt(config["api_key"])
-        except Exception:
-            api_key = config["api_key"]
-
-        # 解密 API Base
-        try:
-            api_base = decrypt(config["api_base"])
-        except Exception:
-            api_base = config["api_base"]
-
-        configs[config_type] = {
-            "api_key": api_key,
-            "api_base": api_base,
-            "model": config["model"],
-        }
+        configs[config_type] = config
 
     return configs
 
@@ -107,9 +82,10 @@ def get_active_configs(
 
 @router.post("/query", response_model=RagQueryResponse)
 async def query_rag(
-    request: RagQueryRequest,
+    query_request: RagQueryRequest,
+    http_request: Request,
     rag_service: RagService = Depends(get_rag_service),
-    api_service: ApiConfigService = Depends(get_api_config_service),
+    auth_response=Depends(verify_auth),
 ):
     """
     RAG 查询接口。
@@ -120,24 +96,20 @@ async def query_rag(
     """
     try:
         # 获取配置
-        configs = get_active_configs(api_service)
+        configs = get_active_configs(http_request, auth_response)
         embedding_config = configs["embedding"]
         chat_config = configs["chat"]
 
-        # 生成查询 embedding
-        query_embedding = embed_text(
-            request.query,
-            embedding_config["api_key"],
-            embedding_config["api_base"],
-            embedding_config["model"],
-        )
+        # 生成查询 embedding（异步）
+        embedding_client = EmbeddingClient(**embedding_config)
+        query_embedding = await embedding_client.embed(query_request.query)
 
         # 向量搜索
         hits = rag_service.search(
             query_embedding=query_embedding,
-            top_k=request.top_k,
-            feed_id=str(request.feed_id) if request.feed_id else None,
-            min_score=request.min_score,
+            top_k=query_request.top_k,
+            feed_id=str(query_request.feed_id) if query_request.feed_id else None,
+            min_score=query_request.min_score,
         )
 
         # 转换为响应模型
@@ -156,17 +128,15 @@ async def query_rag(
 
         # 可选：生成答案
         answer = None
-        if request.generate_answer and hits:
-            answer = generate_answer(
-                query=request.query,
+        if query_request.generate_answer and hits:
+            answer = await generate_answer(
+                query=query_request.query,
                 hits=hits,
-                api_key=chat_config["api_key"],
-                api_base=chat_config["api_base"],
-                model=chat_config["model"],
+                chat_config=chat_config,
             )
 
         return RagQueryResponse(
-            query=request.query,
+            query=query_request.query,
             hits=hit_items,
             answer=answer,
             total_hits=len(hit_items),
@@ -270,12 +240,10 @@ async def get_all_embeddings(
 # Helper Functions
 # =============================================================================
 
-def generate_answer(
+async def generate_answer(
     query: str,
     hits: list,
-    api_key: str,
-    api_base: str,
-    model: str,
+    chat_config: dict,
     max_tokens: int = 4096,
 ) -> Optional[str]:
     """
@@ -284,9 +252,7 @@ def generate_answer(
     Args:
         query: 用户查询
         hits: 检索结果
-        api_key: API Key
-        api_base: API Base URL
-        model: 模型名称
+        chat_config: Chat API 配置 {api_key, api_base, model}
         max_tokens: 最大生成 token 数
 
     Returns:
@@ -313,10 +279,8 @@ def generate_answer(
 
 请基于以上内容回答问题。"""
 
-        client = OpenAI(api_key=api_key, base_url=api_base)
-
-        response = client.chat.completions.create(
-            model=model,
+        chat_client = ChatClient(**chat_config)
+        response = await chat_client.complete(
             messages=[
                 {"role": "system", "content": system_prompt},
                 {"role": "user", "content": user_prompt},
@@ -324,7 +288,7 @@ def generate_answer(
             max_tokens=max_tokens,
         )
 
-        return response.choices[0].message.content
+        return response
 
     except Exception as e:
         logger.warning(f"Failed to generate answer: {e}")

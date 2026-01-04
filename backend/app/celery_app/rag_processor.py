@@ -71,36 +71,15 @@ def get_user_api_configs(user_id: str) -> Dict[str, Dict[str, str]]:
     Raises:
         ConfigError: 配置不存在或不完整
     """
-    from app.services.db.api_configs import ApiConfigService
-    from app.services.encryption import decrypt
+    from app.services.ai import get_user_ai_configs as _get_user_ai_configs
 
     supabase = get_supabase_service()
-    service = ApiConfigService(supabase, user_id)
+    configs = _get_user_ai_configs(supabase, user_id)
 
-    configs = {}
-
-    for config_type in ["chat", "embedding"]:
-        config = service.get_active_config(config_type)
-        if not config:
-            raise ConfigError(f"No active {config_type} config for user {user_id}")
-
-        # 解密 API Key
-        try:
-            decrypted_key = decrypt(config["api_key"])
-        except Exception:
-            decrypted_key = config["api_key"]  # 可能未加密
-
-        # 解密 API Base
-        try:
-            decrypted_base = decrypt(config["api_base"])
-        except Exception:
-            decrypted_base = config["api_base"]  # 可能未加密
-
-        configs[config_type] = {
-            "api_key": decrypted_key,
-            "api_base": decrypted_base,
-            "model": config["model"],
-        }
+    if "chat" not in configs:
+        raise ConfigError(f"No active chat config for user {user_id}")
+    if "embedding" not in configs:
+        raise ConfigError(f"No active embedding config for user {user_id}")
 
     return configs
 
@@ -130,14 +109,14 @@ def do_process_article_rag(article_id: str, user_id: str) -> Dict[str, Any]:
     Returns:
         {"success": bool, "chunks": int, "images": int, "error": Optional[str]}
     """
+    import asyncio
     from app.services.rag.chunker import (
         parse_article_content,
         chunk_text_semantic,
         fallback_chunk_text,
         ImageElement,
     )
-    from app.services.rag.vision import generate_image_caption_safe
-    from app.services.rag.embedder import embed_texts
+    from app.services.ai import ChatClient, EmbeddingClient
     from app.services.db.rag import RagService
 
     supabase = get_supabase_service()
@@ -187,13 +166,15 @@ def do_process_article_rag(article_id: str, user_id: str) -> Dict[str, Any]:
         image_count = 0
         captions = {}
 
+        # 创建 ChatClient 用于 Vision
+        chat_client = ChatClient(
+            api_key=chat_config["api_key"],
+            api_base=chat_config["api_base"],
+            model=chat_config["model"],
+        )
+
         for url in image_urls[:MAX_IMAGES_PER_ARTICLE]:
-            caption = generate_image_caption_safe(
-                url,
-                chat_config["api_key"],
-                chat_config["api_base"],
-                chat_config["model"],
-            )
+            caption = asyncio.run(chat_client.vision_caption_safe(url))
             if caption:
                 captions[url] = caption
                 image_count += 1
@@ -243,13 +224,13 @@ def do_process_article_rag(article_id: str, user_id: str) -> Dict[str, Any]:
             return {"success": True, "chunks": 0, "images": image_count}
 
         # 9. 批量生成 embeddings
-        texts = [c["content"] for c in final_chunks]
-        embeddings = embed_texts(
-            texts,
-            embedding_config["api_key"],
-            embedding_config["api_base"],
-            embedding_config["model"],
+        embedding_client = EmbeddingClient(
+            api_key=embedding_config["api_key"],
+            api_base=embedding_config["api_base"],
+            model=embedding_config["model"],
         )
+        texts = [c["content"] for c in final_chunks]
+        embeddings = asyncio.run(embedding_client.embed_batch(texts))
 
         for i, chunk in enumerate(final_chunks):
             chunk["embedding"] = embeddings[i]
