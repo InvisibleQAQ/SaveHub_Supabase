@@ -39,7 +39,13 @@ MultiEdit(file_path: "D:\repos\project\file.tsx", ...)
 
 ## Project Overview
 
-RSS Reader built with Next.js 14, React 18, Supabase for data persistence, and Zustand for state management. Uses shadcn/ui components and Radix UI primitives.
+Knowledge management platform frontend built with Next.js 14, React 18, Supabase for data persistence, and Zustand for state management. Uses shadcn/ui components and Radix UI primitives.
+
+**Core Features**:
+- **RSS Reader**: Subscribe, read, and organize RSS feeds
+- **Repository Browser**: GitHub repository tracking with OpenRank metrics
+- **AI Chat**: RAG-powered conversational interface for saved content
+- **Vector Search**: Semantic search across articles and repositories
 
 ## Development Commands
 
@@ -103,12 +109,15 @@ NEXT_PUBLIC_WS_PORT=8000                         # WebSocket port only (developm
 - `/unread` → Unread articles
 - `/starred` → Starred articles
 - `/feed/[feedId]` → Specific feed's articles
-- `/feed/[feedId]/properties` → **NEW**: Edit feed properties (title, URL, description, category, folder)
+- `/feed/[feedId]/properties` → Edit feed properties (title, URL, description, category, folder)
+- `/repository` → GitHub repository browser with category filtering
+- `/chat` → AI chat interface with RAG-powered Q&A
 - `/settings` → Settings page (redirects to `/settings/general`)
 - `/settings/general` → General settings
 - `/settings/appearance` → Appearance settings
 - `/settings/storage` → Storage settings
-- `/settings/api` → **NEW**: API configuration management (OpenAI-compatible APIs, encrypted storage)
+- `/settings/api` → API configuration management (OpenAI-compatible APIs, encrypted storage)
+- `/settings/github-token` → GitHub API token configuration
 
 **Shared Layout** (`app/(reader)/layout.tsx`):
 - Handles database initialization
@@ -128,8 +137,8 @@ NEXT_PUBLIC_WS_PORT=8000                         # WebSocket port only (developm
 **Critical Pattern**: Frontend calls backend HTTP API for all data operations
 
 1. **Zustand Store** (`lib/store/index.ts`): Modular slice-based architecture
-   - **7 Slices**: DatabaseSlice, FoldersSlice, FeedsSlice, ArticlesSlice, UISlice, SettingsSlice, ApiConfigsSlice
-   - Holds: folders, feeds, articles, **apiConfigs**
+   - **8 Slices**: DatabaseSlice, FoldersSlice, FeedsSlice, ArticlesSlice, UISlice, SettingsSlice, ApiConfigsSlice, RepositoriesSlice
+   - Holds: folders, feeds, articles, apiConfigs, repositories
    - **Does NOT hold**: viewMode, selectedFeedId (moved to URL)
    - No localStorage persistence (URL is the persistence for view state)
    - All data mutations go through store actions → HTTP API → Backend → Supabase
@@ -245,7 +254,25 @@ NEXT_PUBLIC_WS_PORT=8000                         # WebSocket port only (developm
 - `general/page.tsx`: General settings
 - `appearance/page.tsx`: Appearance settings
 - `storage/page.tsx`: Storage settings
-- **`api/page.tsx`** (NEW): API configuration management with encryption support
+- `api/page.tsx`: API configuration management with encryption support
+- `github-token/page.tsx`: GitHub API token configuration
+
+**Repository Browser** (`app/(reader)/repository/page.tsx` → `components/repository/`):
+- `repository-page.tsx`: Main page with category filtering and repository grid
+- `category-sidebar.tsx`: Category navigation sidebar
+- `repository-card.tsx`: Repository card with OpenRank metrics display
+- `repository-detail-dialog.tsx`: Full repository details modal
+- `repository-edit-modal.tsx`: Edit repository metadata
+
+**AI Chat Interface** (`app/(reader)/chat/page.tsx` → `components/chat/`):
+- `chat-page.tsx`: Main chat interface with RAG-powered Q&A
+- `chat-message.tsx`: Individual message rendering (user/assistant)
+- `chat-sources.tsx`: Source citations display
+- `chat-status.tsx`: Connection and processing status
+- `article-reference-card.tsx`: Article citation card
+- `repository-reference-card.tsx`: Repository citation card
+- `reference-marker.tsx`: Inline reference markers
+- `referenced-content.tsx`: Expandable referenced content
 
 **Main Components**:
 - `(reader)/layout.tsx`: Root layout with database init + `<Sidebar />`
