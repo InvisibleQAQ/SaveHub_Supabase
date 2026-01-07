@@ -15,6 +15,7 @@ import {
   setTokenExpiry,
   clearTokenExpiry,
   proactiveRefresh,
+  forceRefresh,
 } from "@/lib/api/fetch-client"
 
 interface AuthContextValue {
@@ -109,7 +110,9 @@ export function AuthProvider({ children }: AuthProviderProps) {
   }, [router])
 
   const refreshSession = useCallback(async () => {
-    const success = await authApi.refreshToken()
+    // Use forceRefresh from fetch-client to ensure mutex protection
+    // This prevents race conditions with concurrent refresh attempts
+    const success = await forceRefresh()
     if (!success) {
       setUser(null)
     }

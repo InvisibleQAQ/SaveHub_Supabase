@@ -155,6 +155,15 @@ export async function proactiveRefresh(): Promise<boolean> {
   return true
 }
 
+/**
+ * Force refresh the token.
+ * Uses the same mutex as all other refresh operations to prevent race conditions.
+ * This is the ONLY function that should be used to refresh tokens from outside this module.
+ */
+export async function forceRefresh(): Promise<boolean> {
+  return doRefresh()
+}
+
 // ============================================================================
 // Main Fetch Function
 // ============================================================================
