@@ -217,7 +217,7 @@ def do_repository_embedding(
         {"embedding_processed": N, "embedding_failed": N, "embedding_total": N}
     """
     from app.services.rag.chunker import chunk_text_semantic, fallback_chunk_text
-    from app.services.rag.embedder import embed_texts
+    from app.services.ai import EmbeddingClient
     from app.services.db.rag import RagService
     from app.celery_app.rag_processor import get_user_api_configs, ConfigError
 
@@ -329,8 +329,9 @@ def _process_single_repository_embedding(
     rag_service,
 ) -> Dict[str, Any]:
     """处理单个仓库的 embedding 生成。"""
+    import asyncio
     from app.services.rag.chunker import chunk_text_semantic, fallback_chunk_text
-    from app.services.rag.embedder import embed_texts
+    from app.services.ai import EmbeddingClient
 
     repository_id = repo["id"]
 
@@ -369,12 +370,12 @@ def _process_single_repository_embedding(
 
         # 4. 批量生成 embeddings
         texts = [c["content"] for c in final_chunks]
-        embeddings = embed_texts(
-            texts,
+        embedding_client = EmbeddingClient(
             embedding_config["api_key"],
             embedding_config["api_base"],
             embedding_config["model"],
         )
+        embeddings = asyncio.run(embedding_client.embed_batch(texts))
 
         for i, chunk in enumerate(final_chunks):
             chunk["embedding"] = embeddings[i]
