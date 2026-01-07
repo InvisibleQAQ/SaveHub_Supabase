@@ -7,7 +7,7 @@ import type { Repository, SyncResult } from "../types"
 import { repositoriesApi } from "../api/repositories"
 
 export interface SyncProgress {
-  phase: "fetching" | "fetched" | "analyzing" | "saving"
+  phase: "fetching" | "fetched" | "analyzing" | "saving" | "openrank" | "embedding"
   total?: number
   current?: string
   completed?: number

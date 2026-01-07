@@ -6,6 +6,7 @@
  */
 
 import type { ApiConfig, ApiConfigType, ApiConfigsGrouped } from "../types"
+import { fetchWithAuth } from "./fetch-client"
 
 const API_BASE = "/api/backend/api-configs"
 
@@ -79,9 +80,8 @@ function toApiFormat(config: Partial<ApiConfig>): Record<string, unknown> {
  */
 export async function getApiConfigs(type?: ApiConfigType): Promise<ApiConfig[]> {
   const url = type ? `${API_BASE}?type=${type}` : API_BASE
-  const response = await fetch(url, {
+  const response = await fetchWithAuth(url, {
     method: "GET",
-    credentials: "include",
   })
 
   if (!response.ok) {
@@ -98,9 +98,8 @@ export async function getApiConfigs(type?: ApiConfigType): Promise<ApiConfig[]> 
  * Returns: { chat: [...], embedding: [...], rerank: [...] }
  */
 export async function getApiConfigsGrouped(): Promise<ApiConfigsGrouped> {
-  const response = await fetch(`${API_BASE}/grouped`, {
+  const response = await fetchWithAuth(`${API_BASE}/grouped`, {
     method: "GET",
-    credentials: "include",
   })
 
   if (!response.ok) {
@@ -121,9 +120,8 @@ export async function getApiConfigsGrouped(): Promise<ApiConfigsGrouped> {
  * Returns null if no active config exists.
  */
 export async function getActiveConfig(type: ApiConfigType): Promise<ApiConfig | null> {
-  const response = await fetch(`${API_BASE}/active/${type}`, {
+  const response = await fetchWithAuth(`${API_BASE}/active/${type}`, {
     method: "GET",
-    credentials: "include",
   })
 
   if (!response.ok) {
@@ -142,10 +140,9 @@ export async function getActiveConfig(type: ApiConfigType): Promise<ApiConfig | 
 export async function createApiConfig(
   config: Omit<ApiConfig, "id" | "createdAt" | "updatedAt">
 ): Promise<ApiConfig> {
-  const response = await fetch(API_BASE, {
+  const response = await fetchWithAuth(API_BASE, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    credentials: "include",
     body: JSON.stringify(toApiFormat(config)),
   })
 
@@ -166,10 +163,9 @@ export async function updateApiConfig(
   id: string,
   updates: Partial<ApiConfig>
 ): Promise<ApiConfig> {
-  const response = await fetch(`${API_BASE}/${id}`, {
+  const response = await fetchWithAuth(`${API_BASE}/${id}`, {
     method: "PUT",
     headers: { "Content-Type": "application/json" },
-    credentials: "include",
     body: JSON.stringify(toApiFormat(updates)),
   })
 
@@ -186,9 +182,8 @@ export async function updateApiConfig(
  * Delete an API config by ID.
  */
 export async function deleteApiConfig(id: string): Promise<void> {
-  const response = await fetch(`${API_BASE}/${id}`, {
+  const response = await fetchWithAuth(`${API_BASE}/${id}`, {
     method: "DELETE",
-    credentials: "include",
   })
 
   if (!response.ok) {
@@ -201,9 +196,8 @@ export async function deleteApiConfig(id: string): Promise<void> {
  * Activate a config, auto-deactivating others of same type.
  */
 export async function activateConfig(id: string): Promise<void> {
-  const response = await fetch(`${API_BASE}/${id}/activate`, {
+  const response = await fetchWithAuth(`${API_BASE}/${id}/activate`, {
     method: "POST",
-    credentials: "include",
   })
 
   if (!response.ok) {

@@ -4,6 +4,7 @@
  */
 
 import type { Article, Repository } from "../types"
+import { fetchWithAuth } from "./fetch-client"
 
 const API_BASE = "/api/backend/articles"
 
@@ -104,6 +105,7 @@ function transformRepository(raw: Record<string, unknown>): Repository {
     aiPlatforms: (raw.ai_platforms as string[]) || [],
     analyzedAt: raw.analyzed_at as string | null,
     analysisFailed: (raw.analysis_failed as boolean) || false,
+    openrank: raw.openrank as number | null,
     customDescription: raw.custom_description as string | null,
     customTags: (raw.custom_tags as string[]) || [],
     customCategory: raw.custom_category as string | null,
@@ -125,9 +127,8 @@ export async function getArticles(options?: {
 
   const url = params.toString() ? `${API_BASE}?${params}` : API_BASE
 
-  const response = await fetch(url, {
+  const response = await fetchWithAuth(url, {
     method: "GET",
-    credentials: "include",
   })
 
   if (!response.ok) {
@@ -143,12 +144,11 @@ export async function getArticles(options?: {
  * Create or upsert multiple articles.
  */
 export async function saveArticles(articles: Partial<Article>[]): Promise<ArticleCreateResponse> {
-  const response = await fetch(API_BASE, {
+  const response = await fetchWithAuth(API_BASE, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
     },
-    credentials: "include",
     body: JSON.stringify(articles.map(toApiFormat)),
   })
 
@@ -164,9 +164,8 @@ export async function saveArticles(articles: Partial<Article>[]): Promise<Articl
  * Get a single article by ID.
  */
 export async function getArticle(articleId: string): Promise<Article> {
-  const response = await fetch(`${API_BASE}/${articleId}`, {
+  const response = await fetchWithAuth(`${API_BASE}/${articleId}`, {
     method: "GET",
-    credentials: "include",
   })
 
   if (!response.ok) {
@@ -191,12 +190,11 @@ export async function updateArticle(
   if (updates.isRead !== undefined) apiUpdates.is_read = updates.isRead
   if (updates.isStarred !== undefined) apiUpdates.is_starred = updates.isStarred
 
-  const response = await fetch(`${API_BASE}/${articleId}`, {
+  const response = await fetchWithAuth(`${API_BASE}/${articleId}`, {
     method: "PATCH",
     headers: {
       "Content-Type": "application/json",
     },
-    credentials: "include",
     body: JSON.stringify(apiUpdates),
   })
 
@@ -212,9 +210,8 @@ export async function updateArticle(
  * Clear old read articles that are not starred.
  */
 export async function clearOldArticles(days: number = 30): Promise<ClearOldArticlesResponse> {
-  const response = await fetch(`${API_BASE}/old?days=${days}`, {
+  const response = await fetchWithAuth(`${API_BASE}/old?days=${days}`, {
     method: "DELETE",
-    credentials: "include",
   })
 
   if (!response.ok) {
@@ -232,9 +229,8 @@ export async function clearOldArticles(days: number = 30): Promise<ClearOldArtic
  * Get article statistics for the authenticated user.
  */
 export async function getArticleStats(): Promise<ArticleStats> {
-  const response = await fetch(`${API_BASE}/stats`, {
+  const response = await fetchWithAuth(`${API_BASE}/stats`, {
     method: "GET",
-    credentials: "include",
   })
 
   if (!response.ok) {
@@ -256,9 +252,8 @@ export async function getArticleStats(): Promise<ArticleStats> {
  * Returns repositories extracted from the article content.
  */
 export async function getArticleRepositories(articleId: string): Promise<Repository[]> {
-  const response = await fetch(`${API_BASE}/${articleId}/repositories`, {
+  const response = await fetchWithAuth(`${API_BASE}/${articleId}/repositories`, {
     method: "GET",
-    credentials: "include",
   })
 
   if (!response.ok) {

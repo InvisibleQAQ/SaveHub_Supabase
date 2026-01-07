@@ -1,4 +1,5 @@
 import type { Article } from "./types"
+import { fetchWithAuth } from "./api/fetch-client"
 
 export interface ParsedFeed {
   title: string
@@ -9,12 +10,11 @@ export interface ParsedFeed {
 
 export async function parseRSSFeed(url: string, feedId: string): Promise<{ feed: ParsedFeed; articles: Article[] }> {
   try {
-    const response = await fetch("/api/backend/rss/parse", {
+    const response = await fetchWithAuth("/api/backend/rss/parse", {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
       },
-      credentials: "include",
       body: JSON.stringify({ url, feedId }),
     })
 
@@ -40,12 +40,11 @@ export async function parseRSSFeed(url: string, feedId: string): Promise<{ feed:
 
 export async function validateRSSUrl(url: string): Promise<boolean> {
   try {
-    const response = await fetch("/api/backend/rss/validate", {
+    const response = await fetchWithAuth("/api/backend/rss/validate", {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
       },
-      credentials: "include",
       body: JSON.stringify({ url }),
     })
 

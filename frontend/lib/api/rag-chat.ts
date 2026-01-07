@@ -4,6 +4,8 @@
  * 处理 SSE 流式响应
  */
 
+import { fetchWithAuth, isTokenExpiringSoon, proactiveRefresh } from "./fetch-client"
+
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000"
 
 export interface ChatMessage {
@@ -55,9 +57,16 @@ export const ragChatApi = {
     onEvent: (event: StreamEvent) => void,
     signal?: AbortSignal
   ): Promise<void> {
-    const response = await fetch(`${API_BASE}/api/rag-chat/stream`, {
+    // Proactive refresh before SSE long-running request
+    if (isTokenExpiringSoon()) {
+      const refreshed = await proactiveRefresh()
+      if (!refreshed) {
+        throw new Error("Session expired")
+      }
+    }
+
+    const response = await fetchWithAuth(`${API_BASE}/api/rag-chat/stream`, {
       method: "POST",
-      credentials: "include",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ messages }),
       signal,

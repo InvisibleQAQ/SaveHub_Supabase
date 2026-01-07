@@ -1,4 +1,5 @@
 import type { ApiConfigType } from './types'
+import { fetchWithAuth } from './api/fetch-client'
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'
 
@@ -26,12 +27,11 @@ export async function validateApiConfig(config: ApiValidationRequest): Promise<A
   const type = config.type || 'chat'
 
   try {
-    const response = await fetch(`${API_BASE_URL}/api/api-configs/validate`, {
+    const response = await fetchWithAuth(`${API_BASE_URL}/api/api-configs/validate`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
       },
-      credentials: 'include',  // Include cookies for auth
       body: JSON.stringify({
         api_key: config.apiKey,
         api_base: config.apiBase,
@@ -70,6 +70,14 @@ export async function validateApiConfig(config: ApiValidationRequest): Promise<A
     console.error('[API Validation] Failed to validate model:', error)
 
     if (error instanceof Error) {
+      // Handle session expired error from fetchWithAuth
+      if (error.message === 'Session expired') {
+        return {
+          success: false,
+          error: '会话已过期，请重新登录'
+        }
+      }
+
       if (error.message.includes('fetch') || error.message.includes('network')) {
         return {
           success: false,

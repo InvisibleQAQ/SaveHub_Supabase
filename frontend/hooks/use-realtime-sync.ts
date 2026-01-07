@@ -70,6 +70,7 @@ export function useRealtimeSync() {
           isStarred: articleRow.is_starred,
           thumbnail: articleRow.thumbnail || undefined,
           contentHash: articleRow.content_hash || undefined,
+          repositoryCount: (articleRow as Record<string, unknown>).repository_count as number ?? 0,
         }
         await store.addArticles([article])
       },

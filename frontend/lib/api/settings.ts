@@ -4,6 +4,7 @@
  */
 
 import type { RSSReaderState } from "../types"
+import { fetchWithAuth } from "./fetch-client"
 
 type Settings = RSSReaderState["settings"]
 
@@ -62,9 +63,8 @@ function toApiFormat(settings: Partial<Settings>): Record<string, unknown> {
  * Returns default settings if none exist.
  */
 export async function getSettings(): Promise<SettingsResponse> {
-  const response = await fetch(API_BASE, {
+  const response = await fetchWithAuth(API_BASE, {
     method: "GET",
-    credentials: "include",
   })
 
   if (!response.ok) {
@@ -85,12 +85,11 @@ export async function updateSettings(settings: Partial<Settings>): Promise<Setti
   const apiData = toApiFormat(settings)
   console.log('[Settings API] Sending update:', apiData)
 
-  const response = await fetch(API_BASE, {
+  const response = await fetchWithAuth(API_BASE, {
     method: "PUT",
     headers: {
       "Content-Type": "application/json",
     },
-    credentials: "include",
     body: JSON.stringify(apiData),
   })
 

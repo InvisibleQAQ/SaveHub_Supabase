@@ -9,6 +9,8 @@
  * - GET  /api/backend/queue/task/{task_id}
  */
 
+import { fetchWithAuth } from "./api/fetch-client"
+
 // ============================================================================
 // Types
 // ============================================================================
@@ -52,12 +54,11 @@ export async function scheduleFeedRefresh(
   feedId: string,
   forceImmediate = false
 ): Promise<ScheduleFeedResponse> {
-  const response = await fetch("/api/backend/queue/schedule-feed", {
+  const response = await fetchWithAuth("/api/backend/queue/schedule-feed", {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
     },
-    credentials: "include", // Send HttpOnly cookies
     body: JSON.stringify({
       feed_id: feedId,
       force_immediate: forceImmediate,
@@ -100,8 +101,8 @@ export async function forceRefreshFeed(
  * Get queue health status
  */
 export async function getQueueHealth(): Promise<QueueHealth> {
-  const response = await fetch("/api/backend/queue-health", {
-    credentials: "include",
+  const response = await fetchWithAuth("/api/backend/queue-health", {
+    method: "GET",
   })
 
   if (!response.ok) {
@@ -115,8 +116,8 @@ export async function getQueueHealth(): Promise<QueueHealth> {
  * Get task status by ID
  */
 export async function getTaskStatus(taskId: string): Promise<TaskStatus> {
-  const response = await fetch(`/api/backend/queue/task/${taskId}`, {
-    credentials: "include",
+  const response = await fetchWithAuth(`/api/backend/queue/task/${taskId}`, {
+    method: "GET",
   })
 
   if (!response.ok) {

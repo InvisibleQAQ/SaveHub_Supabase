@@ -40,8 +40,6 @@ export function renderMarkdown(
     marked.setOptions({
       gfm,
       breaks: true,        // Convert \n to <br> in paragraphs
-      headerIds: true,     // Add IDs to headers for anchor links
-      mangle: false,       // Don't mangle email addresses
       pedantic: false,     // Don't conform to original markdown.pl
     })
 

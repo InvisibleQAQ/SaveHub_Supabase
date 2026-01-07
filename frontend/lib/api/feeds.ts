@@ -4,6 +4,7 @@
  */
 
 import type { Feed } from "../types"
+import { fetchWithAuth } from "./fetch-client"
 
 const API_BASE = "/api/backend/feeds"
 
@@ -90,9 +91,8 @@ function toApiFormat(feed: Partial<Feed>): Record<string, unknown> {
  * Get all feeds for the authenticated user.
  */
 export async function getFeeds(): Promise<Feed[]> {
-  const response = await fetch(API_BASE, {
+  const response = await fetchWithAuth(API_BASE, {
     method: "GET",
-    credentials: "include",
   })
 
   if (!response.ok) {
@@ -108,12 +108,11 @@ export async function getFeeds(): Promise<Feed[]> {
  * Create or upsert multiple feeds.
  */
 export async function saveFeeds(feeds: Partial<Feed>[]): Promise<FeedCreateResponse> {
-  const response = await fetch(API_BASE, {
+  const response = await fetchWithAuth(API_BASE, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
     },
-    credentials: "include",
     body: JSON.stringify(feeds.map(toApiFormat)),
   })
 
@@ -132,9 +131,8 @@ export async function saveFeeds(feeds: Partial<Feed>[]): Promise<FeedCreateRespo
  * Get a single feed by ID.
  */
 export async function getFeed(feedId: string): Promise<Feed> {
-  const response = await fetch(`${API_BASE}/${feedId}`, {
+  const response = await fetchWithAuth(`${API_BASE}/${feedId}`, {
     method: "GET",
-    credentials: "include",
   })
 
   if (!response.ok) {
@@ -154,12 +152,11 @@ export async function updateFeed(
   feedId: string,
   updates: Partial<Feed>
 ): Promise<FeedUpdateResponse> {
-  const response = await fetch(`${API_BASE}/${feedId}`, {
+  const response = await fetchWithAuth(`${API_BASE}/${feedId}`, {
     method: "PUT",
     headers: {
       "Content-Type": "application/json",
     },
-    credentials: "include",
     body: JSON.stringify(toApiFormat(updates)),
   })
 
@@ -178,9 +175,8 @@ export async function updateFeed(
  * Delete a feed and all its articles.
  */
 export async function deleteFeed(feedId: string): Promise<{ articlesDeleted: number }> {
-  const response = await fetch(`${API_BASE}/${feedId}`, {
+  const response = await fetchWithAuth(`${API_BASE}/${feedId}`, {
     method: "DELETE",
-    credentials: "include",
   })
 
   if (!response.ok) {

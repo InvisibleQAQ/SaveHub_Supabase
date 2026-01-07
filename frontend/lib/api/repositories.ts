@@ -3,12 +3,13 @@
  */
 
 import { Repository, SyncResult } from "@/lib/types"
+import { fetchWithAuth, isTokenExpiringSoon, proactiveRefresh } from "./fetch-client"
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000"
 
 /** SSE progress event from sync endpoint */
 export interface SyncProgressEvent {
-  phase: "fetching" | "fetched" | "analyzing"
+  phase: "fetching" | "fetched" | "analyzing" | "saving" | "openrank" | "embedding"
   total?: number
   current?: string
   completed?: number
@@ -19,8 +20,8 @@ export const repositoriesApi = {
    * Get all repositories for current user
    */
   async getAll(): Promise<Repository[]> {
-    const response = await fetch(`${API_BASE}/api/repositories`, {
-      credentials: "include",
+    const response = await fetchWithAuth(`${API_BASE}/api/repositories`, {
+      method: "GET",
       cache: "no-store",
     })
 
@@ -38,9 +39,16 @@ export const repositoriesApi = {
   async syncWithProgress(
     onProgress: (progress: SyncProgressEvent) => void
   ): Promise<SyncResult> {
-    const response = await fetch(`${API_BASE}/api/repositories/sync`, {
+    // Proactive refresh before SSE long-running request
+    if (isTokenExpiringSoon()) {
+      const refreshed = await proactiveRefresh()
+      if (!refreshed) {
+        throw new Error("Session expired")
+      }
+    }
+
+    const response = await fetchWithAuth(`${API_BASE}/api/repositories/sync`, {
       method: "POST",
-      credentials: "include",
     })
 
     if (!response.ok) {
@@ -100,9 +108,8 @@ export const repositoriesApi = {
       customCategory?: string | null
     }
   ): Promise<Repository> {
-    const response = await fetch(`${API_BASE}/api/repositories/${id}`, {
+    const response = await fetchWithAuth(`${API_BASE}/api/repositories/${id}`, {
       method: "PATCH",
-      credentials: "include",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         custom_description: data.customDescription,
@@ -124,9 +131,8 @@ export const repositoriesApi = {
    * Analyze repository with AI
    */
   async analyze(id: string): Promise<Repository> {
-    const response = await fetch(`${API_BASE}/api/repositories/${id}/analyze`, {
+    const response = await fetchWithAuth(`${API_BASE}/api/repositories/${id}/analyze`, {
       method: "POST",
-      credentials: "include",
     })
 
     if (!response.ok) {

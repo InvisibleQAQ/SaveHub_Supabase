@@ -4,6 +4,7 @@
  */
 
 import type { Folder } from "../types"
+import { fetchWithAuth } from "./fetch-client"
 
 const API_BASE = "/api/backend/folders"
 
@@ -59,9 +60,8 @@ function toApiFormat(folder: Partial<Folder>): Record<string, unknown> {
  * Get all folders for the authenticated user.
  */
 export async function getFolders(): Promise<Folder[]> {
-  const response = await fetch(API_BASE, {
+  const response = await fetchWithAuth(API_BASE, {
     method: "GET",
-    credentials: "include",
   })
 
   if (!response.ok) {
@@ -77,12 +77,11 @@ export async function getFolders(): Promise<Folder[]> {
  * Create or upsert multiple folders.
  */
 export async function saveFolders(folders: Partial<Folder>[]): Promise<FolderCreateResponse> {
-  const response = await fetch(API_BASE, {
+  const response = await fetchWithAuth(API_BASE, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
     },
-    credentials: "include",
     body: JSON.stringify(folders.map(toApiFormat)),
   })
 
@@ -105,12 +104,11 @@ export async function updateFolder(
   folderId: string,
   updates: Partial<Folder>
 ): Promise<FolderUpdateResponse> {
-  const response = await fetch(`${API_BASE}/${folderId}`, {
+  const response = await fetchWithAuth(`${API_BASE}/${folderId}`, {
     method: "PUT",
     headers: {
       "Content-Type": "application/json",
     },
-    credentials: "include",
     body: JSON.stringify(toApiFormat(updates)),
   })
 
@@ -127,9 +125,8 @@ export async function updateFolder(
  * Note: Feeds in this folder will have their folder_id set to null.
  */
 export async function deleteFolder(folderId: string): Promise<FolderDeleteResponse> {
-  const response = await fetch(`${API_BASE}/${folderId}`, {
+  const response = await fetchWithAuth(`${API_BASE}/${folderId}`, {
     method: "DELETE",
-    credentials: "include",
   })
 
   if (!response.ok) {

@@ -3,6 +3,8 @@
  * Uses HttpOnly cookies for authentication.
  */
 
+import { fetchWithAuth } from "./fetch-client"
+
 const API_BASE = "/api/backend/github"
 
 export interface ValidateTokenResponse {
@@ -20,12 +22,11 @@ export interface ApiError {
  * Calls backend endpoint which proxies to GitHub API.
  */
 export async function validateGitHubToken(token: string): Promise<ValidateTokenResponse> {
-  const response = await fetch(`${API_BASE}/validate-token`, {
+  const response = await fetchWithAuth(`${API_BASE}/validate-token`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
     },
-    credentials: "include",
     body: JSON.stringify({ token }),
   })
 
