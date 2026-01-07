@@ -106,7 +106,11 @@ export function FeedItem({ feed, unreadCount, isActive, variant, onRename, onMov
     try {
       const { articles } = await parseRSSFeed(feed.url, feed.id)
       const newArticlesCount = await addArticles(articles)
-      await updateFeed(feed.id, { lastFetched: new Date() })
+      await updateFeed(feed.id, {
+        lastFetched: new Date(),
+        lastFetchStatus: "success",
+        lastFetchError: null,
+      })
 
       toast({
         title: "Feed refreshed",
@@ -116,9 +120,14 @@ export function FeedItem({ feed, unreadCount, isActive, variant, onRename, onMov
       })
     } catch (error) {
       console.error(`Error refreshing feed ${feed.title}:`, error)
+      const errorMessage = error instanceof Error ? error.message : "Failed to refresh feed"
+      await updateFeed(feed.id, {
+        lastFetchStatus: "failed",
+        lastFetchError: errorMessage,
+      })
       toast({
         title: "Refresh failed",
-        description: error instanceof Error ? error.message : "Failed to refresh feed",
+        description: errorMessage,
         variant: "destructive",
       })
     } finally {
