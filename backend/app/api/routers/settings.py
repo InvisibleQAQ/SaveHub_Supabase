@@ -3,8 +3,7 @@
 import logging
 from fastapi import APIRouter, Depends, HTTPException, Request
 
-from app.dependencies import verify_auth, COOKIE_NAME_ACCESS
-from app.supabase_client import get_supabase_client
+from app.dependencies import verify_auth, create_service_dependency
 from app.schemas.settings import (
     SettingsUpdate,
     SettingsResponse,
@@ -17,11 +16,7 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/settings", tags=["settings"])
 
 
-def get_settings_service(request: Request, user=Depends(verify_auth)) -> SettingsService:
-    """Create SettingsService instance with authenticated user's session."""
-    access_token = request.cookies.get(COOKIE_NAME_ACCESS)
-    client = get_supabase_client(access_token)
-    return SettingsService(client, user.user.id)
+get_settings_service = create_service_dependency(SettingsService)
 
 
 @router.get("", response_model=SettingsResponse)

@@ -5,8 +5,7 @@ from typing import List
 from uuid import UUID
 from fastapi import APIRouter, Depends, HTTPException, Request
 
-from app.dependencies import verify_auth, COOKIE_NAME_ACCESS
-from app.supabase_client import get_supabase_client
+from app.dependencies import verify_auth, create_service_dependency, require_exists, extract_update_data
 from app.schemas.feeds import (
     FeedCreate,
     FeedUpdate,
@@ -20,11 +19,7 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/feeds", tags=["feeds"])
 
 
-def get_feed_service(request: Request, user=Depends(verify_auth)) -> FeedService:
-    """Create FeedService instance with authenticated user's session."""
-    access_token = request.cookies.get(COOKIE_NAME_ACCESS)
-    client = get_supabase_client(access_token)
-    return FeedService(client, user.user.id)
+get_feed_service = create_service_dependency(FeedService)
 
 
 @router.get("", response_model=List[FeedResponse])
@@ -133,9 +128,7 @@ async def get_feed(
         404 if feed not found.
     """
     try:
-        feed = service.get_feed(str(feed_id))
-        if not feed:
-            raise HTTPException(status_code=404, detail="Feed not found")
+        feed = require_exists(service.get_feed(str(feed_id)), "Feed not found")
         return feed
     except HTTPException:
         raise
@@ -167,12 +160,10 @@ async def update_feed(
     """
     try:
         # First check if feed exists
-        existing = service.get_feed(str(feed_id))
-        if not existing:
-            raise HTTPException(status_code=404, detail="Feed not found")
+        require_exists(service.get_feed(str(feed_id)), "Feed not found")
 
         # Filter out None values for partial update
-        update_data = {k: v for k, v in feed_update.model_dump().items() if v is not None}
+        update_data = extract_update_data(feed_update)
 
         if not update_data:
             return {"success": True, "message": "No fields to update"}
@@ -213,9 +204,7 @@ async def delete_feed(
     """
     try:
         # First check if feed exists
-        existing = service.get_feed(str(feed_id))
-        if not existing:
-            raise HTTPException(status_code=404, detail="Feed not found")
+        require_exists(service.get_feed(str(feed_id)), "Feed not found")
 
         result = service.delete_feed(str(feed_id))
         logger.info(f"Deleted feed {feed_id} with {result['articles_deleted']} articles")

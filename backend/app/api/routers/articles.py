@@ -5,7 +5,7 @@ from typing import List, Optional
 from uuid import UUID
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 
-from app.dependencies import verify_auth, get_access_token
+from app.dependencies import verify_auth, get_access_token, create_service_dependency, require_exists, extract_update_data
 from app.supabase_client import get_supabase_client
 from app.schemas.articles import (
     ArticleCreate,
@@ -23,13 +23,7 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/articles", tags=["articles"])
 
 
-def get_article_service(
-    access_token: str = Depends(get_access_token),
-    user=Depends(verify_auth)
-) -> ArticleService:
-    """Create ArticleService instance with authenticated user's session."""
-    client = get_supabase_client(access_token)
-    return ArticleService(client, user.user.id)
+get_article_service = create_service_dependency(ArticleService)
 
 
 @router.get("/stats", response_model=ArticleStatsResponse)
@@ -143,9 +137,7 @@ async def get_article(
         404 if article not found.
     """
     try:
-        article = service.get_article(str(article_id))
-        if not article:
-            raise HTTPException(status_code=404, detail="Article not found")
+        article = require_exists(service.get_article(str(article_id)), "Article not found")
         return article
     except HTTPException:
         raise
@@ -177,11 +169,9 @@ async def update_article(
         404 if article not found.
     """
     try:
-        existing = service.get_article(str(article_id))
-        if not existing:
-            raise HTTPException(status_code=404, detail="Article not found")
+        require_exists(service.get_article(str(article_id)), "Article not found")
 
-        update_data = {k: v for k, v in article_update.model_dump().items() if v is not None}
+        update_data = extract_update_data(article_update)
 
         if not update_data:
             return {"success": True, "message": "No fields to update"}

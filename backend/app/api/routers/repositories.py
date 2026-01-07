@@ -12,7 +12,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import StreamingResponse
 import httpx
 
-from app.dependencies import verify_auth, COOKIE_NAME_ACCESS
+from app.dependencies import verify_auth, get_access_token, create_service_dependency, require_exists
 from app.supabase_client import get_supabase_client
 from app.schemas.repositories import (
     RepositoryResponse,
@@ -29,11 +29,7 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/repositories", tags=["repositories"])
 
 
-def get_repository_service(request: Request, user=Depends(verify_auth)) -> RepositoryService:
-    """Create RepositoryService instance with authenticated user's session."""
-    access_token = request.cookies.get(COOKIE_NAME_ACCESS)
-    supabase = get_supabase_client(access_token)
-    return RepositoryService(supabase, user.user.id)
+get_repository_service = create_service_dependency(RepositoryService)
 
 
 @router.get("", response_model=List[RepositoryResponse])

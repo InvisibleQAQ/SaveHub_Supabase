@@ -5,8 +5,7 @@ from typing import List
 from uuid import UUID
 from fastapi import APIRouter, Depends, HTTPException, Request
 
-from app.dependencies import verify_auth, COOKIE_NAME_ACCESS
-from app.supabase_client import get_supabase_client
+from app.dependencies import verify_auth, create_service_dependency, require_exists, extract_update_data
 from app.schemas.folders import (
     FolderCreate,
     FolderCreateWithId,
@@ -20,11 +19,7 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/folders", tags=["folders"])
 
 
-def get_folder_service(request: Request, user=Depends(verify_auth)) -> FolderService:
-    """Create FolderService instance with authenticated user's session."""
-    access_token = request.cookies.get(COOKIE_NAME_ACCESS)
-    client = get_supabase_client(access_token)
-    return FolderService(client, user.user.id)
+get_folder_service = create_service_dependency(FolderService)
 
 
 @router.get("", response_model=List[FolderResponse])
@@ -101,11 +96,9 @@ async def update_folder(
         404 if folder not found.
     """
     try:
-        existing = service.get_folder(str(folder_id))
-        if not existing:
-            raise HTTPException(status_code=404, detail="Folder not found")
+        require_exists(service.get_folder(str(folder_id)), "Folder not found")
 
-        update_data = {k: v for k, v in folder_update.model_dump().items() if v is not None}
+        update_data = extract_update_data(folder_update)
 
         if not update_data:
             return {"success": True, "message": "No fields to update"}
@@ -145,9 +138,7 @@ async def delete_folder(
         404 if folder not found.
     """
     try:
-        existing = service.get_folder(str(folder_id))
-        if not existing:
-            raise HTTPException(status_code=404, detail="Folder not found")
+        require_exists(service.get_folder(str(folder_id)), "Folder not found")
 
         service.delete_folder(str(folder_id))
         logger.info(f"Deleted folder {folder_id}")

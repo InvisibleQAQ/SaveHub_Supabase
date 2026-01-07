@@ -9,8 +9,7 @@ from typing import List, Optional
 from uuid import UUID
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 
-from app.dependencies import verify_auth, COOKIE_NAME_ACCESS
-from app.supabase_client import get_supabase_client
+from app.dependencies import verify_auth, create_service_dependency, require_exists, extract_update_data
 from app.schemas.api_configs import (
     ApiConfigCreate,
     ApiConfigUpdate,
@@ -29,13 +28,7 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api-configs", tags=["api-configs"])
 
 
-def get_api_config_service(
-    request: Request, user=Depends(verify_auth)
-) -> ApiConfigService:
-    """Create ApiConfigService instance with authenticated user's session."""
-    access_token = request.cookies.get(COOKIE_NAME_ACCESS)
-    client = get_supabase_client(access_token)
-    return ApiConfigService(client, user.user.id)
+get_api_config_service = create_service_dependency(ApiConfigService)
 
 
 def _decrypt_config(config: dict) -> dict:
@@ -181,9 +174,7 @@ async def get_api_config(
 ):
     """Get a single API config by ID."""
     try:
-        config = service.get_api_config(str(config_id))
-        if not config:
-            raise HTTPException(status_code=404, detail="API config not found")
+        config = require_exists(service.get_api_config(str(config_id)), "API config not found")
         return _decrypt_config(config)
     except HTTPException:
         raise
@@ -204,11 +195,9 @@ async def update_api_config(
     Supports partial updates. If is_active=True, deactivates others of same type.
     """
     try:
-        existing = service.get_api_config(str(config_id))
-        if not existing:
-            raise HTTPException(status_code=404, detail="API config not found")
+        existing = require_exists(service.get_api_config(str(config_id)), "API config not found")
 
-        update_data = {k: v for k, v in data.model_dump().items() if v is not None}
+        update_data = extract_update_data(data)
 
         if not update_data:
             return _decrypt_config(existing)
@@ -235,9 +224,7 @@ async def delete_api_config(
 ):
     """Delete an API config by ID."""
     try:
-        existing = service.get_api_config(str(config_id))
-        if not existing:
-            raise HTTPException(status_code=404, detail="API config not found")
+        require_exists(service.get_api_config(str(config_id)), "API config not found")
 
         service.delete_api_config(str(config_id))
         logger.info(f"Deleted API config: {config_id}")
@@ -261,9 +248,7 @@ async def activate_config(
     This is the preferred way to change active config.
     """
     try:
-        existing = service.get_api_config(str(config_id))
-        if not existing:
-            raise HTTPException(status_code=404, detail="API config not found")
+        existing = require_exists(service.get_api_config(str(config_id)), "API config not found")
 
         service.set_active_config(str(config_id))
         logger.info(f"Activated API config {config_id} (type={existing.get('type')})")

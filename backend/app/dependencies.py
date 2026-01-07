@@ -1,7 +1,8 @@
 import os
 import time
 import logging
-from typing import Optional, Tuple, Any
+from typing import Optional, Tuple, Any, Type, TypeVar, Callable
+from pydantic import BaseModel
 from fastapi import Depends, HTTPException, Request
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from supabase import create_client, Client
@@ -177,3 +178,92 @@ def verify_auth(
 
     logger.warning(f"Auth failed for {request.method} {request.url.path}: {detail}")
     raise HTTPException(status_code=401, detail=detail)
+
+
+# =============================================================================
+# Service Dependency Factory & Utilities
+# =============================================================================
+
+T = TypeVar("T")
+
+
+def create_service_dependency(service_class: Type[T]) -> Callable[..., T]:
+    """
+    Factory function to create service dependency injectors.
+
+    Eliminates boilerplate for service instantiation pattern:
+        access_token = request.cookies.get(COOKIE_NAME_ACCESS)
+        client = get_supabase_client(access_token)
+        return ServiceClass(client, user.user.id)
+
+    Usage:
+        get_feed_service = create_service_dependency(FeedService)
+
+        @router.get("")
+        async def get_feeds(service: FeedService = Depends(get_feed_service)):
+            ...
+
+    Args:
+        service_class: Service class with __init__(supabase, user_id) signature
+
+    Returns:
+        FastAPI dependency function that creates the service instance
+    """
+    from app.supabase_client import get_supabase_client
+
+    def dependency(
+        access_token: str = Depends(get_access_token),
+        user=Depends(verify_auth),
+    ) -> T:
+        client = get_supabase_client(access_token)
+        return service_class(client, user.user.id)
+
+    return dependency
+
+
+def require_exists(item: Any, detail: str = "Resource not found") -> Any:
+    """
+    Raise 404 if item is None/falsy.
+
+    Eliminates boilerplate:
+        existing = service.get_xxx(id)
+        if not existing:
+            raise HTTPException(status_code=404, detail="Xxx not found")
+
+    Usage:
+        feed = require_exists(service.get_feed(id), "Feed not found")
+
+    Args:
+        item: The item to check (typically from a service.get_xxx() call)
+        detail: Error message for 404 response
+
+    Returns:
+        The item if it exists
+
+    Raises:
+        HTTPException: 404 if item is None/falsy
+    """
+    if not item:
+        raise HTTPException(status_code=404, detail=detail)
+    return item
+
+
+def extract_update_data(update_model: BaseModel) -> dict:
+    """
+    Extract non-None fields from a Pydantic update model.
+
+    Eliminates boilerplate:
+        update_data = {k: v for k, v in model.model_dump().items() if v is not None}
+
+    Usage:
+        update_data = extract_update_data(feed_update)
+        if not update_data:
+            return {"success": True, "message": "No fields to update"}
+
+    Args:
+        update_model: Pydantic model with update fields
+
+    Returns:
+        Dict of fields to update (excluding None values)
+    """
+    return {k: v for k, v in update_model.model_dump().items() if v is not None}

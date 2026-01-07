@@ -10,7 +10,7 @@ from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 
-from app.dependencies import verify_auth, COOKIE_NAME_ACCESS
+from app.dependencies import verify_auth, get_access_token, create_service_dependency
 from app.supabase_client import get_supabase_client
 from app.services.db.rag import RagService
 from app.services.ai import EmbeddingClient, ChatClient, get_active_config, normalize_base_url
@@ -35,18 +35,11 @@ router = APIRouter(prefix="/rag", tags=["rag"])
 # Dependencies
 # =============================================================================
 
-def get_rag_service(
-    request: Request,
-    auth_response=Depends(verify_auth),
-) -> RagService:
-    """获取 RagService 依赖"""
-    access_token = request.cookies.get(COOKIE_NAME_ACCESS)
-    supabase = get_supabase_client(access_token)
-    return RagService(supabase, auth_response.user.id)
+get_rag_service = create_service_dependency(RagService)
 
 
 def get_active_configs(
-    request: Request,
+    access_token: str = Depends(get_access_token),
     auth_response=Depends(verify_auth),
 ) -> dict:
     """
@@ -58,7 +51,6 @@ def get_active_configs(
     Raises:
         HTTPException: 配置不存在
     """
-    access_token = request.cookies.get(COOKIE_NAME_ACCESS)
     supabase = get_supabase_client(access_token)
     user_id = str(auth_response.user.id)
 
