@@ -28,7 +28,7 @@ app = Celery(
     broker=REDIS_URL,
     backend=REDIS_URL,
     include=[
-        "app.celery_app.tasks",
+        "app.celery_app.feed_refresh",
         "app.celery_app.image_processor",
         "app.celery_app.rag_processor",
         "app.celery_app.repository_tasks",
@@ -73,7 +73,7 @@ app.conf.update(
     },
     task_routes={
         # Existing tasks
-        "app.celery_app.tasks.refresh_feed": {"queue": "default"},
+        "app.celery_app.feed_refresh.refresh_feed": {"queue": "default"},
         "process_article_images": {"queue": "default"},
         "schedule_image_processing": {"queue": "default"},
         "process_article_rag": {"queue": "default"},
@@ -102,7 +102,7 @@ app.conf.update(
             "task": "scan_due_feeds",
             "schedule": crontab(minute="*"),
         },
-        # Fallback: scan for pending RAG articles every 30 minutes
+        # Fallback: scan for p1ending RAG articles every 30 minutes
         "scan-rag-every-30-minutes": {
             "task": "scan_pending_rag_articles",
             "schedule": crontab(minute="*/30"),

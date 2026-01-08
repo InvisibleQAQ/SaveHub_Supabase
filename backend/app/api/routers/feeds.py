@@ -66,7 +66,7 @@ async def create_feeds(
     saved_feeds = result.get("data", [])
     if saved_feeds:
         from datetime import datetime, timezone
-        from app.celery_app.tasks import refresh_feed
+        from app.celery_app.feed_refresh import refresh_feed
         from app.celery_app.supabase_client import get_supabase_service
 
         # Set last_fetched = now for new feeds to prevent Beat from re-triggering

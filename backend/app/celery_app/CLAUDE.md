@@ -78,7 +78,7 @@ schedule_rag_for_articles (reuse existing)
 |------|---------|
 | `celery.py` | Celery app configuration, beat_schedule |
 | `task_utils.py` | **Shared utilities**: unified error hierarchy, `TaskContext`, `build_task_result` |
-| `tasks.py` | Feed refresh tasks, batch scheduling orchestration |
+| `feed_refresh.py` | Feed refresh tasks, batch scheduling orchestration |
 | `image_processor.py` | Image processing tasks (single + batch) |
 | `rag_processor.py` | RAG embedding tasks |
 | `repo_extractor.py` | GitHub repo extraction from articles |
@@ -173,7 +173,7 @@ def my_task(self, resource_id: str, skip_lock: bool = False):
 
 ## Task Reference
 
-### tasks.py
+### feed_refresh.py
 
 | Task | Mode | Description |
 |------|------|-------------|
@@ -233,4 +233,4 @@ def my_task(self, resource_id: str, skip_lock: bool = False):
 1. **Feed-level lock**: `refresh_feed` and `refresh_feed_batch` share same lock key `feed:{feed_id}`
 2. **Beat overlap lock**: `scan_due_feeds` uses lock with 55s TTL
 3. **New feed handling**: `POST /feeds` sets `last_fetched = now` before scheduling, preventing Beat re-trigger
-4. **Deleted feed handling**: Tasks check if feed exists before refresh; if deleted, skip with `feed_deleted` and terminate chain (tasks.py:286-302, 671-680)
+4. **Deleted feed handling**: Tasks check if feed exists before refresh; if deleted, skip with `feed_deleted` and terminate chain (feed_refresh.py:286-302, 671-680)

@@ -12,7 +12,7 @@ from uuid import UUID
 
 from app.dependencies import verify_auth, COOKIE_NAME_ACCESS
 from app.supabase_client import get_supabase_client
-from app.celery_app.tasks import refresh_feed, schedule_all_feeds
+from app.celery_app.feed_refresh import refresh_feed, schedule_all_feeds
 from app.celery_app.task_lock import get_task_lock
 
 router = APIRouter(prefix="/queue", tags=["queue"])

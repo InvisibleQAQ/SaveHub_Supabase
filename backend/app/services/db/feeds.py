@@ -15,7 +15,7 @@ logger = logging.getLogger(__name__)
 def _cancel_feed_task(feed_id: str):
     """Cancel Celery refresh task for a feed (lazy import to avoid circular deps)."""
     try:
-        from app.celery_app.tasks import cancel_feed_refresh
+        from app.celery_app.feed_refresh import cancel_feed_refresh
         cancel_feed_refresh(feed_id)
     except Exception as e:
         logger.warning(f"Failed to cancel feed task {feed_id}: {e}")
