@@ -13,7 +13,6 @@ import { FolderItem } from "./folder-item"
 import { FeedItem } from "./feed-item"
 import { HelpDialog } from "../help-dialog"
 import { FeedRefresh } from "../feed-refresh"
-import { ChatSessionList } from "./chat-session-list"
 import { useRSSStore } from "@/lib/store"
 import { useAuth } from "@/lib/context/auth-context"
 import { cn } from "@/lib/utils"
@@ -196,8 +195,7 @@ export function ExpandedView({
         <ViewButton href="/all" icon={BookOpen} label="All Articles" count={totalArticles} isActive={pathname === "/all"} variant="full" />
         <ViewButton href="/unread" icon={Rss} label="Unread" count={totalUnread} isActive={pathname === "/unread"} variant="full" />
         <ViewButton href="/starred" icon={Star} label="Starred" count={totalStarred} isActive={pathname === "/starred"} variant="full" />
-        <ViewButton href="/chat" icon={MessageSquare} label="Chat" isActive={pathname === "/chat"} variant="full" />
-        <ChatSessionList />
+        <ViewButton href="/chat" icon={MessageSquare} label="Chat" isActive={pathname.startsWith("/chat")} variant="full" />
         <ViewButton href="/repository" icon={Github} label="Repository" count={totalRepositories} isActive={pathname === "/repository"} variant="full" />
 
         <Button

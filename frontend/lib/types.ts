@@ -87,6 +87,7 @@ export interface RSSReaderState {
   searchQuery: string
   isDatabaseReady: boolean
   isSidebarCollapsed: boolean
+  isChatSidebarCollapsed: boolean
   settings: {
     theme: string
     fontSize: number

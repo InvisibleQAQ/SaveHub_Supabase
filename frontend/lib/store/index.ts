@@ -59,6 +59,7 @@ export const useRSSStore = create<RSSReaderStore>()((...a) => ({
   viewMode: "all",
   settings: defaultSettings,
   isSidebarCollapsed: false,
+  isChatSidebarCollapsed: false,
   // Chat state
   chatSessions: [],
   currentSessionId: null,

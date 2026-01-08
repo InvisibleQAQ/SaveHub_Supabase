@@ -49,7 +49,7 @@ export function CollapsedView({ onExpand, totalArticles, totalUnread, totalStarr
         <ViewButton href="/all" icon={BookOpen} label="All Articles" count={totalArticles} isActive={pathname === "/all"} variant="icon" />
         <ViewButton href="/unread" icon={Rss} label="Unread" count={totalUnread} isActive={pathname === "/unread"} variant="icon" />
         <ViewButton href="/starred" icon={Star} label="Starred" count={totalStarred} isActive={pathname === "/starred"} variant="icon" />
-        <ViewButton href="/chat" icon={MessageSquare} label="Chat" isActive={pathname === "/chat"} variant="icon" />
+        <ViewButton href="/chat" icon={MessageSquare} label="Chat" isActive={pathname.startsWith("/chat")} variant="icon" />
         <ViewButton href="/repository" icon={Github} label="Repository" count={totalRepositories} isActive={pathname === "/repository"} variant="icon" />
       </div>
 

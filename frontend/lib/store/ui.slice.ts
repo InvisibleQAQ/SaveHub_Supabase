@@ -10,6 +10,8 @@ export interface UISlice {
   setError: (error: string | null) => void
   toggleSidebar: () => void
   setSidebarCollapsed: (collapsed: boolean) => void
+  toggleChatSidebar: () => void
+  setChatSidebarCollapsed: (collapsed: boolean) => void
   getFilteredArticles: (options?: { viewMode?: "all" | "unread" | "starred"; feedId?: string | null }) => Article[]
   getUnreadCount: (feedId?: string) => number
 }
@@ -53,6 +55,14 @@ export const createUISlice: StateCreator<
 
   setSidebarCollapsed: (collapsed) => {
     set({ isSidebarCollapsed: collapsed } as any)
+  },
+
+  toggleChatSidebar: () => {
+    set((state: any) => ({ isChatSidebarCollapsed: !state.isChatSidebarCollapsed }))
+  },
+
+  setChatSidebarCollapsed: (collapsed) => {
+    set({ isChatSidebarCollapsed: collapsed } as any)
   },
 
   getFilteredArticles: (options) => {

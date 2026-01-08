@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button"
 import { Textarea } from "@/components/ui/textarea"
 import { ChatMessage } from "./chat-message"
 import { ChatStatus } from "./chat-status"
+import { ChatSidebar } from "./chat-sidebar"
 import { useRSSStore } from "@/lib/store"
 import { chatApi, type ChatMessage as ApiMessage } from "@/lib/api/chat"
 import type { StreamEvent, RetrievedSource } from "@/lib/api/rag-chat"
@@ -137,9 +138,14 @@ export function ChatPage() {
   }
 
   return (
-    <div className="flex-1 flex flex-col h-full overflow-hidden bg-background">
-      {/* Header */}
-      <div className="border-b px-6 py-4 flex items-center gap-3">
+    <div className="flex-1 flex h-full overflow-hidden">
+      {/* Chat Sidebar */}
+      <ChatSidebar />
+
+      {/* Main Chat Area */}
+      <div className="flex-1 flex flex-col h-full overflow-hidden bg-background">
+        {/* Header */}
+        <div className="border-b px-6 py-4 flex items-center gap-3">
         <div className="p-2 rounded-lg bg-primary/10">
           <Sparkles className="w-5 h-5 text-primary" />
         </div>
@@ -205,6 +211,7 @@ export function ChatPage() {
             )}
           </Button>
         </div>
+      </div>
       </div>
     </div>
   )
