@@ -30,7 +30,7 @@ router = APIRouter(prefix="/auth", tags=["auth"])
 # Cookie settings
 COOKIE_NAME_ACCESS = "sb_access_token"
 COOKIE_NAME_REFRESH = "sb_refresh_token"
-COOKIE_MAX_AGE = 60 * 60 * 24 * 7  # 7 days
+COOKIE_MAX_AGE = 60 * 60 * 24 * 30  # 30 days
 COOKIE_HTTPONLY = True
 COOKIE_SECURE = os.environ.get("COOKIE_SECURE", "false").lower() == "true"
 COOKIE_SAMESITE = "lax"
@@ -89,6 +89,7 @@ async def login(request: LoginRequest, response: Response):
             email=user.email or "",
             access_token=session.access_token,
             refresh_token=session.refresh_token,
+            expires_in=session.expires_in,
         )
 
     except AuthApiError as e:
@@ -128,6 +129,7 @@ async def register(request: RegisterRequest, response: Response):
             email=user.email or "",
             access_token=session.access_token if session else None,
             refresh_token=session.refresh_token if session else None,
+            expires_in=session.expires_in if session else None,
         )
 
     except AuthApiError as e:
@@ -192,6 +194,7 @@ async def get_session(request: Request):
             email=user.email,
             access_token=access_token,
             refresh_token=refresh_token_cookie,
+            expires_in=3600,  # Supabase default token validity
         )
 
     except Exception as e:
@@ -222,7 +225,11 @@ async def refresh_token(request: Request, response: Response):
 
         logger.debug("Token refreshed successfully")
 
-        return RefreshResponse(success=True, message="Token refreshed")
+        return RefreshResponse(
+            success=True,
+            message="Token refreshed",
+            expires_in=session.expires_in,
+        )
 
     except AuthApiError as e:
         logger.warning(f"Token refresh failed: {str(e)}")

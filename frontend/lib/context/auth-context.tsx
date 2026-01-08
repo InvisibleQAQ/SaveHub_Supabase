@@ -54,8 +54,8 @@ export function AuthProvider({ children }: AuthProviderProps) {
         const session = await authApi.getSession()
         if (session.authenticated && session.user) {
           setUser(session.user)
-          // Initialize token expiry on successful session check
-          setTokenExpiry(3600)
+          // Use server-provided expiry time, fallback to default
+          setTokenExpiry(session.expiresIn || 3600)
         } else {
           setUser(null)
         }
@@ -88,7 +88,8 @@ export function AuthProvider({ children }: AuthProviderProps) {
   const login = useCallback(async (email: string, password: string) => {
     const authUser = await authApi.login(email, password)
     setUser(authUser)
-    setTokenExpiry(3600) // Set token expiry after login
+    // Use server-provided expiry time, fallback to default
+    setTokenExpiry(authUser.expiresIn || 3600)
     router.push("/all")
     router.refresh()
   }, [router])
@@ -96,7 +97,8 @@ export function AuthProvider({ children }: AuthProviderProps) {
   const register = useCallback(async (email: string, password: string) => {
     const authUser = await authApi.register(email, password)
     setUser(authUser)
-    setTokenExpiry(3600) // Set token expiry after register
+    // Use server-provided expiry time, fallback to default
+    setTokenExpiry(authUser.expiresIn || 3600)
     router.push("/all")
     router.refresh()
   }, [router])

@@ -10,6 +10,7 @@ export interface AuthUser {
   email: string
   accessToken?: string
   refreshToken?: string
+  expiresIn?: number
 }
 
 export interface SessionResponse {
@@ -17,6 +18,7 @@ export interface SessionResponse {
   user?: AuthUser
   accessToken?: string
   refreshToken?: string
+  expiresIn?: number
 }
 
 export interface AuthError {
@@ -48,6 +50,7 @@ export async function login(email: string, password: string): Promise<AuthUser> 
     email: data.email,
     accessToken: data.access_token,
     refreshToken: data.refresh_token,
+    expiresIn: data.expires_in,
   }
 }
 
@@ -77,6 +80,7 @@ export async function register(email: string, password: string): Promise<AuthUse
     email: data.email,
     accessToken: data.access_token,
     refreshToken: data.refresh_token,
+    expiresIn: data.expires_in,
   }
 }
 
@@ -124,6 +128,7 @@ export async function getSession(): Promise<SessionResponse> {
       },
       accessToken: data.access_token,
       refreshToken: data.refresh_token,
+      expiresIn: data.expires_in,
     }
   } catch {
     return { authenticated: false }

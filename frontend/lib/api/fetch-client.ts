@@ -127,8 +127,10 @@ async function doRefresh(): Promise<boolean> {
       })
 
       if (response.ok) {
-        // Update token expiry on successful refresh
-        setTokenExpiry(DEFAULT_TOKEN_VALIDITY_SECONDS)
+        // Read expires_in from server response, fallback to default
+        const data = await response.json()
+        const expiresIn = data.expires_in || DEFAULT_TOKEN_VALIDITY_SECONDS
+        setTokenExpiry(expiresIn)
         return true
       }
       return false

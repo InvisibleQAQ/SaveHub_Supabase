@@ -23,6 +23,8 @@ class AuthResponse(BaseModel):
     # Tokens for frontend Supabase SDK initialization
     access_token: Optional[str] = None
     refresh_token: Optional[str] = None
+    # Token validity period in seconds (from Supabase session)
+    expires_in: Optional[int] = None
 
 
 class SessionResponse(BaseModel):
@@ -33,12 +35,16 @@ class SessionResponse(BaseModel):
     # Tokens for frontend Supabase SDK initialization (on page reload)
     access_token: Optional[str] = None
     refresh_token: Optional[str] = None
+    # Token validity period in seconds
+    expires_in: Optional[int] = None
 
 
 class RefreshResponse(BaseModel):
     """Response model for token refresh."""
     success: bool
     message: Optional[str] = None
+    # Token validity period in seconds (from refreshed session)
+    expires_in: Optional[int] = None
 
 
 class LogoutResponse(BaseModel):

@@ -27,11 +27,16 @@ logger = logging.getLogger(__name__)
 
 # Import realtime forwarder for lifecycle management
 from app.services.supabase_realtime import realtime_forwarder
+from app.services.realtime import connection_manager
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Application lifespan manager for startup/shutdown events."""
+    # Startup: Start connection cleanup task
+    logger.info("Starting WebSocket connection cleanup task...")
+    await connection_manager.start_cleanup_task()
+
     # Startup: Start Supabase Realtime subscription
     logger.info("Starting Supabase Realtime forwarder...")
     await realtime_forwarder.start()
@@ -41,6 +46,10 @@ async def lifespan(app: FastAPI):
     # Shutdown: Stop Supabase Realtime subscription
     logger.info("Stopping Supabase Realtime forwarder...")
     await realtime_forwarder.stop()
+
+    # Shutdown: Stop connection cleanup task
+    logger.info("Stopping WebSocket connection cleanup task...")
+    await connection_manager.stop_cleanup_task()
 
 
 app = FastAPI(

@@ -4,6 +4,7 @@ Provides WebSocket endpoint that authenticates via cookie and
 forwards Supabase postgres_changes to connected clients.
 """
 
+import asyncio
 import logging
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 from supabase import create_client, Client
@@ -20,6 +21,9 @@ SUPABASE_KEY = os.environ.get("SUPABASE_ANON_KEY", "")
 
 # Cookie names (must match auth router)
 COOKIE_NAME_ACCESS = "sb_access_token"
+
+# Heartbeat timeout: client sends ping every 30s, allow 3 missed heartbeats
+HEARTBEAT_TIMEOUT = 90  # seconds
 
 
 def get_supabase_client() -> Client:
@@ -101,12 +105,25 @@ async def websocket_realtime(websocket: WebSocket):
         # Keep connection alive and handle client messages
         while True:
             try:
-                # Wait for client messages (ping/pong, etc.)
-                data = await websocket.receive_json()
+                # Wait for client messages with timeout
+                # Client should send ping every 30s, timeout after 90s (3 missed heartbeats)
+                data = await asyncio.wait_for(
+                    websocket.receive_json(),
+                    timeout=HEARTBEAT_TIMEOUT
+                )
+
+                # Update activity timestamp
+                connection_manager.update_activity(websocket, user_id)
 
                 # Handle ping
                 if data.get("type") == "ping":
                     await websocket.send_json({"type": "pong"})
+
+            except asyncio.TimeoutError:
+                # No message received within timeout, close connection
+                logger.warning(f"WebSocket heartbeat timeout: user={user_id}")
+                await websocket.close(code=4002, reason="Heartbeat timeout")
+                break
 
             except WebSocketDisconnect:
                 logger.info(f"WebSocket client disconnected: user={user_id}")
