@@ -19,7 +19,7 @@ from .async_utils import run_async
 from .celery import app
 from .task_lock import get_task_lock
 from .supabase_client import get_supabase_service
-from .task_utils import task_context, build_task_result
+from .task_utils import task_context, build_task_result, acquire_task_lock
 from app.services.repository_analyzer import analyze_repositories_needing_analysis
 from app.services.db.repositories import RepositoryService
 
@@ -529,12 +529,10 @@ def sync_repositories(
     lock_ttl = 660  # 11 minutes (longer than task timeout)
 
     with task_context(self, user_id=user_id, trigger=trigger) as ctx:
-        ctx.log_start(f"[REPO_SYNC] Starting sync for user {user_id}, trigger={trigger}")
+        ctx.log_start(f"Starting repo sync, trigger={trigger}")
 
         # Acquire lock to prevent duplicate execution
-        if not task_lock.acquire(lock_key, lock_ttl, ctx.task_id):
-            remaining = task_lock.get_ttl(lock_key)
-            logger.info(f"[REPO_SYNC] User {user_id} sync already running, lock expires in {remaining}s")
+        if not acquire_task_lock(ctx, task_lock, lock_key, lock_ttl):
             raise Reject(f"Repo sync for user {user_id} is locked", requeue=False)
 
         try:

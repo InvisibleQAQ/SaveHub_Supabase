@@ -27,6 +27,8 @@ from .task_utils import (
     NonRetryableFeedError,
     is_retryable_message,
     STAGGER_DELAY_BATCH,
+    acquire_task_lock,
+    check_resource_exists,
 )
 
 logger = logging.getLogger(__name__)
@@ -282,29 +284,16 @@ def refresh_feed(
         ctx.log_start(f"Proceed: priority={priority}")
 
         # Check task lock (prevent duplicate execution)
-        if not skip_lock:
-            # Lock TTL should be longer than task timeout
-            lock_ttl = 180  # 3 minutes
-            if not task_lock.acquire(lock_key, lock_ttl, ctx.task_id):
-                remaining = task_lock.get_ttl(lock_key)
-                logger.info(
-                    f"[{ctx.task_id}] Feed {feed_id} already being processed, "
-                    f"lock expires in {remaining}s"
-                )
-                # Don't retry, just reject
-                raise Reject(f"Feed {feed_id} is locked", requeue=False)
+        lock_ttl = 180  # 3 minutes, longer than task timeout
+        if not acquire_task_lock(ctx, task_lock, lock_key, lock_ttl, skip_lock):
+            raise Reject(f"Feed {feed_id} is locked", requeue=False)
 
         try:
             # Check if feed still exists (may have been deleted while task was queued)
             supabase = get_supabase_service()
-            feed_check = supabase.table("feeds").select("id").eq(
-                "id", feed_id
-            ).eq("user_id", user_id).execute()
-
-            if not feed_check.data:
-                # Feed no longer exists, skip and terminate task chain
+            if not check_resource_exists(supabase, "feeds", feed_id, user_id):
                 logger.info(
-                    f"Feed {feed_id} no longer exists, skipping refresh",
+                    "Feed no longer exists, skipping refresh",
                     extra=ctx.log_extra(reason='feed_deleted')
                 )
                 return {
@@ -588,6 +577,7 @@ def refresh_feed_batch(
     feed_title: str,
     user_id: str,
     refresh_interval: int,
+    skip_lock: bool = False,
 ):
     """
     Batch mode feed refresh task.
@@ -603,6 +593,7 @@ def refresh_feed_batch(
         feed_title: Display name
         user_id: User UUID
         refresh_interval: Refresh interval in minutes
+        skip_lock: Skip lock check (used during retries)
     """
     task_lock = get_task_lock()
     lock_key = f"feed:{feed_id}"
@@ -617,8 +608,7 @@ def refresh_feed_batch(
         refresh_interval=refresh_interval,
     ) as ctx:
         # Check task lock (prevent duplicate execution)
-        if not task_lock.acquire(lock_key, lock_ttl, ctx.task_id):
-            logger.info(f"[BATCH] Feed {feed_id} already being processed, skipping")
+        if not acquire_task_lock(ctx, task_lock, lock_key, lock_ttl, skip_lock):
             return {
                 "success": True,
                 "feed_id": feed_id,
@@ -630,13 +620,11 @@ def refresh_feed_batch(
         try:
             # Check if feed still exists
             supabase = get_supabase_service()
-            feed_check = supabase.table("feeds").select("id").eq(
-                "id", feed_id
-            ).eq("user_id", user_id).execute()
-
-            if not feed_check.data:
-                # Feed no longer exists, skip and terminate task chain
-                logger.info(f"[BATCH] Feed {feed_id} no longer exists, skipping")
+            if not check_resource_exists(supabase, "feeds", feed_id, user_id):
+                logger.info(
+                    "Feed no longer exists, skipping batch refresh",
+                    extra=ctx.log_extra(reason='feed_deleted')
+                )
                 return {
                     "success": True,
                     "feed_id": feed_id,
@@ -664,7 +652,10 @@ def refresh_feed_batch(
 
         except RetryableError as e:
             update_feed_status(feed_id, user_id, "failed", str(e))
-            raise self.retry(exc=e)
+            raise self.retry(
+                exc=e,
+                kwargs={**self.request.kwargs, "skip_lock": True}
+            )
 
         except NonRetryableError as e:
             update_feed_status(feed_id, user_id, "failed", str(e))

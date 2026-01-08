@@ -365,3 +365,67 @@ STAGGER_DELAY_FAST = 2       # Fast tasks (repo extraction batch)
 STAGGER_DELAY_NORMAL = 3     # Normal tasks (RAG processing, scan fallback)
 STAGGER_DELAY_BATCH = 5      # Batch scheduling (feed batches, RAG scan)
 STAGGER_DELAY_MERGE = 30     # Merge window (sync trigger debounce)
+
+
+# =============================================================================
+# Task Lock Helpers
+# =============================================================================
+
+def acquire_task_lock(
+    ctx: TaskContext,
+    task_lock,
+    lock_key: str,
+    lock_ttl: int,
+    skip_lock: bool = False,
+) -> bool:
+    """
+    Acquire task lock with consistent logging.
+
+    Args:
+        ctx: Task context for logging
+        task_lock: TaskLock instance from get_task_lock()
+        lock_key: Redis lock key
+        lock_ttl: Lock TTL in seconds
+        skip_lock: Skip lock acquisition (for retries)
+
+    Returns:
+        True if lock acquired or skipped, False if locked by another task
+    """
+    if skip_lock:
+        return True
+
+    if task_lock.acquire(lock_key, lock_ttl, ctx.task_id):
+        return True
+
+    remaining = task_lock.get_ttl(lock_key)
+    logger.info(
+        f"Task locked: {lock_key}, expires in {remaining}s",
+        extra=ctx.log_extra(lock_key=lock_key, remaining_ttl=remaining)
+    )
+    return False
+
+
+def check_resource_exists(
+    supabase,
+    table: str,
+    resource_id: str,
+    user_id: str,
+    id_column: str = "id",
+) -> bool:
+    """
+    Check if a resource exists in database.
+
+    Args:
+        supabase: Supabase client
+        table: Table name
+        resource_id: Resource ID to check
+        user_id: User ID for RLS
+        id_column: ID column name (default: "id")
+
+    Returns:
+        True if resource exists
+    """
+    result = supabase.table(table).select("id").eq(
+        id_column, resource_id
+    ).eq("user_id", user_id).execute()
+    return bool(result.data)

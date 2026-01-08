@@ -138,8 +138,38 @@ def my_task(self, article_id: str):
 |----------|---------|
 | `task_context(task, **extra)` | Context manager for task execution (timing, logging) |
 | `build_task_result(ctx, success, **kwargs)` | Build standardized result dict with `duration_ms` |
+| `acquire_task_lock(ctx, task_lock, lock_key, lock_ttl, skip_lock)` | Acquire task lock with consistent logging |
+| `check_resource_exists(supabase, table, resource_id, user_id)` | Check if a resource exists in database |
 | `is_retryable(error)` | Check if error should trigger retry |
 | `is_retryable_message(msg)` | Check error message for retryable patterns |
+
+### Task Lock Pattern
+
+Use `acquire_task_lock()` for consistent lock handling across all tasks:
+
+```python
+from .task_utils import acquire_task_lock
+
+@app.task(bind=True, name="my_task")
+def my_task(self, resource_id: str, skip_lock: bool = False):
+    task_lock = get_task_lock()
+    lock_key = f"resource:{resource_id}"
+    lock_ttl = 180
+
+    with task_context(self, resource_id=resource_id) as ctx:
+        if not acquire_task_lock(ctx, task_lock, lock_key, lock_ttl, skip_lock):
+            raise Reject(f"Resource {resource_id} is locked", requeue=False)
+
+        try:
+            # ... task logic ...
+        except RetryableError as e:
+            raise self.retry(
+                exc=e,
+                kwargs={**self.request.kwargs, "skip_lock": True}
+            )
+        finally:
+            task_lock.release(lock_key, ctx.task_id)
+```
 
 ## Task Reference
 
