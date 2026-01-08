@@ -126,3 +126,36 @@ class ExternalServiceError(AppException):
             status_code=502,
             error_code="EXTERNAL_SERVICE_ERROR",
         )
+
+
+class AuthenticationError(AppException):
+    """
+    External service authentication failed (401).
+
+    Usage:
+        raise AuthenticationError("GitHub token")  # "Invalid GitHub token"
+        raise AuthenticationError("API key")       # "Invalid API key"
+    """
+
+    def __init__(self, credential: str = "credentials"):
+        super().__init__(
+            message=f"Invalid {credential}",
+            status_code=401,
+            error_code="AUTHENTICATION_ERROR",
+        )
+
+
+class RateLimitError(AppException):
+    """
+    Rate limit exceeded (429).
+
+    Usage:
+        raise RateLimitError("GitHub API")  # "GitHub API rate limit exceeded"
+    """
+
+    def __init__(self, service: str = "API"):
+        super().__init__(
+            message=f"{service} rate limit exceeded",
+            status_code=429,
+            error_code="RATE_LIMIT_EXCEEDED",
+        )

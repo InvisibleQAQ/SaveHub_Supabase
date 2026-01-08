@@ -8,29 +8,20 @@ import json
 import logging
 from typing import AsyncGenerator
 
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, Depends, Request
 from fastapi.responses import StreamingResponse
 
 from app.dependencies import verify_auth, COOKIE_NAME_ACCESS
+from app.exceptions import ConfigurationError
 from app.supabase_client import get_supabase_client
 from app.schemas.rag_chat import RagChatRequest
 from app.services.self_rag_service import SelfRagService
 from app.services.db.api_configs import ApiConfigService
-from app.services.encryption import decrypt
+from app.services.ai.config import get_decrypted_config
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/rag-chat", tags=["rag-chat"])
-
-
-def _get_decrypted_config(config: dict) -> dict:
-    """解密 API 配置。"""
-    result = config.copy()
-    if result.get("api_key"):
-        result["api_key"] = decrypt(result["api_key"])
-    if result.get("api_base"):
-        result["api_base"] = decrypt(result["api_base"])
-    return result
 
 
 async def _sse_generator(
@@ -78,15 +69,15 @@ async def rag_chat_stream(
 
     chat_config = config_service.get_active_config("chat")
     if not chat_config:
-        raise HTTPException(status_code=400, detail="未配置 Chat API")
+        raise ConfigurationError("chat", "API")
 
     embedding_config = config_service.get_active_config("embedding")
     if not embedding_config:
-        raise HTTPException(status_code=400, detail="未配置 Embedding API")
+        raise ConfigurationError("embedding", "API")
 
     # 解密配置
-    chat_config = _get_decrypted_config(chat_config)
-    embedding_config = _get_decrypted_config(embedding_config)
+    chat_config = get_decrypted_config(chat_config)
+    embedding_config = get_decrypted_config(embedding_config)
 
     # 创建服务
     service = SelfRagService(

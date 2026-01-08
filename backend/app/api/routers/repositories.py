@@ -8,7 +8,7 @@ import logging
 import asyncio
 import json
 from typing import List
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, Depends, Request
 from fastapi.responses import StreamingResponse
 import httpx
 
@@ -19,7 +19,15 @@ from app.dependencies import (
     require_exists,
     COOKIE_NAME_ACCESS,
 )
-from app.exceptions import NotFoundError, ConfigurationError, ValidationError
+from app.exceptions import (
+    AppException,
+    NotFoundError,
+    ConfigurationError,
+    ValidationError,
+    AuthenticationError,
+    RateLimitError,
+    ExternalServiceError,
+)
 from app.supabase_client import get_supabase_client
 from app.schemas.repositories import (
     RepositoryResponse,
@@ -262,10 +270,10 @@ async def sync_repositories(
                 "data": result
             })
 
-        except HTTPException as e:
+        except AppException as e:
             await progress_queue.put({
                 "event": "error",
-                "data": {"message": e.detail}
+                "data": {"message": e.message}
             })
         except Exception as e:
             logger.error(f"Sync failed: {e}")
@@ -323,11 +331,11 @@ async def _fetch_all_starred_repos(token: str) -> List[dict]:
             )
 
             if response.status_code == 401:
-                raise HTTPException(status_code=401, detail="Invalid GitHub token")
+                raise AuthenticationError("GitHub token")
             if response.status_code == 403:
-                raise HTTPException(status_code=403, detail="GitHub API rate limit exceeded")
+                raise RateLimitError("GitHub API")
             if response.status_code != 200:
-                raise HTTPException(status_code=502, detail=f"GitHub API error: {response.status_code}")
+                raise ExternalServiceError("GitHub API", f"status {response.status_code}")
 
             repos = response.json()
             if not repos:
