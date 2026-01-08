@@ -7,7 +7,7 @@
 import { fetchWithAuth, isTokenExpiringSoon, proactiveRefresh } from "./fetch-client"
 import type { RetrievedSource, StreamEvent, StreamEventType } from "./rag-chat"
 
-const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000"
+const API_BASE = "/api/backend/chat"
 
 // =============================================================================
 // Types
@@ -43,13 +43,13 @@ export const chatApi = {
   // Session CRUD
 
   async listSessions(): Promise<ChatSession[]> {
-    const res = await fetchWithAuth(`${API_BASE}/api/chat/sessions`)
+    const res = await fetchWithAuth(`${API_BASE}/sessions`)
     if (!res.ok) throw new Error("Failed to list sessions")
     return res.json()
   },
 
   async createSession(id?: string, title?: string): Promise<ChatSession> {
-    const res = await fetchWithAuth(`${API_BASE}/api/chat/sessions`, {
+    const res = await fetchWithAuth(`${API_BASE}/sessions`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ id, title: title || "New Chat" }),
@@ -59,13 +59,13 @@ export const chatApi = {
   },
 
   async getSessionMessages(sessionId: string): Promise<Message[]> {
-    const res = await fetchWithAuth(`${API_BASE}/api/chat/sessions/${sessionId}`)
+    const res = await fetchWithAuth(`${API_BASE}/sessions/${sessionId}`)
     if (!res.ok) throw new Error("Failed to get messages")
     return res.json()
   },
 
   async updateSession(sessionId: string, updates: { title?: string }): Promise<ChatSession> {
-    const res = await fetchWithAuth(`${API_BASE}/api/chat/sessions/${sessionId}`, {
+    const res = await fetchWithAuth(`${API_BASE}/sessions/${sessionId}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(updates),
@@ -75,7 +75,7 @@ export const chatApi = {
   },
 
   async deleteSession(sessionId: string): Promise<void> {
-    const res = await fetchWithAuth(`${API_BASE}/api/chat/sessions/${sessionId}`, {
+    const res = await fetchWithAuth(`${API_BASE}/sessions/${sessionId}`, {
       method: "DELETE",
     })
     if (!res.ok) throw new Error("Failed to delete session")
@@ -94,7 +94,7 @@ export const chatApi = {
       if (!refreshed) throw new Error("Session expired")
     }
 
-    const res = await fetchWithAuth(`${API_BASE}/api/chat/sessions/${sessionId}/stream`, {
+    const res = await fetchWithAuth(`${API_BASE}/sessions/${sessionId}/stream`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ session_id: sessionId, messages }),
