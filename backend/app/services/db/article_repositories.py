@@ -6,17 +6,16 @@ Manages the many-to-many relationship between articles and repositories.
 
 import logging
 from typing import List, Optional
-from supabase import Client
+
+from .base import BaseDbService
 
 logger = logging.getLogger(__name__)
 
 
-class ArticleRepositoryService:
+class ArticleRepositoryService(BaseDbService):
     """Service for article-repository junction operations."""
 
-    def __init__(self, supabase: Client, user_id: str):
-        self.supabase = supabase
-        self.user_id = user_id
+    table_name = "article_repositories"
 
     def link_article_to_repo(
         self,
@@ -36,13 +35,14 @@ class ArticleRepositoryService:
             Created record or None if already exists
         """
         try:
-            response = self.supabase.table("article_repositories").upsert(
-                {
-                    "article_id": article_id,
-                    "repository_id": repository_id,
-                    "user_id": self.user_id,
-                    "extracted_url": extracted_url,
-                },
+            record = self._dict_to_row({
+                "article_id": article_id,
+                "repository_id": repository_id,
+                "extracted_url": extracted_url,
+            })
+
+            response = self._table().upsert(
+                record,
                 on_conflict="article_id,repository_id"
             ).execute()
 
@@ -76,17 +76,16 @@ class ArticleRepositoryService:
             return 0
 
         records = [
-            {
+            self._dict_to_row({
                 "article_id": article_id,
                 "repository_id": link["repository_id"],
-                "user_id": self.user_id,
                 "extracted_url": link["extracted_url"],
-            }
+            })
             for link in repo_links
         ]
 
         try:
-            response = self.supabase.table("article_repositories").upsert(
+            response = self._table().upsert(
                 records,
                 on_conflict="article_id,repository_id"
             ).execute()
@@ -109,10 +108,8 @@ class ArticleRepositoryService:
         Returns:
             List of repository records with junction data
         """
-        response = self.supabase.table("article_repositories") \
-            .select("*, repositories(*)") \
+        response = self._query("*, repositories(*)") \
             .eq("article_id", article_id) \
-            .eq("user_id", self.user_id) \
             .execute()
 
         return response.data or []
@@ -127,10 +124,8 @@ class ArticleRepositoryService:
         Returns:
             List of article records with junction data
         """
-        response = self.supabase.table("article_repositories") \
-            .select("*, articles(id, title, url, published_at)") \
+        response = self._query("*, articles(id, title, url, published_at)") \
             .eq("repository_id", repository_id) \
-            .eq("user_id", self.user_id) \
             .order("created_at", desc=True) \
             .execute()
 
@@ -138,10 +133,8 @@ class ArticleRepositoryService:
 
     def get_repo_count_for_article(self, article_id: str) -> int:
         """Get count of repositories linked to an article."""
-        response = self.supabase.table("article_repositories") \
-            .select("id", count="exact") \
+        response = self._query("id") \
             .eq("article_id", article_id) \
-            .eq("user_id", self.user_id) \
             .execute()
 
-        return response.count or 0
+        return len(response.data) if response.data else 0

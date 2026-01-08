@@ -14,9 +14,12 @@ services/
     ├── base.py             # BaseDbService - 所有服务的基类
     ├── feeds.py            # FeedService - RSS订阅源 CRUD
     ├── articles.py         # ArticleService - 文章 CRUD + 统计 + 清理
-    ├── folders.py          # FolderService - 文件夹 CRUD
-    ├── settings.py         # SettingsService - 用户设置管理
-    └── api_configs.py      # ApiConfigService - API配置管理
+    ├── folders.py          # FolderService - 文件夹 CRUD (已重构)
+    ├── settings.py         # SettingsService - 用户设置管理 (已重构)
+    ├── api_configs.py      # ApiConfigService - API配置管理
+    ├── rag.py              # RagService - RAG 向量存储
+    ├── repositories.py     # RepositoryService - GitHub 仓库管理
+    └── article_repositories.py  # ArticleRepositoryService - 文章-仓库关联 (已重构)
 ```
 
 ## 设计模式
@@ -76,15 +79,18 @@ class MyService(BaseDbService):
 
 ## 服务说明
 
-| 服务 | 功能 |
-|------|------|
-| `ConnectionManager` | WebSocket 连接管理（多标签页支持） |
-| `SupabaseRealtimeForwarder` | 订阅 Supabase postgres_changes，转发给 WebSocket 客户端 |
-| `FeedService` | 订阅源增删改查、级联删除文章 |
-| `ArticleService` | 文章增删改查、过期清理、统计分析 |
-| `FolderService` | 文件夹增删改查 |
-| `SettingsService` | 用户偏好设置（主题、刷新间隔等） |
-| `ApiConfigService` | OpenAI兼容API配置（无加密，需自行实现） |
+| 服务 | 继承 BaseDbService | 功能 |
+|------|:------------------:|------|
+| `ConnectionManager` | - | WebSocket 连接管理（多标签页支持） |
+| `SupabaseRealtimeForwarder` | - | 订阅 Supabase postgres_changes，转发给 WebSocket 客户端 |
+| `FeedService` | | 订阅源增删改查、级联删除文章 |
+| `ArticleService` | | 文章增删改查、过期清理、统计分析 |
+| `FolderService` | ✅ | 文件夹增删改查 |
+| `SettingsService` | ✅ | 用户偏好设置（主题、刷新间隔等） |
+| `ApiConfigService` | | OpenAI兼容API配置（无加密，需自行实现） |
+| `RagService` | | RAG 向量存储、文章/仓库嵌入 |
+| `RepositoryService` | | GitHub 仓库管理 |
+| `ArticleRepositoryService` | ✅ | 文章-仓库多对多关联 |
 
 ## ConnectionManager (realtime.py)
 

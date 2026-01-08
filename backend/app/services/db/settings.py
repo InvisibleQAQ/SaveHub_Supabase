@@ -7,7 +7,8 @@ Mirrors the functionality of lib/db/settings.ts
 import logging
 from typing import Optional
 from datetime import datetime
-from supabase import Client
+
+from .base import BaseDbService
 
 logger = logging.getLogger(__name__)
 
@@ -24,12 +25,33 @@ DEFAULT_SETTINGS = {
 }
 
 
-class SettingsService:
+class SettingsService(BaseDbService):
     """Service for settings database operations."""
 
-    def __init__(self, supabase: Client, user_id: str):
-        self.supabase = supabase
-        self.user_id = user_id
+    table_name = "settings"
+
+    # Fields allowed in update operations
+    UPDATE_FIELDS = {
+        "theme", "font_size", "auto_refresh", "refresh_interval",
+        "articles_retention_days", "mark_as_read_on_scroll",
+        "show_thumbnails", "sidebar_pinned", "github_token"
+    }
+
+    def _row_to_dict(self, row: dict) -> dict:
+        """Convert database row to settings dict."""
+        return {
+            "user_id": row["user_id"],
+            "theme": row["theme"],
+            "font_size": row["font_size"],
+            "auto_refresh": row["auto_refresh"],
+            "refresh_interval": row["refresh_interval"],
+            "articles_retention_days": row["articles_retention_days"],
+            "mark_as_read_on_scroll": row["mark_as_read_on_scroll"],
+            "show_thumbnails": row["show_thumbnails"],
+            "sidebar_pinned": row.get("sidebar_pinned", False),
+            "github_token": row.get("github_token"),
+            "updated_at": row.get("updated_at"),
+        }
 
     def save_settings(self, settings: dict) -> None:
         """
@@ -39,8 +61,7 @@ class SettingsService:
         Args:
             settings: Settings dictionary
         """
-        db_settings = {
-            "user_id": self.user_id,
+        db_settings = self._dict_to_row({
             "theme": settings.get("theme", DEFAULT_SETTINGS["theme"]),
             "font_size": settings.get("font_size", DEFAULT_SETTINGS["font_size"]),
             "auto_refresh": settings.get("auto_refresh", DEFAULT_SETTINGS["auto_refresh"]),
@@ -50,12 +71,12 @@ class SettingsService:
             "show_thumbnails": settings.get("show_thumbnails", DEFAULT_SETTINGS["show_thumbnails"]),
             "sidebar_pinned": settings.get("sidebar_pinned", DEFAULT_SETTINGS["sidebar_pinned"]),
             "github_token": settings.get("github_token"),
-            "updated_at": datetime.utcnow().isoformat(),
-        }
+            "updated_at": datetime.utcnow(),
+        })
 
         logger.debug(f"Saving settings for user {self.user_id}")
 
-        self.supabase.table("settings").upsert(db_settings).execute()
+        self._table().upsert(db_settings).execute()
 
         logger.info(f"Saved settings for user {self.user_id}")
 
@@ -67,35 +88,7 @@ class SettingsService:
         Returns:
             Settings dictionary or None
         """
-        try:
-            response = self.supabase.table("settings") \
-                .select("*") \
-                .eq("user_id", self.user_id) \
-                .single() \
-                .execute()
-
-            if response.data:
-                row = response.data
-                return {
-                    "user_id": row["user_id"],
-                    "theme": row["theme"],
-                    "font_size": row["font_size"],
-                    "auto_refresh": row["auto_refresh"],
-                    "refresh_interval": row["refresh_interval"],
-                    "articles_retention_days": row["articles_retention_days"],
-                    "mark_as_read_on_scroll": row["mark_as_read_on_scroll"],
-                    "show_thumbnails": row["show_thumbnails"],
-                    "sidebar_pinned": row.get("sidebar_pinned", False),
-                    "github_token": row.get("github_token"),
-                    "updated_at": row.get("updated_at"),
-                }
-            return None
-        except Exception as e:
-            # PGRST116 = no rows found
-            if "PGRST116" in str(e):
-                return None
-            logger.error(f"Failed to load settings: {e}")
-            raise
+        return self._get_one({}, not_found_ok=True)
 
     def update_settings(self, updates: dict) -> None:
         """
@@ -107,37 +100,19 @@ class SettingsService:
         """
         update_data = {"updated_at": datetime.utcnow().isoformat()}
 
-        field_mapping = {
-            "theme": "theme",
-            "font_size": "font_size",
-            "auto_refresh": "auto_refresh",
-            "refresh_interval": "refresh_interval",
-            "articles_retention_days": "articles_retention_days",
-            "mark_as_read_on_scroll": "mark_as_read_on_scroll",
-            "show_thumbnails": "show_thumbnails",
-            "sidebar_pinned": "sidebar_pinned",
-            "github_token": "github_token",
-        }
-
-        for key, db_key in field_mapping.items():
+        # Special handling: allow None values (to delete github_token)
+        for key in self.UPDATE_FIELDS:
             if key in updates:
-                # Support explicit None to delete token
-                update_data[db_key] = updates[key]
+                update_data[key] = updates[key]
 
         logger.debug(f"Updating settings: {list(update_data.keys())}")
 
-        self.supabase.table("settings") \
-            .update(update_data) \
-            .eq("user_id", self.user_id) \
-            .execute()
+        self._table().update(update_data).eq("user_id", self.user_id).execute()
 
         logger.info(f"Updated settings for user {self.user_id}")
 
     def delete_settings(self) -> None:
         """Delete user settings."""
-        self.supabase.table("settings") \
-            .delete() \
-            .eq("user_id", self.user_id) \
-            .execute()
+        self._table().delete().eq("user_id", self.user_id).execute()
 
         logger.info(f"Deleted settings for user {self.user_id}")

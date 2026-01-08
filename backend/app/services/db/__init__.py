@@ -7,6 +7,7 @@ from .folders import FolderService
 from .settings import SettingsService
 from .api_configs import ApiConfigService
 from .rag import RagService
+from .article_repositories import ArticleRepositoryService
 
 __all__ = [
     "BaseDbService",
@@ -16,4 +17,5 @@ __all__ = [
     "SettingsService",
     "ApiConfigService",
     "RagService",
+    "ArticleRepositoryService",
 ]
