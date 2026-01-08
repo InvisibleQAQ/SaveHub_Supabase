@@ -5,22 +5,61 @@ Handles CRUD operations for GitHub starred repositories.
 """
 
 import logging
-from typing import List
-from supabase import Client
+from datetime import datetime, timezone
+from typing import List, Optional
+
+from .base import BaseDbService
 
 logger = logging.getLogger(__name__)
 
 
-class RepositoryService:
+class RepositoryService(BaseDbService):
     """Service for repository database operations."""
 
-    def __init__(self, supabase: Client, user_id: str):
-        self.supabase = supabase
-        self.user_id = user_id
+    table_name = "repositories"
+
+    # Fields allowed in update operations
+    UPDATE_FIELDS = {"custom_description", "custom_tags", "custom_category"}
+
+    def _row_to_dict(self, row: dict) -> dict:
+        """Convert database row to response dict."""
+        return {
+            "id": row["id"],
+            "github_id": row["github_id"],
+            "name": row["name"],
+            "full_name": row["full_name"],
+            "description": row.get("description"),
+            "html_url": row["html_url"],
+            "stargazers_count": row.get("stargazers_count", 0),
+            "language": row.get("language"),
+            "topics": row.get("topics") or [],
+            "owner_login": row["owner_login"],
+            "owner_avatar_url": row.get("owner_avatar_url"),
+            "starred_at": row.get("starred_at"),
+            "github_updated_at": row.get("github_updated_at"),
+            "github_pushed_at": row.get("github_pushed_at"),
+            "readme_content": row.get("readme_content"),
+            # AI analysis fields
+            "ai_summary": row.get("ai_summary"),
+            "ai_tags": row.get("ai_tags") or [],
+            "ai_platforms": row.get("ai_platforms") or [],
+            "analyzed_at": row.get("analyzed_at"),
+            "analysis_failed": row.get("analysis_failed") or False,
+            # Custom edit fields
+            "custom_description": row.get("custom_description"),
+            "custom_tags": row.get("custom_tags") or [],
+            "custom_category": row.get("custom_category"),
+            "last_edited": row.get("last_edited"),
+            # Source tracking fields
+            "is_starred": row.get("is_starred") or False,
+            "is_extracted": row.get("is_extracted") or False,
+            # OpenRank
+            "openrank": row.get("openrank"),
+        }
 
     @classmethod
     def upsert_repositories_static(
-        cls, supabase: Client, user_id: str, repos: List[dict]
+        cls, supabase, user_id: str, repos: List[dict]
     ) -> dict:
         """
         Static method for upsert - used by Celery tasks.
@@ -37,10 +76,7 @@ class RepositoryService:
         Returns:
             {github_id: {"pushed_at": str | None, "has_readme": bool}}
         """
-        response = self.supabase.table("repositories") \
-            .select("github_id, github_pushed_at, readme_content") \
-            .eq("user_id", self.user_id) \
-            .execute()
+        response = self._query("github_id, github_pushed_at, readme_content").execute()
         return {
             row["github_id"]: {
                 "pushed_at": row.get("github_pushed_at"),
@@ -56,15 +92,7 @@ class RepositoryService:
         """
         logger.debug("Loading repositories", extra={'user_id': self.user_id})
 
-        response = self.supabase.table("repositories") \
-            .select("*") \
-            .eq("user_id", self.user_id) \
-            .order("starred_at", desc=True) \
-            .execute()
-
-        repos = []
-        for row in response.data or []:
-            repos.append(self._row_to_dict(row))
+        repos = self._get_many(order_by="starred_at", order_desc=True)
 
         logger.debug(f"Loaded {len(repos)} repositories", extra={'user_id': self.user_id})
         return repos
@@ -87,10 +115,7 @@ class RepositoryService:
             return {"total": 0, "new_count": 0, "updated_count": 0, "changed_github_ids": [], "skipped_count": 0}
 
         # Get existing github_ids, github_pushed_at, and readme_content
-        existing_response = self.supabase.table("repositories") \
-            .select("github_id, github_pushed_at, readme_content") \
-            .eq("user_id", self.user_id) \
-            .execute()
+        existing_response = self._query("github_id, github_pushed_at, readme_content").execute()
 
         existing_map = {
             row["github_id"]: {
@@ -179,9 +204,11 @@ class RepositoryService:
             }
 
         # Upsert with conflict on (user_id, github_id)
-        response = self.supabase.table("repositories") \
-            .upsert(db_rows, on_conflict="user_id,github_id") \
+        response = (
+            self._table()
+            .upsert(db_rows, on_conflict="user_id,github_id")
             .execute()
+        )
 
         total = len(response.data or [])
         updated_count = total - new_count
@@ -201,27 +228,14 @@ class RepositoryService:
 
     def get_count(self) -> int:
         """Get total repository count for user."""
-        response = self.supabase.table("repositories") \
-            .select("id", count="exact") \
-            .eq("user_id", self.user_id) \
-            .execute()
+        response = self._query("id").execute()
+        return len(response.data or [])
 
-        return response.count or 0
-
-    def get_repository_by_id(self, repo_id: str) -> dict | None:
+    def get_repository_by_id(self, repo_id: str) -> Optional[dict]:
         """Get a single repository by ID."""
-        response = self.supabase.table("repositories") \
-            .select("*") \
-            .eq("id", repo_id) \
-            .eq("user_id", self.user_id) \
-            .single() \
-            .execute()
+        return self._get_one({"id": repo_id})
 
-        if response.data:
-            return self._row_to_dict(response.data)
-        return None
-
-    def get_by_github_id(self, github_id: int) -> dict | None:
+    def get_by_github_id(self, github_id: int) -> Optional[dict]:
         """
         Get a repository by GitHub ID.
 
@@ -231,18 +245,9 @@ class RepositoryService:
         Returns:
             Repository dict or None if not found
         """
-        response = self.supabase.table("repositories") \
-            .select("*") \
-            .eq("user_id", self.user_id) \
-            .eq("github_id", github_id) \
-            .limit(1) \
-            .execute()
+        return self._get_one({"github_id": github_id})
 
-        if response.data and len(response.data) > 0:
-            return self._row_to_dict(response.data[0])
-        return None
-
-    def get_by_full_name(self, full_name: str) -> dict | None:
+    def get_by_full_name(self, full_name: str) -> Optional[dict]:
         """
         Get a repository by full_name (owner/repo).
 
@@ -252,18 +257,9 @@ class RepositoryService:
         Returns:
             Repository dict or None if not found
         """
-        response = self.supabase.table("repositories") \
-            .select("*") \
-            .eq("user_id", self.user_id) \
-            .eq("full_name", full_name) \
-            .limit(1) \
-            .execute()
+        return self._get_one({"full_name": full_name})
 
-        if response.data and len(response.data) > 0:
-            return self._row_to_dict(response.data[0])
-        return None
-
-    def update_repository(self, repo_id: str, data: dict) -> dict | None:
+    def update_repository(self, repo_id: str, data: dict) -> Optional[dict]:
         """
         Update repository custom fields.
 
@@ -271,28 +267,22 @@ class RepositoryService:
             repo_id: Repository UUID
             data: Dict with custom_description, custom_tags, custom_category
         """
-        from datetime import datetime, timezone
+        update_data = self._prepare_update_data(data, self.UPDATE_FIELDS)
+        update_data["last_edited"] = datetime.now(timezone.utc).isoformat()
 
-        update_data = {"last_edited": datetime.now(timezone.utc).isoformat()}
-
-        if "custom_description" in data:
-            update_data["custom_description"] = data["custom_description"]
-        if "custom_tags" in data:
-            update_data["custom_tags"] = data["custom_tags"]
-        if "custom_category" in data:
-            update_data["custom_category"] = data["custom_category"]
-
-        response = self.supabase.table("repositories") \
-            .update(update_data) \
-            .eq("id", repo_id) \
-            .eq("user_id", self.user_id) \
+        response = (
+            self._table()
+            .update(update_data)
+            .eq("id", repo_id)
+            .eq("user_id", self.user_id)
             .execute()
+        )
 
         if response.data:
             return self._row_to_dict(response.data[0])
         return None
 
-    def update_ai_analysis(self, repo_id: str, analysis: dict, is_fallback: bool = False) -> dict | None:
+    def update_ai_analysis(self, repo_id: str, analysis: dict, is_fallback: bool = False) -> Optional[dict]:
         """
         Update repository AI analysis results.
 
@@ -301,8 +291,6 @@ class RepositoryService:
             analysis: Dict with ai_summary, ai_tags, ai_platforms
             is_fallback: If True, marks analysis_failed=True (AI failed, used fallback)
         """
-        from datetime import datetime, timezone
-
         update_data = {
             "ai_summary": analysis.get("ai_summary"),
             "ai_tags": analysis.get("ai_tags", []),
@@ -317,11 +305,13 @@ class RepositoryService:
             f"tags={analysis.get('ai_tags', [])}"
         )
 
-        response = self.supabase.table("repositories") \
-            .update(update_data) \
-            .eq("id", repo_id) \
-            .eq("user_id", self.user_id) \
+        response = (
+            self._table()
+            .update(update_data)
+            .eq("id", repo_id)
+            .eq("user_id", self.user_id)
             .execute()
+        )
 
         if response.data:
             logger.info(f"AI analysis saved for repo {repo_id}")
@@ -330,20 +320,20 @@ class RepositoryService:
         logger.warning(f"AI analysis update returned no data for repo {repo_id}")
         return None
 
-    def mark_analysis_failed(self, repo_id: str) -> dict | None:
+    def mark_analysis_failed(self, repo_id: str) -> Optional[dict]:
         """Mark repository AI analysis as failed."""
-        from datetime import datetime, timezone
-
         update_data = {
             "analyzed_at": datetime.now(timezone.utc).isoformat(),
             "analysis_failed": True,
         }
 
-        response = self.supabase.table("repositories") \
-            .update(update_data) \
-            .eq("id", repo_id) \
-            .eq("user_id", self.user_id) \
+        response = (
+            self._table()
+            .update(update_data)
+            .eq("id", repo_id)
+            .eq("user_id", self.user_id)
             .execute()
+        )
 
         if response.data:
             return self._row_to_dict(response.data[0])
@@ -351,11 +341,7 @@ class RepositoryService:
 
     def reset_analysis_failed(self, repo_id: str) -> None:
         """Reset analysis_failed flag before retry."""
-        self.supabase.table("repositories") \
-            .update({"analysis_failed": False, "analyzed_at": None}) \
-            .eq("id", repo_id) \
-            .eq("user_id", self.user_id) \
-            .execute()
+        self._update_one(repo_id, {"analysis_failed": False, "analyzed_at": None})
 
     def get_unanalyzed_repositories(self, limit: int = 50) -> List[dict]:
         """
@@ -367,13 +353,13 @@ class RepositoryService:
         Returns:
             List of repo dicts with id, full_name, description, readme_content, language, name
         """
-        response = self.supabase.table("repositories") \
-            .select("id, full_name, description, readme_content, language, name") \
-            .eq("user_id", self.user_id) \
-            .is_("analyzed_at", "null") \
-            .eq("analysis_failed", False) \
-            .limit(limit) \
+        response = (
+            self._query("id, full_name, description, readme_content, language, name")
+            .is_("analyzed_at", "null")
+            .eq("analysis_failed", False)
+            .limit(limit)
             .execute()
+        )
 
         return response.data or []
 
@@ -389,11 +375,11 @@ class RepositoryService:
         Returns:
             List of repo dicts with id, full_name, description, readme_content, language, name, analysis_failed
         """
-        response = self.supabase.table("repositories") \
-            .select("id, full_name, description, readme_content, language, name, analysis_failed") \
-            .eq("user_id", self.user_id) \
-            .or_("ai_summary.is.null,ai_tags.is.null,ai_tags.eq.{},analysis_failed.eq.true") \
+        response = (
+            self._query("id, full_name, description, readme_content, language, name, analysis_failed")
+            .or_("ai_summary.is.null,ai_tags.is.null,ai_tags.eq.{},analysis_failed.eq.true")
             .execute()
+        )
 
         return response.data or []
 
@@ -404,11 +390,11 @@ class RepositoryService:
         Returns:
             List of repo dicts with id, github_id, full_name for README fetching
         """
-        response = self.supabase.table("repositories") \
-            .select("id, github_id, full_name") \
-            .eq("user_id", self.user_id) \
-            .or_("readme_content.is.null,readme_content.eq.") \
+        response = (
+            self._query("id, github_id, full_name")
+            .or_("readme_content.is.null,readme_content.eq.")
             .execute()
+        )
 
         return response.data or []
 
@@ -423,15 +409,9 @@ class RepositoryService:
         Returns:
             True if update succeeded, False otherwise
         """
-        response = self.supabase.table("repositories") \
-            .update({"readme_content": readme_content}) \
-            .eq("id", repo_id) \
-            .eq("user_id", self.user_id) \
-            .execute()
+        return self._update_one(repo_id, {"readme_content": readme_content})
 
-        return bool(response.data)
-
-    def upsert_extracted_repository(self, repo_data: dict) -> dict | None:
+    def upsert_extracted_repository(self, repo_data: dict) -> Optional[dict]:
         """
         Upsert a repository extracted from article content.
 
@@ -469,9 +449,11 @@ class RepositoryService:
         }
 
         try:
-            response = self.supabase.table("repositories") \
-                .upsert(row, on_conflict="user_id,github_id") \
+            response = (
+                self._table()
+                .upsert(row, on_conflict="user_id,github_id")
                 .execute()
+            )
 
             if response.data and len(response.data) > 0:
                 logger.info(f"Upserted extracted repo: {repo_data.get('full_name')}")
@@ -482,42 +464,6 @@ class RepositoryService:
             logger.error(f"Failed to upsert extracted repo: {e}")
             return None
 
-    def _row_to_dict(self, row: dict) -> dict:
-        """Convert database row to response dict."""
-        return {
-            "id": row["id"],
-            "github_id": row["github_id"],
-            "name": row["name"],
-            "full_name": row["full_name"],
-            "description": row.get("description"),
-            "html_url": row["html_url"],
-            "stargazers_count": row.get("stargazers_count", 0),
-            "language": row.get("language"),
-            "topics": row.get("topics") or [],
-            "owner_login": row["owner_login"],
-            "owner_avatar_url": row.get("owner_avatar_url"),
-            "starred_at": row.get("starred_at"),
-            "github_updated_at": row.get("github_updated_at"),
-            "github_pushed_at": row.get("github_pushed_at"),
-            "readme_content": row.get("readme_content"),
-            # AI analysis fields
-            "ai_summary": row.get("ai_summary"),
-            "ai_tags": row.get("ai_tags") or [],
-            "ai_platforms": row.get("ai_platforms") or [],
-            "analyzed_at": row.get("analyzed_at"),
-            "analysis_failed": row.get("analysis_failed") or False,
-            # Custom edit fields
-            "custom_description": row.get("custom_description"),
-            "custom_tags": row.get("custom_tags") or [],
-            "custom_category": row.get("custom_category"),
-            "last_edited": row.get("last_edited"),
-            # Source tracking fields
-            "is_starred": row.get("is_starred") or False,
-            "is_extracted": row.get("is_extracted") or False,
-            # OpenRank
-            "openrank": row.get("openrank"),
-        }
-
     def get_all_repos_for_openrank(self) -> List[dict]:
         """
         Get all repositories' basic info for OpenRank fetching.
@@ -525,10 +471,7 @@ class RepositoryService:
         Returns:
             List of {github_id, full_name} dicts
         """
-        response = self.supabase.table("repositories") \
-            .select("github_id, full_name") \
-            .eq("user_id", self.user_id) \
-            .execute()
+        response = self._query("github_id, full_name").execute()
 
         return response.data or []
 
@@ -548,11 +491,13 @@ class RepositoryService:
         updated_count = 0
         for github_id, openrank_value in openrank_map.items():
             try:
-                response = self.supabase.table("repositories") \
-                    .update({"openrank": openrank_value}) \
-                    .eq("user_id", self.user_id) \
-                    .eq("github_id", github_id) \
+                response = (
+                    self._table()
+                    .update({"openrank": openrank_value})
+                    .eq("user_id", self.user_id)
+                    .eq("github_id", github_id)
                     .execute()
+                )
 
                 if response.data:
                     updated_count += 1
@@ -561,4 +506,3 @@ class RepositoryService:
 
         logger.info(f"Updated OpenRank for {updated_count}/{len(openrank_map)} repositories")
         return updated_count
-

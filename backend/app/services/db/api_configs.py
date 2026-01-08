@@ -10,17 +10,19 @@ Router layer handles encryption before save and decryption after load.
 
 import logging
 from typing import Optional, List
-from supabase import Client
+
+from .base import BaseDbService
 
 logger = logging.getLogger(__name__)
 
 
-class ApiConfigService:
+class ApiConfigService(BaseDbService):
     """Service for API config database operations."""
 
-    def __init__(self, supabase: Client, user_id: str):
-        self.supabase = supabase
-        self.user_id = user_id
+    table_name = "api_configs"
+
+    # Fields allowed in update operations
+    UPDATE_FIELDS = {"name", "api_key", "api_base", "model", "type", "is_active"}
 
     def _row_to_dict(self, row: dict) -> dict:
         """Convert database row to dict."""
@@ -49,36 +51,19 @@ class ApiConfigService:
         """
         logger.debug(f"Loading API configs for user {self.user_id}, type={config_type}")
 
-        try:
-            query = self.supabase.table("api_configs") \
-                .select("*") \
-                .eq("user_id", self.user_id) \
-                .order("created_at", desc=True)
+        filters = {"type": config_type} if config_type else None
+        configs = self._get_many(
+            filters=filters,
+            order_by="created_at",
+            order_desc=True,
+        )
 
-            if config_type:
-                query = query.eq("type", config_type)
-
-            response = query.execute()
-
-            configs = [self._row_to_dict(row) for row in response.data or []]
-            logger.info(f"Loaded {len(configs)} API configs")
-            return configs
-        except Exception as e:
-            logger.error(f"Error loading API configs: {e}", exc_info=True)
-            raise
+        logger.info(f"Loaded {len(configs)} API configs")
+        return configs
 
     def get_api_config(self, config_id: str) -> Optional[dict]:
         """Get a single API config by ID."""
-        response = self.supabase.table("api_configs") \
-            .select("*") \
-            .eq("id", config_id) \
-            .eq("user_id", self.user_id) \
-            .single() \
-            .execute()
-
-        if response.data:
-            return self._row_to_dict(response.data)
-        return None
+        return self._get_one({"id": config_id})
 
     def get_active_config(self, config_type: str) -> Optional[dict]:
         """
@@ -90,21 +75,7 @@ class ApiConfigService:
         Returns:
             Active config dict or None
         """
-        try:
-            response = self.supabase.table("api_configs") \
-                .select("*") \
-                .eq("user_id", self.user_id) \
-                .eq("type", config_type) \
-                .eq("is_active", True) \
-                .single() \
-                .execute()
-
-            if response.data:
-                return self._row_to_dict(response.data)
-        except Exception:
-            # No active config found (single() throws if no result)
-            pass
-        return None
+        return self._get_one({"type": config_type, "is_active": True})
 
     def create_api_config(self, config: dict) -> dict:
         """
@@ -125,17 +96,16 @@ class ApiConfigService:
         if is_active:
             self._deactivate_others(config_type)
 
-        db_row = {
+        db_row = self._dict_to_row({
             "name": config["name"],
             "api_key": config["api_key"],
             "api_base": config["api_base"],
             "model": config["model"],
             "type": config_type,
             "is_active": is_active,
-            "user_id": self.user_id,
-        }
+        })
 
-        response = self.supabase.table("api_configs").insert(db_row).execute()
+        response = self._table().insert(db_row).execute()
 
         if response.data:
             logger.info(f"Created API config: {response.data[0]['id']} (type={config_type})")
@@ -166,23 +136,20 @@ class ApiConfigService:
         if updates.get("is_active") is True:
             self._deactivate_others(config_type, exclude_id=config_id)
 
-        update_data = {}
-        allowed_fields = ["name", "api_key", "api_base", "model", "type", "is_active"]
-
-        for field in allowed_fields:
-            if field in updates and updates[field] is not None:
-                update_data[field] = updates[field]
+        update_data = self._prepare_update_data(updates, self.UPDATE_FIELDS)
 
         if not update_data:
             return existing
 
         logger.debug(f"Updating API config {config_id}: {list(update_data.keys())}")
 
-        response = self.supabase.table("api_configs") \
-            .update(update_data) \
-            .eq("id", config_id) \
-            .eq("user_id", self.user_id) \
+        response = (
+            self._table()
+            .update(update_data)
+            .eq("id", config_id)
+            .eq("user_id", self.user_id)
             .execute()
+        )
 
         if response.data:
             logger.info(f"Updated API config {config_id}")
@@ -193,11 +160,7 @@ class ApiConfigService:
         """Delete an API config."""
         logger.debug(f"Deleting API config {config_id}")
 
-        self.supabase.table("api_configs") \
-            .delete() \
-            .eq("id", config_id) \
-            .eq("user_id", self.user_id) \
-            .execute()
+        self._delete_one(config_id)
 
         logger.info(f"Deleted API config {config_id}")
 
@@ -219,11 +182,7 @@ class ApiConfigService:
         self._deactivate_others(config_type)
 
         # Activate the target config
-        self.supabase.table("api_configs") \
-            .update({"is_active": True}) \
-            .eq("id", config_id) \
-            .eq("user_id", self.user_id) \
-            .execute()
+        self._update_one(config_id, {"is_active": True})
 
         logger.info(f"Activated API config {config_id} (type={config_type})")
 
@@ -235,10 +194,12 @@ class ApiConfigService:
             config_type: 'chat', 'embedding', or 'rerank'
             exclude_id: Optional config ID to exclude from deactivation
         """
-        query = self.supabase.table("api_configs") \
-            .update({"is_active": False}) \
-            .eq("user_id", self.user_id) \
+        query = (
+            self._table()
+            .update({"is_active": False})
+            .eq("user_id", self.user_id)
             .eq("type", config_type)
+        )
 
         if exclude_id:
             query = query.neq("id", exclude_id)

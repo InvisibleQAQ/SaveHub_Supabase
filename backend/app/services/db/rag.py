@@ -8,17 +8,15 @@ import logging
 from datetime import datetime, timezone
 from typing import List, Optional, Dict, Any
 
-from supabase import Client
+from .base import BaseDbService
 
 logger = logging.getLogger(__name__)
 
 
-class RagService:
+class RagService(BaseDbService):
     """RAG 数据库操作服务"""
 
-    def __init__(self, supabase: Client, user_id: str):
-        self.supabase = supabase
-        self.user_id = user_id
+    table_name = "all_embeddings"
 
     # =========================================================================
     # Embedding CRUD
@@ -40,7 +38,7 @@ class RagService:
                 - chunk_index: int
                 - content: str
                 - embedding: List[float]
-                - metadata: Optional[dict]
+          - metadata: Optional[dict]
 
         Returns:
             插入的记录数
@@ -51,29 +49,26 @@ class RagService:
 
         try:
             # 1. 删除现有 embeddings
-            self.supabase.table("all_embeddings") \
+            self._table() \
                 .delete() \
                 .eq("article_id", article_id) \
                 .eq("user_id", self.user_id) \
                 .execute()
 
             # 2. 准备插入数据
-            rows = []
-            for emb in embeddings:
-                row = {
+            rows = [
+                self._dict_to_row({
                     "article_id": article_id,
-                    "user_id": self.user_id,
                     "chunk_index": emb["chunk_index"],
                     "content": emb["content"],
                     "embedding": emb["embedding"],
                     "metadata": emb.get("metadata"),
-                }
-                rows.append(row)
+                })
+                for emb in embeddings
+            ]
 
             # 3. 批量插入
-            result = self.supabase.table("all_embeddings") \
-                .insert(rows) \
-                .execute()
+            result = self._table().insert(rows).execute()
 
             count = len(result.data) if result.data else 0
             logger.info(
@@ -94,7 +89,7 @@ class RagService:
             article_id: 文章 ID
         """
         try:
-            self.supabase.table("all_embeddings") \
+            self._table() \
                 .delete() \
                 .eq("article_id", article_id) \
                 .eq("user_id", self.user_id) \
@@ -116,12 +111,12 @@ class RagService:
         Returns:
             embedding 记录列表
         """
-        result = self.supabase.table("all_embeddings") \
-            .select("id, chunk_index, content, created_at") \
-            .eq("article_id", article_id) \
-            .eq("user_id", self.user_id) \
-            .order("chunk_index") \
+        result = (
+            self._query("id, chunk_index, content, created_at")
+            .eq("article_id", article_id)
+            .order("chunk_index")
             .execute()
+        )
 
         return result.data or []
 
@@ -205,12 +200,9 @@ class RagService:
             )
 
             # Embedding 统计
-            embeddings_result = self.supabase.table("all_embeddings") \
-                .select("id", count="exact") \
-                .eq("user_id", self.user_id) \
-                .execute()
+            embeddings_result = self._query("id").execute()
 
-            total_embeddings = embeddings_result.count or 0
+            total_embeddings = len(embeddings_result.data or [])
 
             return {
                 "total_articles": total_articles,
@@ -288,36 +280,38 @@ class RagService:
                 .select("readme_content") \
                 .eq("id", repository_id) \
                 .eq("user_id", self.user_id) \
-                .single() \
+                .limit(1) \
                 .execute()
 
-            if not repo_result.data or not repo_result.data.get("readme_content"):
+            if not repo_result.data or not repo_result.data[0].get("readme_content"):
                 logger.info(f"Skip: repository {repository_id} has no readme_content")
                 return 0
 
             # 检查 2: repository_id 是否已存在于 all_embeddings
-            existing = self.supabase.table("all_embeddings") \
-                .select("id") \
-                .eq("repository_id", repository_id) \
-                .eq("user_id", self.user_id) \
-                .limit(1) \
+            existing = (
+                self._query("id")
+                .eq("repository_id", repository_id)
+                .limit(1)
                 .execute()
+            )
 
             if existing.data and len(existing.data) > 0:
                 logger.info(f"Skip: repository {repository_id} already has embeddings")
                 return 0
 
             # 插入新的 embeddings
-            rows = [{
-                "repository_id": repository_id,
-                "user_id": self.user_id,
-                "chunk_index": emb["chunk_index"],
-                "content": emb["content"],
-                "embedding": emb["embedding"],
-                "metadata": emb.get("metadata"),
-            } for emb in embeddings]
+            rows = [
+                self._dict_to_row({
+                    "repository_id": repository_id,
+                    "chunk_index": emb["chunk_index"],
+                    "content": emb["content"],
+                    "embedding": emb["embedding"],
+                    "metadata": emb.get("metadata"),
+                })
+                for emb in embeddings
+            ]
 
-            result = self.supabase.table("all_embeddings").insert(rows).execute()
+            result = self._table().insert(rows).execute()
             count = len(result.data) if result.data else 0
             logger.info(f"Saved {count} embeddings for repository {repository_id}")
             return count
@@ -328,7 +322,7 @@ class RagService:
     def delete_repository_embeddings(self, repository_id: str) -> None:
         """删除仓库的所有 embeddings。"""
         try:
-            self.supabase.table("all_embeddings") \
+            self._table() \
                 .delete() \
                 .eq("repository_id", repository_id) \
                 .eq("user_id", self.user_id) \

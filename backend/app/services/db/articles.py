@@ -6,18 +6,42 @@ Mirrors the functionality of lib/db/articles.ts
 
 import logging
 from typing import Optional, List
-from datetime import datetime, timedelta
-from supabase import Client
+from datetime import datetime, timedelta, timezone
+
+from .base import BaseDbService
 
 logger = logging.getLogger(__name__)
 
 
-class ArticleService:
+class ArticleService(BaseDbService):
     """Service for article database operations."""
 
-    def __init__(self, supabase: Client, user_id: str):
-        self.supabase = supabase
-        self.user_id = user_id
+    table_name = "articles"
+
+    # Fields allowed in update operations
+    UPDATE_FIELDS = {
+        "is_read", "is_starred", "title", "content", "summary",
+        "url", "author", "published_at", "thumbnail",
+    }
+
+    def _row_to_dict(self, row: dict) -> dict:
+        """Convert database row to article dict."""
+        return {
+            "id": row["id"],
+            "feed_id": row["feed_id"],
+            "title": row["title"],
+            "content": row["content"],
+            "summary": row.get("summary"),
+            "url": row["url"],
+            "author": row.get("author"),
+            "published_at": row["published_at"],
+            "is_read": row["is_read"],
+            "is_starred": row["is_starred"],
+            "thumbnail": row.get("thumbnail"),
+            "content_hash": row.get("content_hash"),
+            "user_id": row["user_id"],
+            "created_at": row.get("created_at"),
+        }
 
     def save_articles(self, articles: List[dict]) -> None:
         """
@@ -29,11 +53,7 @@ class ArticleService:
         """
         db_rows = []
         for article in articles:
-            published_at = article.get("published_at")
-            if isinstance(published_at, datetime):
-                published_at = published_at.isoformat()
-
-            db_rows.append({
+            db_rows.append(self._dict_to_row({
                 "id": str(article.get("id")) if article.get("id") else None,
                 "feed_id": str(article["feed_id"]),
                 "title": article["title"],
@@ -41,17 +61,16 @@ class ArticleService:
                 "summary": article.get("summary"),
                 "url": article["url"],
                 "author": article.get("author"),
-                "published_at": published_at,
+                "published_at": article.get("published_at"),
                 "is_read": article.get("is_read", False),
                 "is_starred": article.get("is_starred", False),
                 "thumbnail": article.get("thumbnail"),
                 "content_hash": article.get("content_hash"),
-                "user_id": self.user_id,
-            })
+            }))
 
         logger.debug(f"Saving {len(articles)} articles for user {self.user_id}")
 
-        response = self.supabase.table("articles").upsert(
+        response = self._table().upsert(
             db_rows,
             on_conflict="feed_id,content_hash"
         ).execute()
@@ -76,9 +95,8 @@ class ArticleService:
         """
         logger.debug(f"Loading articles: feed_id={feed_id}, limit={limit}")
 
-        query = self.supabase.table("articles") \
-            .select("*, article_repositories(count)") \
-            .eq("user_id", self.user_id) \
+        # Use custom query for JOIN with article_repositories
+        query = self._query("*, article_repositories(count)") \
             .order("published_at", desc=True)
 
         if feed_id:
@@ -91,60 +109,21 @@ class ArticleService:
 
         articles = []
         for row in response.data or []:
-            # 提取关联仓库数量
+            # Extract repository count from JOIN
             repo_count = 0
             if row.get("article_repositories"):
                 repo_count = row["article_repositories"][0].get("count", 0)
 
-            articles.append({
-                "id": row["id"],
-                "feed_id": row["feed_id"],
-                "title": row["title"],
-                "content": row["content"],
-                "summary": row.get("summary"),
-                "url": row["url"],
-                "author": row.get("author"),
-                "published_at": row["published_at"],
-                "is_read": row["is_read"],
-                "is_starred": row["is_starred"],
-                "thumbnail": row.get("thumbnail"),
-                "content_hash": row.get("content_hash"),
-                "user_id": row["user_id"],
-                "created_at": row.get("created_at"),
-                "repository_count": repo_count,
-            })
+            article = self._row_to_dict(row)
+            article["repository_count"] = repo_count
+            articles.append(article)
 
         logger.debug(f"Loaded {len(articles)} articles")
         return articles
 
     def get_article(self, article_id: str) -> Optional[dict]:
         """Get a single article by ID."""
-        response = self.supabase.table("articles") \
-            .select("*") \
-            .eq("id", article_id) \
-            .eq("user_id", self.user_id) \
-            .limit(1) \
-            .execute()
-
-        if response.data and len(response.data) > 0:
-            row = response.data[0]
-            return {
-                "id": row["id"],
-                "feed_id": row["feed_id"],
-                "title": row["title"],
-                "content": row["content"],
-                "summary": row.get("summary"),
-                "url": row["url"],
-                "author": row.get("author"),
-                "published_at": row["published_at"],
-                "is_read": row["is_read"],
-                "is_starred": row["is_starred"],
-                "thumbnail": row.get("thumbnail"),
-                "content_hash": row.get("content_hash"),
-                "user_id": row["user_id"],
-                "created_at": row.get("created_at"),
-            }
-        return None
+        return self._get_one({"id": article_id})
 
     def update_article(self, article_id: str, updates: dict) -> None:
         """
@@ -155,44 +134,17 @@ class ArticleService:
             article_id: Article UUID
             updates: Dictionary of fields to update
         """
-        db_updates = {}
+        update_data = self._prepare_update_data(updates, self.UPDATE_FIELDS)
 
-        field_mapping = {
-            "is_read": "is_read",
-            "is_starred": "is_starred",
-            "title": "title",
-            "content": "content",
-            "summary": "summary",
-            "url": "url",
-            "author": "author",
-            "published_at": "published_at",
-            "thumbnail": "thumbnail",
-        }
+        logger.debug(f"Updating article {article_id}: {list(update_data.keys())}")
 
-        for key, db_key in field_mapping.items():
-            if key in updates and updates[key] is not None:
-                value = updates[key]
-                if key == "published_at" and isinstance(value, datetime):
-                    value = value.isoformat()
-                db_updates[db_key] = value
-
-        logger.debug(f"Updating article {article_id}: {list(db_updates.keys())}")
-
-        self.supabase.table("articles") \
-            .update(db_updates) \
-            .eq("id", article_id) \
-            .eq("user_id", self.user_id) \
-            .execute()
+        self._update_one(article_id, update_data)
 
         logger.debug(f"Updated article {article_id}")
 
     def delete_article(self, article_id: str) -> None:
         """Delete a single article."""
-        self.supabase.table("articles") \
-            .delete() \
-            .eq("id", article_id) \
-            .eq("user_id", self.user_id) \
-            .execute()
+        self._delete_one(article_id)
 
         logger.info(f"Deleted article {article_id}")
 
@@ -211,13 +163,15 @@ class ArticleService:
 
         logger.debug(f"Clearing articles older than {cutoff_date.isoformat()}")
 
-        response = self.supabase.table("articles") \
-            .delete() \
-            .eq("user_id", self.user_id) \
-            .lt("published_at", cutoff_date.isoformat()) \
-            .eq("is_read", True) \
-            .eq("is_starred", False) \
+        response = (
+            self._table()
+            .delete()
+            .eq("user_id", self.user_id)
+            .lt("published_at", cutoff_date.isoformat())
+            .eq("is_read", True)
+            .eq("is_starred", False)
             .execute()
+        )
 
         deleted_count = len(response.data or [])
         logger.info(f"Cleared {deleted_count} old articles")
@@ -233,10 +187,7 @@ class ArticleService:
         """
         logger.debug(f"Calculating article statistics for user {self.user_id}")
 
-        response = self.supabase.table("articles") \
-            .select("id, feed_id, is_read, is_starred") \
-            .eq("user_id", self.user_id) \
-            .execute()
+        response = self._query("id, feed_id, is_read, is_starred").execute()
 
         stats = {
             "total": len(response.data or []),
@@ -276,14 +227,14 @@ class ArticleService:
         Returns:
             List of dicts with id, user_id, content, summary
         """
-        response = self.supabase.table("articles") \
-            .select("id, user_id, content, summary") \
-            .eq("user_id", self.user_id) \
-            .eq("images_processed", True) \
-            .is_("repos_extracted", "null") \
-            .order("created_at", desc=True) \
-            .limit(limit) \
+        response = (
+            self._query("id, user_id, content, summary")
+            .eq("images_processed", True)
+            .is_("repos_extracted", "null")
+            .order("created_at", desc=True)
+            .limit(limit)
             .execute()
+        )
 
         return response.data or []
 
@@ -295,17 +246,11 @@ class ArticleService:
             article_id: Article UUID
             success: True if extraction succeeded, False if failed
         """
-        from datetime import timezone
-
         update_data = {
             "repos_extracted": success,
             "repos_extracted_at": datetime.now(timezone.utc).isoformat(),
         }
 
-        self.supabase.table("articles") \
-            .update(update_data) \
-            .eq("id", article_id) \
-            .eq("user_id", self.user_id) \
-            .execute()
+        self._update_one(article_id, update_data)
 
         logger.debug(f"Marked article {article_id} repos_extracted={success}")

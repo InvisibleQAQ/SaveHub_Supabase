@@ -83,13 +83,13 @@ class MyService(BaseDbService):
 |------|:------------------:|------|
 | `ConnectionManager` | - | WebSocket 连接管理（多标签页支持） |
 | `SupabaseRealtimeForwarder` | - | 订阅 Supabase postgres_changes，转发给 WebSocket 客户端 |
-| `FeedService` | | 订阅源增删改查、级联删除文章 |
-| `ArticleService` | | 文章增删改查、过期清理、统计分析 |
+| `FeedService` | ✅ | 订阅源增删改查、级联删除文章 |
+| `ArticleService` | ✅ | 文章增删改查、过期清理、统计分析 |
 | `FolderService` | ✅ | 文件夹增删改查 |
 | `SettingsService` | ✅ | 用户偏好设置（主题、刷新间隔等） |
-| `ApiConfigService` | | OpenAI兼容API配置（无加密，需自行实现） |
-| `RagService` | | RAG 向量存储、文章/仓库嵌入 |
-| `RepositoryService` | | GitHub 仓库管理 |
+| `ApiConfigService` | ✅ | OpenAI兼容API配置（无加密，Router层处理） |
+| `RagService` | ✅ | RAG 向量存储、文章/仓库嵌入 |
+| `RepositoryService` | ✅ | GitHub 仓库管理 |
 | `ArticleRepositoryService` | ✅ | 文章-仓库多对多关联 |
 
 ## ConnectionManager (realtime.py)
