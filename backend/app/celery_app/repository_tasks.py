@@ -10,11 +10,51 @@ Design:
 import logging
 import asyncio
 from datetime import datetime, timezone
-from typing import Dict, Any, List
+from typing import Dict, Any, List, TypeVar, Coroutine
 
 import httpx
 from celery import shared_task
 from celery.exceptions import Reject
+
+T = TypeVar('T')
+
+
+def run_async(coro: Coroutine[Any, Any, T]) -> T:
+    """
+    Safely run async code in sync context (Celery tasks).
+
+    Properly cleans up pending tasks before closing the event loop
+    to avoid 'Event loop is closed' errors from httpx AsyncClient.
+
+    Args:
+        coro: Coroutine to execute
+
+    Returns:
+        Result of the coroutine
+    """
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+    try:
+        return loop.run_until_complete(coro)
+    finally:
+        # Cancel all pending tasks to allow proper cleanup
+        try:
+            pending = asyncio.all_tasks(loop)
+            for task in pending:
+                task.cancel()
+            # Allow cancelled tasks to complete
+            if pending:
+                loop.run_until_complete(
+                    asyncio.gather(*pending, return_exceptions=True)
+                )
+        except Exception:
+            pass
+        # Shutdown async generators
+        try:
+            loop.run_until_complete(loop.shutdown_asyncgens())
+        except Exception:
+            pass
+        loop.close()
 
 from .celery import app
 from .task_lock import get_task_lock
@@ -31,6 +71,69 @@ REPO_SYNC_INTERVAL_SECONDS = 3600
 # =============================================================================
 # Core business logic
 # =============================================================================
+
+async def _do_sync_repositories_async(
+    github_token: str,
+    existing_repo_info: Dict[int, dict],
+    db_repos_without_readme: List[dict],
+) -> tuple[List[dict], dict, set, dict]:
+    """
+    Async portion of repository sync.
+
+    Returns:
+        (all_repos, readme_map, github_ids_needing_readme, extracted_readme_map)
+    """
+    all_repos = await _fetch_all_starred_repos(github_token)
+
+    # Find repos needing README fetch:
+    # 1. New repo (not in DB)
+    # 2. pushed_at changed (code update)
+    # 3. readme_content is empty
+    github_ids_needing_readme = set()
+    for repo in all_repos:
+        github_id = repo.get("id") or repo.get("github_id")
+        new_pushed_at = repo.get("pushed_at")
+
+        if github_id not in existing_repo_info:
+            # New repo
+            github_ids_needing_readme.add(github_id)
+        else:
+            info = existing_repo_info[github_id]
+            if info["pushed_at"] != new_pushed_at:
+                # pushed_at changed (code update)
+                github_ids_needing_readme.add(github_id)
+            elif not info["has_readme"]:
+                # readme_content is empty
+                github_ids_needing_readme.add(github_id)
+
+    # Fetch README only for repos that need it
+    readme_map = {}
+    if github_ids_needing_readme:
+        repos_to_fetch = [
+            r for r in all_repos
+            if (r.get("id") or r.get("github_id")) in github_ids_needing_readme
+        ]
+        readme_map = await _fetch_all_readmes(github_token, repos_to_fetch, concurrency=10)
+
+    # --- Fetch README for extracted repos (not in starred) ---
+    starred_github_ids = {r.get("id") or r.get("github_id") for r in all_repos}
+    db_repos_needing_readme = [
+        r for r in db_repos_without_readme
+        if r["github_id"] not in starred_github_ids
+    ]
+
+    extracted_readme_map = {}
+    if db_repos_needing_readme:
+        repos_to_fetch_extracted = [
+            {"id": r["github_id"], "full_name": r["full_name"]}
+            for r in db_repos_needing_readme
+        ]
+        extracted_readme_map = await _fetch_all_readmes(
+            github_token, repos_to_fetch_extracted, concurrency=10
+        )
+
+    return all_repos, readme_map, github_ids_needing_readme, extracted_readme_map
+
 
 def do_sync_repositories(user_id: str, github_token: str) -> Dict[str, Any]:
     """
@@ -50,66 +153,21 @@ def do_sync_repositories(user_id: str, github_token: str) -> Dict[str, Any]:
     supabase = get_supabase_service()
     repo_service = RepositoryService(supabase, user_id)
 
-    # Run async code in sync context
-    loop = asyncio.new_event_loop()
-    asyncio.set_event_loop(loop)
-    try:
-        all_repos = loop.run_until_complete(_fetch_all_starred_repos(github_token))
+    # Get existing repo info to detect changes (sync operation)
+    existing_repo_info = repo_service.get_existing_pushed_at()
+    db_repos_without_readme = repo_service.get_repos_without_readme()
 
-        # Get existing repo info to detect changes
-        existing_repo_info = repo_service.get_existing_pushed_at()
+    # Run all async operations in one coroutine
+    all_repos, readme_map, github_ids_needing_readme, extracted_readme_map = run_async(
+        _do_sync_repositories_async(github_token, existing_repo_info, db_repos_without_readme)
+    )
 
-        # Find repos needing README fetch:
-        # 1. New repo (not in DB)
-        # 2. pushed_at changed (code update)
-        # 3. readme_content is empty
-        github_ids_needing_readme = set()
-        for repo in all_repos:
-            github_id = repo.get("id") or repo.get("github_id")
-            new_pushed_at = repo.get("pushed_at")
-
-            if github_id not in existing_repo_info:
-                # New repo
-                github_ids_needing_readme.add(github_id)
-            else:
-                info = existing_repo_info[github_id]
-                if info["pushed_at"] != new_pushed_at:
-                    # pushed_at changed (code update)
-                    github_ids_needing_readme.add(github_id)
-                elif not info["has_readme"]:
-                    # readme_content is empty
-                    github_ids_needing_readme.add(github_id)
-
-        # Fetch README only for repos that need it
-        readme_map = {}
-        if github_ids_needing_readme:
-            repos_to_fetch = [
-                r for r in all_repos
-                if (r.get("id") or r.get("github_id")) in github_ids_needing_readme
-            ]
-            readme_map = loop.run_until_complete(
-                _fetch_all_readmes(github_token, repos_to_fetch, concurrency=10)
-            )
-
-        # --- Fetch README for extracted repos (not in starred) ---
-        starred_github_ids = {r.get("id") or r.get("github_id") for r in all_repos}
-        db_repos_without_readme = repo_service.get_repos_without_readme()
-        db_repos_needing_readme = [
-            r for r in db_repos_without_readme
-            if r["github_id"] not in starred_github_ids
-        ]
-
-        extracted_readme_map = {}
-        if db_repos_needing_readme:
-            repos_to_fetch_extracted = [
-                {"id": r["github_id"], "full_name": r["full_name"]}
-                for r in db_repos_needing_readme
-            ]
-            extracted_readme_map = loop.run_until_complete(
-                _fetch_all_readmes(github_token, repos_to_fetch_extracted, concurrency=10)
-            )
-    finally:
-        loop.close()
+    # Compute db_repos_needing_readme again for the update loop
+    starred_github_ids = {r.get("id") or r.get("github_id") for r in all_repos}
+    db_repos_needing_readme = [
+        r for r in db_repos_without_readme
+        if r["github_id"] not in starred_github_ids
+    ]
 
     # Merge readme_content into repo data (only for fetched repos)
     for repo in all_repos:
@@ -148,20 +206,13 @@ def do_ai_analysis(user_id: str) -> Dict[str, Any]:
     """
     supabase = get_supabase_service()
 
-    loop = asyncio.new_event_loop()
-    asyncio.set_event_loop(loop)
-    try:
-        result = loop.run_until_complete(
-            analyze_repositories_needing_analysis(
-                supabase=supabase,
-                user_id=user_id,
-                on_progress=None,
-            )
+    return run_async(
+        analyze_repositories_needing_analysis(
+            supabase=supabase,
+            user_id=user_id,
+            on_progress=None,
         )
-    finally:
-        loop.close()
-
-    return result
+    )
 
 
 def do_openrank_update(user_id: str) -> Dict[str, Any]:
@@ -183,14 +234,7 @@ def do_openrank_update(user_id: str) -> Dict[str, Any]:
     if not all_repos:
         return {"openrank_updated": 0, "openrank_total": 0}
 
-    loop = asyncio.new_event_loop()
-    asyncio.set_event_loop(loop)
-    try:
-        openrank_map = loop.run_until_complete(
-            fetch_all_openranks(all_repos, concurrency=5)
-        )
-    finally:
-        loop.close()
+    openrank_map = run_async(fetch_all_openranks(all_repos, concurrency=5))
 
     updated_count = repo_service.batch_update_openrank(openrank_map)
 
@@ -375,7 +419,7 @@ def _process_single_repository_embedding(
             embedding_config["api_base"],
             embedding_config["model"],
         )
-        embeddings = asyncio.run(embedding_client.embed_batch(texts))
+        embeddings = run_async(embedding_client.embed_batch(texts))
 
         for i, chunk in enumerate(final_chunks):
             chunk["embedding"] = embeddings[i]
