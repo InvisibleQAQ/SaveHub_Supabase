@@ -11,6 +11,7 @@ services/
 ├── rss_parser.py           # RSS 解析服务
 └── db/                     # 数据库服务模块
     ├── __init__.py         # 导出所有服务类
+    ├── base.py             # BaseDbService - 所有服务的基类
     ├── feeds.py            # FeedService - RSS订阅源 CRUD
     ├── articles.py         # ArticleService - 文章 CRUD + 统计 + 清理
     ├── folders.py          # FolderService - 文件夹 CRUD
@@ -30,6 +31,48 @@ service = FeedService(supabase_client, user_id)
 - 使用 Supabase SDK 的链式查询
 - 返回 Python dict（非 ORM 对象）
 - 对应前端 `lib/db/*.ts` 的功能
+
+## BaseDbService (base.py)
+
+所有数据库服务的基类，提供统一的查询、更新、错误处理模式。
+
+**核心方法**:
+
+| 方法 | 说明 |
+|------|------|
+| `_query(select)` | 创建带 user_id 过滤的 SELECT 查询 |
+| `_get_one(filters)` | 获取单条记录，使用 `.limit(1)` 避免异常 |
+| `_get_many(filters, order_by, limit)` | 获取多条记录 |
+| `_prepare_update_data(updates, allowed_fields)` | 准备更新数据，自动处理 datetime 转换 |
+| `_update_one(record_id, updates)` | 更新单条记录 |
+| `_delete_one(record_id)` | 删除单条记录 |
+| `_row_to_dict(row)` | 数据库行转字典（子类覆盖） |
+| `_dict_to_row(data)` | 字典转数据库行，自动添加 user_id |
+| `_is_duplicate_error(e)` | 检测重复键错误 (23505) |
+| `_is_not_found_error(e)` | 检测记录不存在错误 (PGRST116) |
+
+**创建新服务**:
+```python
+from .base import BaseDbService
+
+class MyService(BaseDbService):
+    table_name = "my_table"  # 必须设置
+    UPDATE_FIELDS = {"field1", "field2"}  # 可选：允许更新的字段
+
+    def _row_to_dict(self, row: dict) -> dict:
+        """覆盖此方法定义行转换逻辑"""
+        return {
+            "id": row["id"],
+            "field1": row["field1"],
+            # ...
+        }
+
+    def get_item(self, item_id: str):
+        return self._get_one({"id": item_id})
+
+    def list_items(self):
+        return self._get_many(order_by="created_at", order_desc=True)
+```
 
 ## 服务说明
 

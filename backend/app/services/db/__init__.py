@@ -1,5 +1,6 @@
 """Database service modules."""
 
+from .base import BaseDbService
 from .feeds import FeedService
 from .articles import ArticleService
 from .folders import FolderService
@@ -8,6 +9,7 @@ from .api_configs import ApiConfigService
 from .rag import RagService
 
 __all__ = [
+    "BaseDbService",
     "FeedService",
     "ArticleService",
     "FolderService",
