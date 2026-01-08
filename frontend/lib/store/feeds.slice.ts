@@ -123,16 +123,15 @@ export const createFeedsSlice: StateCreator<
         feeds: state.feeds.map((f: any) => (f.id === feedId ? { ...f, ...updates } : f)),
       }))
 
-      // Reschedule if any scheduling-relevant field changed:
+      // Reschedule if user-modified scheduling-relevant field changed:
       // - url: Task payload contains feedUrl
       // - title: Task payload contains feedTitle
       // - refreshInterval: Affects delay calculation
-      // - lastFetched: Affects delay calculation
+      // Note: lastFetched is NOT included - Celery Beat handles automatic scheduling
       const needsReschedule =
         updates.url !== undefined ||
         updates.title !== undefined ||
-        updates.refreshInterval !== undefined ||
-        updates.lastFetched !== undefined
+        updates.refreshInterval !== undefined
 
       if (needsReschedule) {
         // Reschedule with feedId - Celery backend fetches latest data from database
