@@ -6,52 +6,63 @@ import { Button } from "@/components/ui/button"
 import { Textarea } from "@/components/ui/textarea"
 import { ChatMessage } from "./chat-message"
 import { ChatStatus } from "./chat-status"
-import {
-  ragChatApi,
-  type ChatMessage as Message,
-  type StreamEvent,
-  type RetrievedSource,
-} from "@/lib/api/rag-chat"
-
-interface ChatState {
-  messages: Message[]
-  isLoading: boolean
-  currentStatus: string | null
-  currentSources: RetrievedSource[]
-  error: string | null
-}
+import { useRSSStore } from "@/lib/store"
+import { chatApi, type ChatMessage as ApiMessage } from "@/lib/api/chat"
+import type { StreamEvent, RetrievedSource } from "@/lib/api/rag-chat"
 
 export function ChatPage() {
-  const [state, setState] = useState<ChatState>({
-    messages: [],
-    isLoading: false,
-    currentStatus: null,
-    currentSources: [],
-    error: null,
-  })
+  const {
+    currentSessionId,
+    currentMessages,
+    currentSources,
+    isChatLoading,
+    addLocalMessage,
+    updateLastMessageContent,
+    setCurrentSources,
+    refreshSessionInList,
+    loadChatSessions,
+  } = useRSSStore()
+
   const [input, setInput] = useState("")
+  const [currentStatus, setCurrentStatus] = useState<string | null>(null)
+  const [error, setError] = useState<string | null>(null)
+  const [isStreaming, setIsStreaming] = useState(false)
   const scrollRef = useRef<HTMLDivElement>(null)
   const abortRef = useRef<AbortController | null>(null)
 
+  // Load sessions on mount
+  useEffect(() => {
+    loadChatSessions()
+  }, [loadChatSessions])
+
   useEffect(() => {
     scrollRef.current?.scrollIntoView({ behavior: "smooth" })
-  }, [state.messages])
+  }, [currentMessages])
 
   const handleSubmit = async () => {
-    if (!input.trim() || state.isLoading) return
+    if (!input.trim() || isStreaming) return
 
-    const userMessage: Message = { role: "user", content: input.trim() }
-    const newMessages = [...state.messages, userMessage]
-
-    setState((prev) => ({
-      ...prev,
-      messages: newMessages,
-      isLoading: true,
-      currentStatus: "思考中...",
-      currentSources: [],
-      error: null,
-    }))
+    const userContent = input.trim()
     setInput("")
+    setError(null)
+    setCurrentStatus("思考中...")
+    setIsStreaming(true)
+
+    // Add user message locally
+    addLocalMessage({
+      session_id: currentSessionId || "",
+      role: "user",
+      content: userContent,
+    })
+
+    // Prepare messages for API
+    const apiMessages: ApiMessage[] = [
+      ...currentMessages.map((m) => ({ role: m.role, content: m.content })),
+      { role: "user" as const, content: userContent },
+    ]
+
+    // Get or create session ID
+    const sessionId = currentSessionId || crypto.randomUUID()
 
     abortRef.current = new AbortController()
 
@@ -59,53 +70,48 @@ export function ChatPage() {
       let assistantContent = ""
       let sources: RetrievedSource[] = []
 
-      await ragChatApi.streamChat(
-        newMessages,
+      // Add placeholder for assistant message
+      addLocalMessage({
+        session_id: sessionId,
+        role: "assistant",
+        content: "",
+      })
+
+      await chatApi.streamChat(
+        sessionId,
+        apiMessages,
         (event: StreamEvent) => {
           switch (event.event) {
             case "decision":
-              setState((prev) => ({
-                ...prev,
-                currentStatus: event.data.needs_retrieval
+              setCurrentStatus(
+                event.data.needs_retrieval
                   ? "正在检索相关内容..."
-                  : "直接回答...",
-              }))
+                  : "直接回答..."
+              )
               break
 
             case "retrieval":
               sources = (event.data.sources as RetrievedSource[]) || []
-              setState((prev) => ({
-                ...prev,
-                currentStatus: `找到 ${event.data.total} 条相关内容`,
-                currentSources: sources,
-              }))
+              setCurrentStatus(`找到 ${event.data.total} 条相关内容`)
+              setCurrentSources(sources)
               break
 
             case "content":
               assistantContent += event.data.delta as string
-              setState((prev) => ({
-                ...prev,
-                currentStatus: "生成回答中...",
-                messages: [
-                  ...newMessages,
-                  { role: "assistant", content: assistantContent },
-                ],
-              }))
+              updateLastMessageContent(assistantContent)
+              setCurrentStatus("生成回答中...")
               break
 
             case "assessment":
-              setState((prev) => ({
-                ...prev,
-                currentStatus: null,
-              }))
+              setCurrentStatus(null)
               break
 
             case "done":
-              setState((prev) => ({
-                ...prev,
-                isLoading: false,
-                currentStatus: null,
-              }))
+              setIsStreaming(false)
+              setCurrentStatus(null)
+              // Refresh session list to update title and order
+              refreshSessionInList(sessionId)
+              loadChatSessions()
               break
 
             case "error":
@@ -114,15 +120,12 @@ export function ChatPage() {
         },
         abortRef.current.signal
       )
-    } catch (error) {
-      if ((error as Error).name === "AbortError") return
+    } catch (err) {
+      if ((err as Error).name === "AbortError") return
 
-      setState((prev) => ({
-        ...prev,
-        isLoading: false,
-        currentStatus: null,
-        error: (error as Error).message,
-      }))
+      setIsStreaming(false)
+      setCurrentStatus(null)
+      setError((err as Error).message)
     }
   }
 
@@ -151,7 +154,7 @@ export function ChatPage() {
       {/* Messages */}
       <div className="flex-1 overflow-y-auto px-6">
         <div className="max-w-3xl mx-auto py-6 space-y-6">
-          {state.messages.length === 0 ? (
+          {currentMessages.length === 0 ? (
             <div className="text-center py-12">
               <MessageSquare className="w-12 h-12 mx-auto text-muted-foreground/50 mb-4" />
               <h2 className="text-lg font-medium mb-2">开始对话</h2>
@@ -160,18 +163,18 @@ export function ChatPage() {
               </p>
             </div>
           ) : (
-            state.messages.map((msg, i) => (
+            currentMessages.map((msg, i) => (
               <ChatMessage
-                key={i}
-                message={msg}
-                sources={msg.role === "assistant" ? state.currentSources : undefined}
+                key={msg.id || i}
+                message={{ role: msg.role, content: msg.content }}
+                sources={msg.role === "assistant" ? (msg.sources || currentSources) : undefined}
               />
             ))
           )}
-          {state.currentStatus && <ChatStatus status={state.currentStatus} />}
-          {state.error && (
+          {currentStatus && <ChatStatus status={currentStatus} />}
+          {error && (
             <div className="p-4 rounded-lg bg-destructive/10 text-destructive text-sm">
-              {state.error}
+              {error}
             </div>
           )}
           <div ref={scrollRef} />
@@ -187,15 +190,15 @@ export function ChatPage() {
             onKeyDown={handleKeyDown}
             placeholder="输入您的问题..."
             className="min-h-[60px] max-h-[200px] resize-none"
-            disabled={state.isLoading}
+            disabled={isStreaming}
           />
           <Button
             onClick={handleSubmit}
-            disabled={!input.trim() || state.isLoading}
+            disabled={!input.trim() || isStreaming}
             size="icon"
             className="h-[60px] w-[60px]"
           >
-            {state.isLoading ? (
+            {isStreaming ? (
               <Loader2 className="w-5 h-5 animate-spin" />
             ) : (
               <Send className="w-5 h-5" />

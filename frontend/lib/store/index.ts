@@ -8,6 +8,7 @@ import { createSettingsSlice, type SettingsSlice } from "./settings.slice"
 import { createDatabaseSlice, type DatabaseSlice } from "./database.slice"
 import { createApiConfigsSlice, type ApiConfigsSlice } from "./api-configs.slice"
 import { createRepositoriesSlice, type RepositoriesSlice } from "./repositories.slice"
+import { createChatSlice, type ChatSlice } from "./chat.slice"
 
 export type RSSReaderStore = RSSReaderState &
   FoldersSlice &
@@ -17,7 +18,8 @@ export type RSSReaderStore = RSSReaderState &
   SettingsSlice &
   DatabaseSlice &
   ApiConfigsSlice &
-  RepositoriesSlice
+  RepositoriesSlice &
+  ChatSlice
 
 /**
  * Default settings - inlined to avoid dependency on lib/db
@@ -43,6 +45,7 @@ export const useRSSStore = create<RSSReaderStore>()((...a) => ({
   ...createSettingsSlice(...a),
   ...createApiConfigsSlice(...a),
   ...createRepositoriesSlice(...a),
+  ...createChatSlice(...a),
 
   folders: [],
   feeds: [],
@@ -56,4 +59,10 @@ export const useRSSStore = create<RSSReaderStore>()((...a) => ({
   viewMode: "all",
   settings: defaultSettings,
   isSidebarCollapsed: false,
+  // Chat state
+  chatSessions: [],
+  currentSessionId: null,
+  currentMessages: [],
+  currentSources: [],
+  isChatLoading: false,
 }))

@@ -9,6 +9,7 @@ from .api_configs import ApiConfigService
 from .rag import RagService
 from .repositories import RepositoryService
 from .article_repositories import ArticleRepositoryService
+from .chat import ChatSessionService, MessageService
 
 __all__ = [
     "BaseDbService",
@@ -20,4 +21,6 @@ __all__ = [
     "RagService",
     "RepositoryService",
     "ArticleRepositoryService",
+    "ChatSessionService",
+    "MessageService",
 ]

@@ -1,278 +1,229 @@
 """
-Chat API 路由
+Chat API 路由。
 
-使用 Supabase Python SDK 进行数据库操作。
+提供会话管理和 RAG 流式聊天功能。
 """
 
-from fastapi import APIRouter, Depends, HTTPException
-from app.schemas.chat import (
-    ChatRequest,
-    ChatResponse,
-    MessageResponse,
-    ChatSessionResponse,
-    UpdateTitleRequest,
-)
-from app.services.chat_service import process_chat
-from app.dependencies import verify_jwt
-from app.supabase_client import get_supabase_client
-from uuid import UUID
-from datetime import datetime, timezone
+import json
 import logging
+from typing import AsyncGenerator
+from uuid import UUID
+
+from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi.responses import StreamingResponse
+
+from app.dependencies import verify_auth, COOKIE_NAME_ACCESS
+from app.exceptions import ConfigurationError
+from app.supabase_client import get_supabase_client
+from app.schemas.chat import (
+    ChatSessionCreate,
+    ChatSessionResponse,
+    ChatSessionUpdate,
+    MessageResponse,
+    RagChatWithSessionRequest,
+)
+from app.services.db.chat import ChatSessionService, MessageService
+from app.services.db.api_configs import ApiConfigService
+from app.services.ai.config import get_decrypted_config
+from app.services.self_rag_service import SelfRagService
 
 logger = logging.getLogger(__name__)
 
-router = APIRouter()
+router = APIRouter(prefix="/chat", tags=["chat"])
 
 
-def get_user_client(user):
-    """获取用户的 Supabase 客户端"""
-    # 从 verify_jwt 返回的 user 对象获取 session
-    # user.session.access_token 包含 JWT token
-    access_token = None
-    if hasattr(user, 'session') and user.session:
-        access_token = user.session.access_token
-    return get_supabase_client(access_token)
+def _get_services(request: Request, auth_response):
+    """Get chat services with authenticated client."""
+    access_token = request.cookies.get(COOKIE_NAME_ACCESS)
+    supabase = get_supabase_client(access_token)
+    user_id = str(auth_response.user.id)
+    return (
+        ChatSessionService(supabase, user_id),
+        MessageService(supabase, user_id),
+        supabase,
+        user_id,
+    )
 
 
-@router.get("/sessions/{session_id}", response_model=list[MessageResponse])
-async def get_chat_history(session_id: UUID, user=Depends(verify_jwt)):
-    """
-    获取指定会话的所有消息
-
-    Args:
-        session_id: 会话 ID
-        user: 已验证的用户
-
-    Returns:
-        消息列表
-    """
-    supabase = get_user_client(user)
-    user_id = str(user.user.id)
-
-    # 验证会话属于该用户
-    session_response = supabase.table("chat_sessions") \
-        .select("*") \
-        .eq("id", str(session_id)) \
-        .eq("user_id", user_id) \
-        .execute()
-
-    if not session_response.data:
-        raise HTTPException(status_code=404, detail="Chat session not found")
-
-    # 获取会话的所有消息
-    messages_response = supabase.table("messages") \
-        .select("*") \
-        .eq("chat_session_id", str(session_id)) \
-        .order("created_at", desc=False) \
-        .execute()
-
-    return messages_response.data
-
-
-@router.post("/sessions/{session_id}", response_model=None)
-async def continue_chat(
-    session_id: UUID,
-    chat_request: ChatRequest,
-    user=Depends(verify_jwt)
-):
-    """
-    向会话发送消息或创建新会话
-
-    Args:
-        session_id: 会话 ID
-        chat_request: 聊天请求
-        user: 已验证的用户
-
-    Returns:
-        流式响应
-    """
-    supabase = get_user_client(user)
-    user_id = str(user.user.id)
-    model_id = chat_request.model
-
-    # 检查会话是否存在
-    session_response = supabase.table("chat_sessions") \
-        .select("*") \
-        .eq("id", str(session_id)) \
-        .eq("user_id", user_id) \
-        .execute()
-
-    if not session_response.data:
-        # 创建新会话
-        current_time = datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S')
-        title = f"New Chat - {current_time}"
-
-        supabase.table("chat_sessions").insert({
-            "id": str(session_id),
-            "user_id": user_id,
-            "title": title,
-        }).execute()
-
-        logger.info(f"Created new chat session: {session_id} for user {user_id}")
-
-    # 更新会话的 updated_at
-    supabase.table("chat_sessions") \
-        .update({"updated_at": datetime.now(timezone.utc).isoformat()}) \
-        .eq("id", str(session_id)) \
-        .execute()
-
-    # 添加用户消息
-    user_message = chat_request.messages[-1].content
-    supabase.table("messages").insert({
-        "chat_session_id": str(session_id),
-        "role": "user",
-        "content": user_message,
-    }).execute()
-
-    # 处理聊天并返回流式响应
-    return await process_chat(model_id, chat_request.messages, supabase, session_id)
+# =============================================================================
+# Session CRUD
+# =============================================================================
 
 
 @router.get("/sessions", response_model=list[ChatSessionResponse])
-async def get_all_chat_sessions(user=Depends(verify_jwt)):
-    """
-    获取用户的所有聊天会话
-
-    Args:
-        user: 已验证的用户
-
-    Returns:
-        会话列表
-    """
-    supabase = get_user_client(user)
-    user_id = str(user.user.id)
-
-    response = supabase.table("chat_sessions") \
-        .select("*") \
-        .eq("user_id", user_id) \
-        .order("updated_at", desc=True) \
-        .execute()
-
-    return response.data
-
-
-@router.patch("/sessions/{session_id}/title", response_model=ChatSessionResponse)
-async def update_chat_session_title(
-    session_id: UUID,
-    title_request: UpdateTitleRequest,
-    user=Depends(verify_jwt),
+async def list_sessions(
+    request: Request,
+    auth_response=Depends(verify_auth),
 ):
-    """
-    更新会话标题
-
-    Args:
-        session_id: 会话 ID
-        title_request: 新标题
-        user: 已验证的用户
-
-    Returns:
-        更新后的会话
-    """
-    supabase = get_user_client(user)
-    user_id = str(user.user.id)
-
-    # 验证会话属于该用户
-    session_response = supabase.table("chat_sessions") \
-        .select("*") \
-        .eq("id", str(session_id)) \
-        .eq("user_id", user_id) \
-        .execute()
-
-    if not session_response.data:
-        raise HTTPException(status_code=404, detail="Chat session not found")
-
-    # 更新标题
-    update_response = supabase.table("chat_sessions") \
-        .update({"title": title_request.title}) \
-        .eq("id", str(session_id)) \
-        .execute()
-
-    return update_response.data[0]
+    """List all chat sessions for user."""
+    session_svc, _, _, _ = _get_services(request, auth_response)
+    return session_svc.get_sessions()
 
 
-@router.delete("/sessions/{session_id}", response_model=dict)
-async def delete_chat_session(
-    session_id: UUID,
-    user=Depends(verify_jwt),
+@router.post("/sessions", response_model=ChatSessionResponse)
+async def create_session(
+    request: Request,
+    body: ChatSessionCreate,
+    auth_response=Depends(verify_auth),
 ):
-    """
-    删除会话及其所有消息
-
-    Args:
-        session_id: 会话 ID
-        user: 已验证的用户
-
-    Returns:
-        删除确认
-    """
-    supabase = get_user_client(user)
-    user_id = str(user.user.id)
-
-    # 验证会话属于该用户
-    session_response = supabase.table("chat_sessions") \
-        .select("*") \
-        .eq("id", str(session_id)) \
-        .eq("user_id", user_id) \
-        .execute()
-
-    if not session_response.data:
-        raise HTTPException(status_code=404, detail="Chat session not found")
-
-    # 删除所有关联消息
-    supabase.table("messages") \
-        .delete() \
-        .eq("chat_session_id", str(session_id)) \
-        .execute()
-
-    # 删除会话
-    supabase.table("chat_sessions") \
-        .delete() \
-        .eq("id", str(session_id)) \
-        .execute()
-
-    logger.info(f"Deleted chat session: {session_id}")
-
-    return {"detail": "Chat session and its messages have been deleted"}
+    """Create a new chat session."""
+    session_svc, _, _, _ = _get_services(request, auth_response)
+    session_id = str(body.id) if body.id else None
+    if not session_id:
+        import uuid
+        session_id = str(uuid.uuid4())
+    return session_svc.create_session(session_id, body.title)
 
 
-@router.delete("/empty-sessions", response_model=dict)
-async def empty_chat_sessions_and_messages(user=Depends(verify_jwt)):
-    """
-    清空用户的所有会话和消息
+@router.get("/sessions/{session_id}", response_model=list[MessageResponse])
+async def get_session_messages(
+    session_id: UUID,
+    request: Request,
+    auth_response=Depends(verify_auth),
+):
+    """Get all messages for a session."""
+    session_svc, msg_svc, _, _ = _get_services(request, auth_response)
 
-    警告：此操作不可逆
+    session = session_svc.get_session(str(session_id))
+    if not session:
+        raise HTTPException(status_code=404, detail="Session not found")
 
-    Args:
-        user: 已验证的用户
+    return msg_svc.get_messages(str(session_id))
 
-    Returns:
-        删除确认
-    """
-    supabase = get_user_client(user)
-    user_id = str(user.user.id)
 
-    # 获取用户的所有会话 ID
-    sessions_response = supabase.table("chat_sessions") \
-        .select("id") \
-        .eq("user_id", user_id) \
-        .execute()
+@router.patch("/sessions/{session_id}", response_model=ChatSessionResponse)
+async def update_session(
+    session_id: UUID,
+    body: ChatSessionUpdate,
+    request: Request,
+    auth_response=Depends(verify_auth),
+):
+    """Update session (title)."""
+    session_svc, _, _, _ = _get_services(request, auth_response)
 
-    session_ids = [s["id"] for s in sessions_response.data]
+    session = session_svc.get_session(str(session_id))
+    if not session:
+        raise HTTPException(status_code=404, detail="Session not found")
 
-    if session_ids:
-        # 删除所有关联消息
-        for session_id in session_ids:
-            supabase.table("messages") \
-                .delete() \
-                .eq("chat_session_id", session_id) \
-                .execute()
+    if body.title:
+        session_svc.update_title(str(session_id), body.title)
 
-        # 删除所有会话
-        supabase.table("chat_sessions") \
-            .delete() \
-            .eq("user_id", user_id) \
-            .execute()
+    return session_svc.get_session(str(session_id))
 
-    logger.info(f"Emptied all sessions for user: {user_id}")
 
-    return {"detail": "All chat sessions and messages have been deleted"}
+@router.delete("/sessions/{session_id}")
+async def delete_session(
+    session_id: UUID,
+    request: Request,
+    auth_response=Depends(verify_auth),
+):
+    """Delete a session and all its messages."""
+    session_svc, _, _, _ = _get_services(request, auth_response)
+
+    session = session_svc.get_session(str(session_id))
+    if not session:
+        raise HTTPException(status_code=404, detail="Session not found")
+
+    session_svc.delete_session(str(session_id))
+    return {"detail": "Session deleted"}
+
+
+# =============================================================================
+# RAG Chat with Persistence
+# =============================================================================
+
+
+@router.post("/sessions/{session_id}/stream")
+async def chat_stream(
+    session_id: UUID,
+    body: RagChatWithSessionRequest,
+    request: Request,
+    auth_response=Depends(verify_auth),
+):
+    """RAG chat with message persistence."""
+    access_token = request.cookies.get(COOKIE_NAME_ACCESS)
+    supabase = get_supabase_client(access_token)
+    user_id = str(auth_response.user.id)
+
+    session_svc = ChatSessionService(supabase, user_id)
+    msg_svc = MessageService(supabase, user_id)
+
+    # Check if session exists, create if not
+    session = session_svc.get_session(str(session_id))
+    if not session:
+        session = session_svc.create_session(str(session_id))
+
+    # Save user message
+    user_message = body.messages[-1]
+    msg_svc.add_message(str(session_id), "user", user_message.content)
+
+    # Get API configs
+    config_svc = ApiConfigService(supabase, user_id)
+    chat_config = config_svc.get_active_config("chat")
+    if not chat_config:
+        raise ConfigurationError("chat", "API")
+
+    embedding_config = config_svc.get_active_config("embedding")
+    if not embedding_config:
+        raise ConfigurationError("embedding", "API")
+
+    chat_config = get_decrypted_config(chat_config)
+    embedding_config = get_decrypted_config(embedding_config)
+
+    # Create RAG service
+    rag_service = SelfRagService(
+        chat_config=chat_config,
+        embedding_config=embedding_config,
+        supabase=supabase,
+        user_id=user_id,
+    )
+
+    async def generate() -> AsyncGenerator[str, None]:
+        """SSE generator with message persistence."""
+        full_response = ""
+        sources = []
+
+        messages = [{"role": m.role, "content": m.content} for m in body.messages]
+
+        try:
+            async for event in rag_service.stream_chat(
+                messages, body.top_k, body.min_score
+            ):
+                # Capture sources and content
+                if event["event"] == "retrieval":
+                    sources = event["data"].get("sources", [])
+                elif event["event"] == "content":
+                    full_response += event["data"].get("delta", "")
+                elif event["event"] == "done":
+                    # Save assistant message with sources
+                    msg_svc.add_message(
+                        str(session_id),
+                        "assistant",
+                        full_response,
+                        sources if sources else None,
+                    )
+                    # Auto-generate title if first exchange
+                    msg_count = msg_svc.count_messages(str(session_id))
+                    if msg_count == 2:  # user + assistant
+                        title = user_message.content[:50]
+                        if len(user_message.content) > 50:
+                            title += "..."
+                        session_svc.update_title(str(session_id), title)
+
+                yield f"event: {event['event']}\n"
+                yield f"data: {json.dumps(event['data'], ensure_ascii=False)}\n\n"
+
+        except Exception as e:
+            logger.error(f"Chat stream error: {e}")
+            yield f"event: error\n"
+            yield f"data: {json.dumps({'message': str(e)})}\n\n"
+
+    return StreamingResponse(
+        generate(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",
+        },
+    )
