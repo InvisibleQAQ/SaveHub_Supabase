@@ -1,10 +1,11 @@
 """RSS API router for feed validation and parsing."""
 
 import logging
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends
 import feedparser
 
 from app.dependencies import verify_auth
+from app.exceptions import ValidationError
 from app.schemas.rss import (
     ValidateRequest,
     ValidateResponse,
@@ -64,11 +65,4 @@ async def parse_rss(request: ParseRequest, user=Depends(verify_auth)):
             f"RSS parse failed (ValueError): url={request.url}",
             extra={'user_id': user.user.id, 'error': str(e)}
         )
-        raise HTTPException(status_code=400, detail=str(e))
-    except Exception as e:
-        # Unexpected error - server issue
-        logger.error(
-            f"RSS parse failed: url={request.url}",
-            extra={'user_id': user.user.id, 'error': str(e)}
-        )
-        raise HTTPException(status_code=500, detail=str(e))
+        raise ValidationError(str(e))

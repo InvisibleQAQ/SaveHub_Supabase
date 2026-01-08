@@ -12,7 +12,14 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import StreamingResponse
 import httpx
 
-from app.dependencies import verify_auth, get_access_token, create_service_dependency, require_exists
+from app.dependencies import (
+    verify_auth,
+    get_access_token,
+    create_service_dependency,
+    require_exists,
+    COOKIE_NAME_ACCESS,
+)
+from app.exceptions import NotFoundError, ConfigurationError, ValidationError
 from app.supabase_client import get_supabase_client
 from app.schemas.repositories import (
     RepositoryResponse,
@@ -65,10 +72,7 @@ async def sync_repositories(
 
     github_token = settings.get("github_token")
     if not github_token:
-        raise HTTPException(
-            status_code=400,
-            detail="GitHub token not configured. Please add it in Settings."
-        )
+        raise ConfigurationError("GitHub", "token")
 
     # Create progress queue for SSE
     progress_queue: asyncio.Queue = asyncio.Queue()
@@ -212,7 +216,6 @@ async def sync_repositories(
             # Generate embeddings for repositories
             try:
                 from app.celery_app.repository_tasks import do_repository_embedding
-                import asyncio
                 import functools
 
                 async def on_embedding_progress(repo_name: str, completed: int, total: int):
@@ -413,7 +416,7 @@ async def update_repository(
 
     result = service.update_repository(repo_id, update_data)
     if not result:
-        raise HTTPException(status_code=404, detail="Repository not found")
+        raise NotFoundError("Repository")
 
     return result
 
@@ -438,44 +441,31 @@ async def analyze_repository(
     api_config_service = ApiConfigService(supabase, user_id)
 
     # Get repository
-    repo = repo_service.get_repository_by_id(repo_id)
-    if not repo:
-        raise HTTPException(status_code=404, detail="Repository not found")
+    repo = require_exists(repo_service.get_repository_by_id(repo_id), "Repository")
 
     # Check if README exists
     if not repo.get("readme_content"):
-        raise HTTPException(
-            status_code=400,
-            detail="Repository has no README content to analyze"
-        )
+        raise ValidationError("Repository has no README content to analyze")
 
     # Get active chat API config
     config = api_config_service.get_active_config("chat")
     if not config:
-        raise HTTPException(
-            status_code=400,
-            detail="No active chat API configured. Please add one in Settings."
-        )
+        raise ConfigurationError("chat", "API")
 
-    try:
-        # Create AI service and analyze
-        ai_service = create_ai_service_from_config(config)
-        analysis = await ai_service.analyze_repository(
-            readme_content=repo["readme_content"],
-            repo_name=repo["full_name"],
-            description=repo.get("description"),
-        )
+    from app.services.ai.repository_service import create_ai_service_from_config
 
-        # Update repository with analysis results
-        result = repo_service.update_ai_analysis(repo_id, analysis)
-        if not result:
-            raise HTTPException(status_code=500, detail="Failed to save analysis")
+    # Create AI service and analyze
+    ai_service = create_ai_service_from_config(config)
+    analysis = await ai_service.analyze_repository(
+        readme_content=repo["readme_content"],
+        repo_name=repo["full_name"],
+        description=repo.get("description"),
+    )
 
-        logger.info(f"AI analysis completed for {repo['full_name']}")
-        return result
+    # Update repository with analysis results
+    result = repo_service.update_ai_analysis(repo_id, analysis)
+    if not result:
+        raise NotFoundError("Repository")
 
-    except Exception as e:
-        # Mark analysis as failed
-        repo_service.mark_analysis_failed(repo_id)
-        logger.error(f"AI analysis failed for {repo['full_name']}: {e}")
-        raise HTTPException(status_code=500, detail=f"AI analysis failed: {str(e)}")
+    logger.info(f"AI analysis completed for {repo['full_name']}")
+    return result

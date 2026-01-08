@@ -1,9 +1,9 @@
 """Settings API router for user preferences."""
 
 import logging
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, Depends
 
-from app.dependencies import verify_auth, create_service_dependency
+from app.dependencies import create_service_dependency
 from app.schemas.settings import (
     SettingsUpdate,
     SettingsResponse,
@@ -29,19 +29,15 @@ async def get_settings(service: SettingsService = Depends(get_settings_service))
     Returns:
         User settings or defaults.
     """
-    try:
-        settings = service.load_settings()
-        if settings:
-            return settings
+    settings = service.load_settings()
+    if settings:
+        return settings
 
-        # Return defaults with user_id if no settings found
-        return SettingsResponse(
-            user_id=service.user_id,
-            **DEFAULT_SETTINGS.model_dump(),
-        )
-    except Exception as e:
-        logger.error(f"Failed to get settings: {e}")
-        raise HTTPException(status_code=500, detail="Failed to retrieve settings")
+    # Return defaults with user_id if no settings found
+    return SettingsResponse(
+        user_id=service.user_id,
+        **DEFAULT_SETTINGS.model_dump(),
+    )
 
 
 @router.put("", response_model=SettingsResponse)
@@ -61,37 +57,33 @@ async def update_settings(
     Returns:
         Updated settings.
     """
-    try:
-        # Check if settings exist
-        existing = service.load_settings()
+    # Check if settings exist
+    existing = service.load_settings()
 
-        # Convert to dict, keeping None values for fields that need to be deleted
-        update_data = settings_update.model_dump(exclude_unset=True)
+    # Convert to dict, keeping None values for fields that need to be deleted
+    update_data = settings_update.model_dump(exclude_unset=True)
 
-        logger.debug(f"Update data: {update_data}")
+    logger.debug(f"Update data: {update_data}")
 
-        if existing:
-            # Update existing settings
-            if update_data:
-                service.update_settings(update_data)
-        else:
-            # Create new settings with defaults + updates
-            new_settings = DEFAULT_SETTINGS.model_dump()
-            # Filter out None values for creation
-            filtered_updates = {k: v for k, v in update_data.items() if v is not None}
-            new_settings.update(filtered_updates)
-            service.save_settings(new_settings)
+    if existing:
+        # Update existing settings
+        if update_data:
+            service.update_settings(update_data)
+    else:
+        # Create new settings with defaults + updates
+        new_settings = DEFAULT_SETTINGS.model_dump()
+        # Filter out None values for creation
+        filtered_updates = {k: v for k, v in update_data.items() if v is not None}
+        new_settings.update(filtered_updates)
+        service.save_settings(new_settings)
 
-        # Return updated settings
-        settings = service.load_settings()
-        if settings:
-            return settings
+    # Return updated settings
+    settings = service.load_settings()
+    if settings:
+        return settings
 
-        # Fallback (should not happen)
-        return SettingsResponse(
-            user_id=service.user_id,
-            **DEFAULT_SETTINGS.model_dump(),
-        )
-    except Exception as e:
-        logger.error(f"Failed to update settings: {e}")
-        raise HTTPException(status_code=500, detail="Failed to update settings")
+    # Fallback (should not happen)
+    return SettingsResponse(
+        user_id=service.user_id,
+        **DEFAULT_SETTINGS.model_dump(),
+    )

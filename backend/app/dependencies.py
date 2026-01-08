@@ -8,6 +8,8 @@ from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from supabase import create_client, Client
 from dotenv import load_dotenv, find_dotenv
 
+from app.exceptions import NotFoundError
+
 _ = load_dotenv(find_dotenv())  # read local .env file
 
 logger = logging.getLogger(__name__)
@@ -221,9 +223,9 @@ def create_service_dependency(service_class: Type[T]) -> Callable[..., T]:
     return dependency
 
 
-def require_exists(item: Any, detail: str = "Resource not found") -> Any:
+def require_exists(item: Any, resource: str = "Resource") -> Any:
     """
-    Raise 404 if item is None/falsy.
+    Raise NotFoundError if item is None/falsy.
 
     Eliminates boilerplate:
         existing = service.get_xxx(id)
@@ -231,20 +233,20 @@ def require_exists(item: Any, detail: str = "Resource not found") -> Any:
             raise HTTPException(status_code=404, detail="Xxx not found")
 
     Usage:
-        feed = require_exists(service.get_feed(id), "Feed not found")
+        feed = require_exists(service.get_feed(id), "Feed")
 
     Args:
         item: The item to check (typically from a service.get_xxx() call)
-        detail: Error message for 404 response
+        resource: Resource name for error message (e.g., "Feed", "Article")
 
     Returns:
         The item if it exists
 
     Raises:
-        HTTPException: 404 if item is None/falsy
+        NotFoundError: if item is None/falsy
     """
     if not item:
-        raise HTTPException(status_code=404, detail=detail)
+        raise NotFoundError(resource)
     return item
 
 

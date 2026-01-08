@@ -5,9 +5,11 @@ Provides GitHub token validation and related functionality.
 """
 
 import logging
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter
 from pydantic import BaseModel
 import httpx
+
+from app.exceptions import ExternalServiceError
 
 logger = logging.getLogger(__name__)
 
@@ -75,7 +77,4 @@ async def validate_github_token(request: ValidateTokenRequest):
 
     except httpx.TimeoutException:
         logger.error("GitHub API timeout")
-        raise HTTPException(status_code=504, detail="GitHub API timeout")
-    except Exception as e:
-        logger.error(f"Failed to validate GitHub token: {e}")
-        raise HTTPException(status_code=500, detail="Failed to validate token")
+        raise ExternalServiceError("GitHub API", "timeout")

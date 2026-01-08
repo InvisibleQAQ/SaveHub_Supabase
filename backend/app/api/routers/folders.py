@@ -3,9 +3,10 @@
 import logging
 from typing import List
 from uuid import UUID
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, Depends
 
-from app.dependencies import verify_auth, create_service_dependency, require_exists, extract_update_data
+from app.dependencies import create_service_dependency, require_exists, extract_update_data
+from app.exceptions import DuplicateError, ValidationError
 from app.schemas.folders import (
     FolderCreate,
     FolderCreateWithId,
@@ -30,13 +31,9 @@ async def get_folders(service: FolderService = Depends(get_folder_service)):
     Returns:
         List of folders ordered by order field.
     """
-    try:
-        folders = service.load_folders()
-        logger.debug(f"Retrieved {len(folders)} folders")
-        return folders
-    except Exception as e:
-        logger.error(f"Failed to get folders: {e}")
-        raise HTTPException(status_code=500, detail="Failed to retrieve folders")
+    folders = service.load_folders()
+    logger.debug(f"Retrieved {len(folders)} folders")
+    return folders
 
 
 @router.post("", response_model=dict)
@@ -55,23 +52,17 @@ async def create_folders(
     Returns:
         Success status with count.
     """
-    try:
-        folder_dicts = [folder.model_dump() for folder in folders]
-        result = service.save_folders(folder_dicts)
+    folder_dicts = [folder.model_dump() for folder in folders]
+    result = service.save_folders(folder_dicts)
 
-        if not result.get("success"):
-            error = result.get("error", "Unknown error")
-            if error == "duplicate":
-                raise HTTPException(status_code=409, detail="Duplicate folder name")
-            raise HTTPException(status_code=400, detail=error)
+    if not result.get("success"):
+        error = result.get("error", "Unknown error")
+        if error == "duplicate":
+            raise DuplicateError("folder name")
+        raise ValidationError(error)
 
-        logger.info(f"Created/updated {len(folders)} folders")
-        return {"success": True, "count": len(folders)}
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"Failed to create folders: {e}")
-        raise HTTPException(status_code=500, detail="Failed to create folders")
+    logger.info(f"Created/updated {len(folders)} folders")
+    return {"success": True, "count": len(folders)}
 
 
 @router.put("/{folder_id}", response_model=dict)
@@ -95,27 +86,21 @@ async def update_folder(
     Raises:
         404 if folder not found.
     """
-    try:
-        require_exists(service.get_folder(str(folder_id)), "Folder not found")
+    require_exists(service.get_folder(str(folder_id)), "Folder")
 
-        update_data = extract_update_data(folder_update)
+    update_data = extract_update_data(folder_update)
 
-        if not update_data:
-            return {"success": True, "message": "No fields to update"}
+    if not update_data:
+        return {"success": True, "message": "No fields to update"}
 
-        result = service.update_folder(str(folder_id), update_data)
+    result = service.update_folder(str(folder_id), update_data)
 
-        if not result.get("success"):
-            error = result.get("error", "Unknown error")
-            raise HTTPException(status_code=400, detail=error)
+    if not result.get("success"):
+        error = result.get("error", "Unknown error")
+        raise ValidationError(error)
 
-        logger.info(f"Updated folder {folder_id}")
-        return {"success": True}
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"Failed to update folder {folder_id}: {e}")
-        raise HTTPException(status_code=500, detail="Failed to update folder")
+    logger.info(f"Updated folder {folder_id}")
+    return {"success": True}
 
 
 @router.delete("/{folder_id}", response_model=dict)
@@ -126,7 +111,7 @@ async def delete_folder(
     """
     Delete a folder.
 
-    Note: Feeds in this folder will have their folder_id set to null.
+    Note: Feeds in this folder wave their folder_id set to null.
 
     Args:
         folder_id: UUID of the folder to delete
@@ -137,14 +122,8 @@ async def delete_folder(
     Raises:
         404 if folder not found.
     """
-    try:
-        require_exists(service.get_folder(str(folder_id)), "Folder not found")
+    require_exists(service.get_folder(str(folder_id)), "Folder")
 
-        service.delete_folder(str(folder_id))
-        logger.info(f"Deleted folder {folder_id}")
-        return {"success": True}
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"Failed to delete folder {folder_id}: {e}")
-        raise HTTPException(status_code=500, detail="Failed to delete folder")
+    service.delete_folder(str(folder_id))
+    logger.info(f"Deleted folder {folder_id}")
+    return {"success": True}

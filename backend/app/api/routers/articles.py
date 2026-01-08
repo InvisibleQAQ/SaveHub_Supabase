@@ -3,9 +3,15 @@
 import logging
 from typing import List, Optional
 from uuid import UUID
-from fastapi import APIRouter, Depends, HTTPException, Query, Request
+from fastapi import APIRouter, Depends, Query
 
-from app.dependencies import verify_auth, get_access_token, create_service_dependency, require_exists, extract_update_data
+from app.dependencies import (
+    verify_auth,
+    get_access_token,
+    create_service_dependency,
+    require_exists,
+    extract_update_data,
+)
 from app.supabase_client import get_supabase_client
 from app.schemas.articles import (
     ArticleCreate,
@@ -34,12 +40,8 @@ async def get_article_stats(service: ArticleService = Depends(get_article_servic
     Returns:
         Statistics including total, unread, starred counts and per-feed breakdown.
     """
-    try:
-        stats = service.get_article_stats()
-        return ArticleStatsResponse(**stats)
-    except Exception as e:
-        logger.error(f"Failed to get article stats: {e}")
-        raise HTTPException(status_code=500, detail="Failed to retrieve article statistics")
+    stats = service.get_article_stats()
+    return ArticleStatsResponse(**stats)
 
 
 @router.delete("/old", response_model=ClearOldArticlesResponse)
@@ -56,13 +58,9 @@ async def clear_old_articles(
     Returns:
         Number of articles deleted.
     """
-    try:
-        deleted_count = service.clear_old_articles(days_to_keep=days)
-        logger.info(f"Cleared {deleted_count} old articles")
-        return ClearOldArticlesResponse(deleted_count=deleted_count)
-    except Exception as e:
-        logger.error(f"Failed to clear old articles: {e}")
-        raise HTTPException(status_code=500, detail="Failed to clear old articles")
+    deleted_count = service.clear_old_articles(days_to_keep=days)
+    logger.info(f"Cleared {deleted_count} old articles")
+    return ClearOldArticlesResponse(deleted_count=deleted_count)
 
 
 @router.get("", response_model=List[ArticleResponse])
@@ -81,16 +79,12 @@ async def get_articles(
     Returns:
         List of articles ordered by published_at descending.
     """
-    try:
-        articles = service.load_articles(
-            feed_id=str(feed_id) if feed_id else None,
-            limit=limit,
-        )
-        logger.debug(f"Retrieved {len(articles)} articles")
-        return articles
-    except Exception as e:
-        logger.error(f"Failed to get articles: {e}")
-        raise HTTPException(status_code=500, detail="Failed to retrieve articles")
+    articles = service.load_articles(
+        feed_id=str(feed_id) if feed_id else None,
+        limit=limit,
+    )
+    logger.debug(f"Retrieved {len(articles)} articles")
+    return articles
 
 
 @router.post("", response_model=dict)
@@ -109,14 +103,10 @@ async def create_articles(
     Returns:
         Success status with count of created articles.
     """
-    try:
-        article_dicts = [article.model_dump() for article in articles]
-        service.save_articles(article_dicts)
-        logger.info(f"Created/updated {len(articles)} articles")
-        return {"success": True, "count": len(articles)}
-    except Exception as e:
-        logger.error(f"Failed to create articles: {e}")
-        raise HTTPException(status_code=500, detail="Failed to create articles")
+    article_dicts = [article.model_dump() for article in articles]
+    service.save_articles(article_dicts)
+    logger.info(f"Created/updated {len(articles)} articles")
+    return {"success": True, "count": len(articles)}
 
 
 @router.get("/{article_id}", response_model=ArticleResponse)
@@ -136,14 +126,8 @@ async def get_article(
     Raises:
         404 if article not found.
     """
-    try:
-        article = require_exists(service.get_article(str(article_id)), "Article not found")
-        return article
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"Failed to get article {article_id}: {e}")
-        raise HTTPException(status_code=500, detail="Failed to retrieve article")
+    article = require_exists(service.get_article(str(article_id)), "Article")
+    return article
 
 
 @router.patch("/{article_id}", response_model=dict)
@@ -168,22 +152,16 @@ async def update_article(
     Raises:
         404 if article not found.
     """
-    try:
-        require_exists(service.get_article(str(article_id)), "Article not found")
+    require_exists(service.get_article(str(article_id)), "Article")
 
-        update_data = extract_update_data(article_update)
+    update_data = extract_update_data(article_update)
 
-        if not update_data:
-            return {"success": True, "message": "No fields to update"}
+    if not update_data:
+        return {"success": True, "message": "No fields to update"}
 
-        service.update_article(str(article_id), update_data)
-        logger.info(f"Updated article {article_id}")
-        return {"success": True}
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"Failed to update article {article_id}: {e}")
-        raise HTTPException(status_code=500, detail="Failed to update article")
+    service.update_article(str(article_id), update_data)
+    logger.info(f"Updated article {article_id}")
+    return {"success": True}
 
 
 @router.get("/{article_id}/repositories", response_model=List[RepositoryResponse])
@@ -203,27 +181,23 @@ async def get_article_repositories(
     Returns:
         List of repositories linked to this article.
     """
-    try:
-        client = get_supabase_client(access_token)
-        service = ArticleRepositoryService(client, user.user.id)
+    client = get_supabase_client(access_token)
+    service = ArticleRepositoryService(client, user.user.id)
 
-        # Get junction records with nested repository data
-        junction_records = service.get_repos_for_article(str(article_id))
+    # Get junction records with nested repository data
+    junction_records = service.get_repos_for_article(str(article_id))
 
-        # Extract repository data from nested 'repositories' field
-        repositories = []
-        list_fields = ['topics', 'ai_tags', 'ai_platforms', 'custom_tags']
-        for record in junction_records:
-            repo_data = record.get("repositories")
-            if repo_data:
-                # Convert None to empty list for list fields
-                for field in list_fields:
-                    if repo_data.get(field) is None:
-                        repo_data[field] = []
-                repositories.append(repo_data)
+    # Extract repository data from nested 'repositories' field
+    repositories = []
+    list_fields = ['topics', 'ai_tags', 'ai_platforms', 'custom_tags']
+    for record in junction_records:
+        repo_data = record.get("repositories")
+        if repo_data:
+            # Convert None to empty list for list fields
+            for field in list_fields:
+                if repo_data.get(field) is None:
+                    repo_data[field] = []
+            repositories.append(repo_data)
 
-        logger.debug(f"Retrieved {len(repositories)} repositories for article {article_id}")
-        return repositories
-    except Exception as e:
-        logger.error(f"Failed to get repositories for article {article_id}: {e}")
-        raise HTTPException(status_code=500, detail="Failed to retrieve article repositories")
+    logger.debug(f"Retrieved {len(repositories)} repositories for article {article_id}")
+    return repositories

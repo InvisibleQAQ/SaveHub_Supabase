@@ -8,12 +8,13 @@ import logging
 from typing import Optional
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, Depends, Request
 
 from app.dependencies import verify_auth, get_access_token, create_service_dependency
+from app.exceptions import ConfigurationError
 from app.supabase_client import get_supabase_client
 from app.services.db.rag import RagService
-from app.services.ai import EmbeddingClient, ChatClient, get_active_config, normalize_base_url
+from app.services.ai import EmbeddingClient, ChatClient, get_active_config
 from app.services.rag.retriever import get_context_for_answer
 from app.schemas.rag import (
     RagQueryRequest,
@@ -49,7 +50,7 @@ def get_active_configs(
         {"chat": {...}, "embedding": {...}}
 
     Raises:
-        HTTPException: 配置不存在
+        ConfigurationError: 配置不存在
     """
     supabase = get_supabase_client(access_token)
     user_id = str(auth_response.user.id)
@@ -59,10 +60,7 @@ def get_active_configs(
     for config_type in ["chat", "embedding"]:
         config = get_active_config(supabase, user_id, config_type)
         if not config:
-            raise HTTPException(
-                status_code=400,
-                detail=f"请先配置 {config_type} 类型的 API"
-            )
+            raise ConfigurationError(config_type, "API")
         configs[config_type] = config
 
     return configs
@@ -86,59 +84,52 @@ async def query_rag(
     2. pgvector 相似度搜索
     3. 可选：使用 LLM 生成答案
     """
-    try:
-        # 获取配置
-        configs = get_active_configs(http_request, auth_response)
-        embedding_config = configs["embedding"]
-        chat_config = configs["chat"]
+    # 获取配置
+    configs = get_active_configs(http_request, auth_response)
+    embedding_config = configs["embedding"]
+    chat_config = configs["chat"]
 
-        # 生成查询 embedding（异步）
-        embedding_client = EmbeddingClient(**embedding_config)
-        query_embedding = await embedding_client.embed(query_request.query)
+    # 生成查询 embedding（异步）
+    embedding_client = EmbeddingClient(**embedding_config)
+    query_embedding = await embedding_client.embed(query_request.query)
 
-        # 向量搜索
-        hits = rag_service.search(
-            query_embedding=query_embedding,
-            top_k=query_request.top_k,
-            feed_id=str(query_request.feed_id) if query_request.feed_id else None,
-            min_score=query_request.min_score,
+    # 向量搜索
+    hits = rag_service.search(
+        query_embedding=query_embedding,
+        top_k=query_request.top_k,
+        feed_id=str(query_request.feed_id) if query_request.feed_id else None,
+        min_score=query_request.min_score,
+    )
+
+    # 转换为响应模型
+    hit_items = [
+        RagHit(
+            id=h["id"],
+            article_id=h["article_id"],
+            chunk_index=h["chunk_index"],
+            content=h["content"],
+            score=h.get("score", 0),
+            article_title=h.get("article_title", ""),
+            article_url=h.get("article_url", ""),
         )
+        for h in hits
+    ]
 
-        # 转换为响应模型
-        hit_items = [
-            RagHit(
-                id=h["id"],
-                article_id=h["article_id"],
-                chunk_index=h["chunk_index"],
-                content=h["content"],
-                score=h.get("score", 0),
-                article_title=h.get("article_title", ""),
-                article_url=h.get("article_url", ""),
-            )
-            for h in hits
-        ]
-
-        # 可选：生成答案
-        answer = None
-        if query_request.generate_answer and hits:
-            answer = await generate_answer(
-                query=query_request.query,
-                hits=hits,
-                chat_config=chat_config,
-            )
-
-        return RagQueryResponse(
+    # 可选：生成答案
+    answer = None
+    if query_request.generate_answer and hits:
+        answer = await generate_answer(
             query=query_request.query,
-            hits=hit_items,
-            answer=answer,
-            total_hits=len(hit_items),
+            hits=hits,
+            chat_config=chat_config,
         )
 
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.exception(f"RAG query failed: {e}")
-        raise HTTPException(status_code=500, detail=f"查询失败: {str(e)}")
+    return RagQueryResponse(
+        query=query_request.query,
+        hits=hit_items,
+        answer=answer,
+        total_hits=len(hit_items),
+    )
 
 
 @router.get("/status", response_model=RagStatusResponse)
@@ -146,12 +137,8 @@ async def get_rag_status(
     rag_service: RagService = Depends(get_rag_service),
 ):
     """获取 RAG 索引状态"""
-    try:
-        stats = rag_service.get_rag_stats()
-        return RagStatusResponse(**stats)
-    except Exception as e:
-        logger.exception(f"Failed to get RAG status: {e}")
-        raise HTTPException(status_code=500, detail="获取状态失败")
+    stats = rag_service.get_rag_stats()
+    return RagStatusResponse(**stats)
 
 
 @router.post("/reindex/{article_id}", response_model=RagReindexResponse)
@@ -171,31 +158,26 @@ async def reindex_article(
     user_id = auth_response.user.id
     article_id_str = str(article_id)
 
-    try:
-        if request.force:
-            # 重置状态，允许重新处理
-            rag_service.reset_article_rag_status(article_id_str)
-            rag_service.delete_all_embeddings(article_id_str)
+    if request.force:
+        # 重置状态，允许重新处理
+        rag_service.reset_article_rag_status(article_id_str)
+        rag_service.delete_all_embeddings(article_id_str)
 
-        # 创建处理任务
-        task = process_article_rag.apply_async(
-            kwargs={
-                "article_id": article_id_str,
-                "user_id": user_id,
-            },
-            queue="default",
-        )
+    # 创建处理任务
+    task = process_article_rag.apply_async(
+        kwargs={
+            "article_id": article_id_str,
+            "user_id": user_id,
+        },
+        queue="default",
+    )
 
-        return RagReindexResponse(
-            success=True,
-            article_id=article_id,
-            message="重新索引任务已创建",
-            task_id=task.id,
-        )
-
-    except Exception as e:
-        logger.exception(f"Failed to reindex article {article_id}: {e}")
-        raise HTTPException(status_code=500, detail=f"重新索引失败: {str(e)}")
+    return RagReindexResponse(
+        success=True,
+        article_id=article_id,
+        message="重新索引任务已创建",
+        task_id=task.id,
+    )
 
 
 @router.get("/embeddings/{article_id}", response_model=ArticleEmbeddingsResponse)
@@ -204,28 +186,23 @@ async def get_all_embeddings(
     rag_service: RagService = Depends(get_rag_service),
 ):
     """获取文章的所有 embeddings（不含向量数据）"""
-    try:
-        embeddings = rag_service.get_all_embeddings(str(article_id))
+    embeddings = rag_service.get_all_embeddings(str(article_id))
 
-        items = [
-            EmbeddingItem(
-                id=e["id"],
-                chunk_index=e["chunk_index"],
-                content=e["content"],
-                created_at=e["created_at"],
-            )
-            for e in embeddings
-        ]
-
-        return ArticleEmbeddingsResponse(
-            article_id=article_id,
-            embeddings=items,
-            count=len(items),
+    items = [
+        EmbeddingItem(
+            id=e["id"],
+            chunk_index=e["chunk_index"],
+            content=e["content"],
+            created_at=e["created_at"],
         )
+        for e in embeddings
+    ]
 
-    except Exception as e:
-        logger.exception(f"Failed to get embeddings for {article_id}: {e}")
-        raise HTTPException(status_code=500, detail="获取 embeddings 失败")
+    return ArticleEmbeddingsResponse(
+        article_id=article_id,
+        embeddings=items,
+        count=len(items),
+    )
 
 
 # =============================================================================

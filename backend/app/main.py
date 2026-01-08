@@ -16,6 +16,9 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
+from app.exceptions import AppException
+from app.exception_handlers import app_exception_handler, unhandled_exception_handler
+
 # Configure logging (file + console, daily rotation)
 from app.core.logging_config import setup_logging
 setup_logging()
@@ -46,6 +49,10 @@ app = FastAPI(
     version="1.0.0",
     lifespan=lifespan,
 )
+
+# Register global exception handlers
+app.add_exception_handler(AppException, app_exception_handler)
+app.add_exception_handler(Exception, unhandled_exception_handler)
 
 app.add_middleware(
     CORSMiddleware,

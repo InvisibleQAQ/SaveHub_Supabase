@@ -3,9 +3,10 @@
 import logging
 from typing import List
 from uuid import UUID
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, Depends, Request
 
-from app.dependencies import verify_auth, create_service_dependency, require_exists, extract_update_data
+from app.dependencies import create_service_dependency, require_exists, extract_update_data
+from app.exceptions import DuplicateError, ValidationError
 from app.schemas.feeds import (
     FeedCreate,
     FeedUpdate,
@@ -30,13 +31,9 @@ async def get_feeds(service: FeedService = Depends(get_feed_service)):
     Returns:
         List of feeds ordered by order field.
     """
-    try:
-        feeds = service.load_feeds()
-        logger.debug(f"Retrieved {len(feeds)} feeds")
-        return feeds
-    except Exception as e:
-        logger.error(f"Failed to get feeds: {e}")
-        raise HTTPException(status_code=500, detail="Failed to retrieve feeds")
+    feeds = service.load_feeds()
+    logger.debug(f"Retrieved {len(feeds)} feeds")
+    return feeds
 
 
 @router.post("", response_model=dict)
@@ -56,58 +53,52 @@ async def create_feeds(
     Returns:
         Success status with optional error message.
     """
-    try:
-        feed_dicts = [feed.model_dump() for feed in feeds]
-        result = service.save_feeds(feed_dicts)
+    feed_dicts = [feed.model_dump() for feed in feeds]
+    result = service.save_feeds(feed_dicts)
 
-        if not result.get("success"):
-            error = result.get("error", "Unknown error")
-            if error == "duplicate":
-                raise HTTPException(status_code=409, detail="Duplicate feed URL")
-            raise HTTPException(status_code=400, detail=error)
+    if not result.get("success"):
+        error = result.get("error", "Unknown error")
+        if error == "duplicate":
+            raise DuplicateError("feed URL")
+        raise ValidationError(error)
 
-        # Auto-schedule refresh for each saved feed
-        saved_feeds = result.get("data", [])
-        if saved_feeds:
-            from datetime import datetime, timezone
-            from app.celery_app.tasks import refresh_feed
-            from app.celery_app.supabase_client import get_supabase_service
+    # Auto-schedule refresh for each saved feed
+    saved_feeds = result.get("data", [])
+    if saved_feeds:
+        from datetime import datetime, timezone
+        from app.celery_app.tasks import refresh_feed
+        from app.celery_app.supabase_client import get_supabase_service
 
-            # Set last_fetched = now for new feeds to prevent Beat from re-triggering
-            # (POST /feeds auto-schedules refresh_feed, Beat should not duplicate it)
-            supabase_service = get_supabase_service()
-            now_iso = datetime.now(timezone.utc).isoformat()
+        # Set last_fetched = now for new feeds to prevent Beat from re-triggering
+        # (POST /feeds auto-schedules refresh_feed, Beat should not duplicate it)
+        supabase_service = get_supabase_service()
+        now_iso = datetime.now(timezone.utc).isoformat()
 
-            for feed_data in saved_feeds:
-                try:
-                    # Set last_fetched to prevent Beat from re-triggering
-                    supabase_service.table("feeds").update({
-                        "last_fetched": now_iso
-                    }).eq("id", feed_data["id"]).execute()
+        for feed_data in saved_feeds:
+            try:
+                # Set last_fetched to prevent Beat from re-triggering
+                supabase_service.table("feeds").update({
+                    "last_fetched": now_iso
+                }).eq("id", feed_data["id"]).execute()
 
-                    refresh_feed.apply_async(
-                        kwargs={
-                            "feed_id": feed_data["id"],
-                            "feed_url": feed_data["url"],
-                            "feed_title": feed_data["title"],
-                            "user_id": service.user_id,
-                            "refresh_interval": feed_data.get("refresh_interval", 60),
-                            "priority": "new_feed",
-                        },
-                        queue="high"  # New feeds get high priority
-                    )
-                    logger.info(f"Scheduled refresh for new feed: {feed_data['id']}")
-                except Exception as e:
-                    logger.error(f"Failed to schedule refresh for feed {feed_data['id']}: {e}")
-                    # Don't fail the whole request if scheduling fails
+                refresh_feed.apply_async(
+                    kwargs={
+                        "feed_id": feed_data["id"],
+                        "feed_url": feed_data["url"],
+                        "feed_title": feed_data["title"],
+                        "user_id": service.user_id,
+                        "refresh_interval": feed_data.get("refresh_interval", 60),
+                        "priority": "new_feed",
+                    },
+                    queue="high"  # New feeds get high priority
+                )
+                logger.info(f"Scheduled refresh for new feed: {feed_data['id']}")
+            except Exception as e:
+                logger.error(f"Failed to schedule refresh for feed {feed_data['id']}: {e}")
+                # Don't fail the whole request if scheduling fails
 
-        logger.info(f"Created/updated {len(feeds)} feeds")
-        return {"success": True, "count": len(feeds)}
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"Failed to create feeds: {e}")
-        raise HTTPException(status_code=500, detail="Failed to create feeds")
+    logger.info(f"Created/updated {len(feeds)} feeds")
+    return {"success": True, "count": len(feeds)}
 
 
 @router.get("/{feed_id}", response_model=FeedResponse)
@@ -127,14 +118,8 @@ async def get_feed(
     Raises:
         404 if feed not found.
     """
-    try:
-        feed = require_exists(service.get_feed(str(feed_id)), "Feed not found")
-        return feed
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"Failed to get feed {feed_id}: {e}")
-        raise HTTPException(status_code=500, detail="Failed to retrieve feed")
+    feed = require_exists(service.get_feed(str(feed_id)), "Feed")
+    return feed
 
 
 @router.put("/{feed_id}", response_model=dict)
@@ -158,31 +143,25 @@ async def update_feed(
     Raises:
         404 if feed not found.
     """
-    try:
-        # First check if feed exists
-        require_exists(service.get_feed(str(feed_id)), "Feed not found")
+    # First check if feed exists
+    require_exists(service.get_feed(str(feed_id)), "Feed")
 
-        # Filter out None values for partial update
-        update_data = extract_update_data(feed_update)
+    # Filter out None values for partial update
+    update_data = extract_update_data(feed_update)
 
-        if not update_data:
-            return {"success": True, "message": "No fields to update"}
+    if not update_data:
+        return {"success": True, "message": "No fields to update"}
 
-        result = service.update_feed(str(feed_id), update_data)
+    result = service.update_feed(str(feed_id), update_data)
 
-        if not result.get("success"):
-            error = result.get("error", "Unknown error")
-            if error == "duplicate":
-                raise HTTPException(status_code=409, detail="Duplicate feed URL")
-            raise HTTPException(status_code=400, detail=error)
+    if not result.get("success"):
+        error = result.get("error", "Unknown error")
+        if error == "duplicate":
+            raise DuplicateError("feed URL")
+        raise ValidationError(error)
 
-        logger.info(f"Updated feed {feed_id}")
-        return {"success": True}
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"Failed to update feed {feed_id}: {e}")
-        raise HTTPException(status_code=500, detail="Failed to update feed")
+    logger.info(f"Updated feed {feed_id}")
+    return {"success": True}
 
 
 @router.delete("/{feed_id}", response_model=FeedDeleteResponse)
@@ -202,15 +181,9 @@ async def delete_feed(
     Raises:
         404 if feed not found.
     """
-    try:
-        # First check if feed exists
-        require_exists(service.get_feed(str(feed_id)), "Feed not found")
+    # First check if feed exists
+    require_exists(service.get_feed(str(feed_id)), "Feed")
 
-        result = service.delete_feed(str(feed_id))
-        logger.info(f"Deleted feed {feed_id} with {result['articles_deleted']} articles")
-        return FeedDeleteResponse(**result)
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"Failed to delete feed {feed_id}: {e}")
-        raise HTTPException(status_code=500, detail="Failed to delete feed")
+    result = service.delete_feed(str(feed_id))
+    logger.info(f"Deleted feed {feed_id} with {result['articles_deleted']} articles")
+    return FeedDeleteResponse(**result)
