@@ -1,7 +1,7 @@
 import type { ApiConfigType } from './types'
 import { fetchWithAuth } from './api/fetch-client'
 
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'
+const API_BASE = '/api/backend/api-configs'
 
 export interface ApiValidationRequest {
   apiKey: string
@@ -27,7 +27,7 @@ export async function validateApiConfig(config: ApiValidationRequest): Promise<A
   const type = config.type || 'chat'
 
   try {
-    const response = await fetchWithAuth(`${API_BASE_URL}/api/api-configs/validate`, {
+    const response = await fetchWithAuth(`${API_BASE}/validate`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',

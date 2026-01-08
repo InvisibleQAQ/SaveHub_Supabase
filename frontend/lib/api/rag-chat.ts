@@ -6,7 +6,7 @@
 
 import { fetchWithAuth, isTokenExpiringSoon, proactiveRefresh } from "./fetch-client"
 
-const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000"
+const API_BASE = "/api/backend/rag-chat"
 
 export interface ChatMessage {
   role: "user" | "assistant"
@@ -65,7 +65,7 @@ export const ragChatApi = {
       }
     }
 
-    const response = await fetchWithAuth(`${API_BASE}/api/rag-chat/stream`, {
+    const response = await fetchWithAuth(`${API_BASE}/stream`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ messages }),
