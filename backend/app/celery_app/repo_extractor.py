@@ -6,12 +6,18 @@ fetches repo data from GitHub API, and creates article-repository links.
 """
 
 import logging
-from datetime import datetime, timezone
 from typing import Dict, Any, List
 
 from .async_utils import run_async
 from .celery import app
 from .supabase_client import get_supabase_service
+from .task_utils import (
+    task_context,
+    build_task_result,
+    RepoExtractionError,
+    GitHubAPIError,
+    RateLimitError,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -25,22 +31,10 @@ MAX_REPOS_PER_ARTICLE = 20  # Limit repos extracted per article
 
 
 # =============================================================================
-# Errors
+# Errors (imported from task_utils for backward compatibility)
 # =============================================================================
 
-class RepoExtractionError(Exception):
-    """Base error for repo extraction."""
-    pass
-
-
-class GitHubAPIError(RepoExtractionError):
-    """GitHub API errors."""
-    pass
-
-
-class RateLimitError(GitHubAPIError):
-    """Rate limit exceeded."""
-    pass
+# RepoExtractionError, GitHubAPIError, RateLimitError are imported from task_utils
 
 
 # =============================================================================
@@ -307,23 +301,20 @@ def extract_article_repos(self, article_id: str, user_id: str):
     """
     Celery task: Extract GitHub repos from article.
     """
-    task_id = self.request.id
-    logger.info(f"Extracting repos from article {article_id}", extra={"task_id": task_id})
+    with task_context(self, article_id=article_id, user_id=user_id) as ctx:
+        ctx.log_start("Extracting repos from article")
 
-    start_time = datetime.now(timezone.utc)
-    result = do_extract_article_repos(article_id, user_id)
-    duration_ms = int((datetime.now(timezone.utc) - start_time).total_seconds() * 1000)
+        result = do_extract_article_repos(article_id, user_id)
 
-    logger.info(
-        f"Repo extraction complete: {result}",
-        extra={"task_id": task_id, "duration_ms": duration_ms}
-    )
+        ctx.log_success(
+            f"Repo extraction complete: extracted={result.get('extracted', 0)}, linked={result.get('linked', 0)}"
+        )
 
-    # Trigger sync_repositories if new repos were extracted
-    if result.get("success") and result.get("extracted", 0) > 0:
-        _maybe_trigger_sync(user_id)
+        # Trigger sync_repositories if new repos were extracted
+        if result.get("success") and result.get("extracted", 0) > 0:
+            _maybe_trigger_sync(user_id)
 
-    return {"article_id": article_id, "duration_ms": duration_ms, **result}
+        return build_task_result(ctx, article_id=article_id, **result)
 
 
 @app.task(name="schedule_repo_extraction_for_articles")

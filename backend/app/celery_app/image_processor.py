@@ -18,6 +18,13 @@ from bs4 import BeautifulSoup
 
 from .celery import app
 from .supabase_client import get_supabase_service
+from .task_utils import (
+    task_context,
+    build_task_result,
+    ImageProcessingError,
+    RetryableImageError,
+    NonRetryableImageError,
+)
 from app.services.image_compressor import compress_image, get_image_extension
 
 logger = logging.getLogger(__name__)
@@ -36,22 +43,11 @@ BUCKET_NAME = "article-images"
 
 
 # =============================================================================
-# Errors
+# Errors (imported from task_utils for backward compatibility)
 # =============================================================================
 
-class ImageProcessingError(Exception):
-    """Base error for image processing."""
-    pass
-
-
-class RetryableImageError(ImageProcessingError):
-    """Retryable error (network issues)."""
-    pass
-
-
-class NonRetryableImageError(ImageProcessingError):
-    """Non-retryable error (invalid image, SSRF blocked)."""
-    pass
+# ImageProcessingError, RetryableImageError, NonRetryableImageError
+# are imported from task_utils
 
 
 # =============================================================================
@@ -353,80 +349,43 @@ def process_article_images(
     Args:
         article_id: Article UUID
     """
-    task_id = self.request.id
-    attempt = self.request.retries + 1
-    max_attempts = self.max_retries + 1
+    with task_context(self, article_id=article_id) as ctx:
+        ctx.log_start("Processing article images")
 
-    logger.info(
-        f"Processing article images: attempt={attempt}/{max_attempts}",
-        extra={
-            "task_id": task_id,
-            "article_id": article_id,
-        }
-    )
+        try:
+            result = do_process_article_images(article_id)
 
-    start_time = datetime.now(timezone.utc)
+            ctx.log_success(
+                f"Completed: processed={result['processed']}/{result['total']}",
+                processed_count=result["processed"],
+                total_count=result["total"],
+            )
 
-    try:
-        result = do_process_article_images(article_id)
+            return build_task_result(
+                ctx,
+                success=True,
+                article_id=article_id,
+                **result,
+            )
 
-        duration_ms = int((datetime.now(timezone.utc) - start_time).total_seconds() * 1000)
+        except NonRetryableImageError as e:
+            ctx.log_error(e, f"Non-retryable error: {e}")
+            return build_task_result(
+                ctx,
+                success=False,
+                article_id=article_id,
+                error=str(e),
+            )
 
-        logger.info(
-            f"Completed: processed={result['processed']}/{result['total']}",
-            extra={
-                "task_id": task_id,
-                "article_id": article_id,
-                "success": str(result["success"]).lower(),
-                "processed_count": result["processed"],
-                "total_count": result["total"],
-                "duration_ms": duration_ms,
-            }
-        )
-
-        return {
-            "success": True,
-            "article_id": article_id,
-            **result,
-            "duration_ms": duration_ms,
-        }
-
-    except NonRetryableImageError as e:
-        duration_ms = int((datetime.now(timezone.utc) - start_time).total_seconds() * 1000)
-        logger.error(
-            f"Non-retryable error: {e}",
-            extra={
-                "task_id": task_id,
-                "article_id": article_id,
-                "error": str(e),
-                "duration_ms": duration_ms,
-            }
-        )
-        return {
-            "success": False,
-            "article_id": article_id,
-            "error": str(e),
-            "duration_ms": duration_ms,
-        }
-
-    except Exception as e:
-        # Don't raise - return failure result to allow chord callback to execute
-        duration_ms = int((datetime.now(timezone.utc) - start_time).total_seconds() * 1000)
-        logger.exception(
-            f"Unexpected error: {e}",
-            extra={
-                "task_id": task_id,
-                "article_id": article_id,
-                "error": str(e),
-                "duration_ms": duration_ms,
-            }
-        )
-        return {
-            "success": False,
-            "article_id": article_id,
-            "error": str(e),
-            "duration_ms": duration_ms,
-        }
+        except Exception as e:
+            # Don't raise - return failure result to allow chord callback to execute
+            ctx.log_exception(e)
+            return build_task_result(
+                ctx,
+                success=False,
+                article_id=article_id,
+                error=str(e),
+            )
 
 
 # =============================================================================

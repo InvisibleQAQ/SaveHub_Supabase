@@ -16,6 +16,13 @@ from typing import Dict, Any, List, Optional
 from .async_utils import run_async
 from .celery import app
 from .supabase_client import get_supabase_service
+from .task_utils import (
+    task_context,
+    build_task_result,
+    ConfigError,
+    ChunkingError,
+    EmbeddingError,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -29,27 +36,12 @@ MAX_IMAGES_PER_ARTICLE = 10  # 每篇文章最多处理的图片数
 
 
 # =============================================================================
-# Errors
+# Errors (imported from task_utils for backward compatibility)
 # =============================================================================
 
-class RagProcessingError(Exception):
-    """RAG 处理错误基类"""
-    pass
-
-
-class ConfigError(RagProcessingError):
-    """配置错误（用户未配置 API）"""
-    pass
-
-
-class ChunkingError(RagProcessingError):
-    """分块错误"""
-    pass
-
-
-class EmbeddingError(RagProcessingError):
-    """Embedding 生成错误"""
-    pass
+# ConfigError, ChunkingError, EmbeddingError are imported from task_utils
+# Keep RagProcessingError for backward compatibility with external imports
+from .task_utils import RagProcessingError
 
 
 # =============================================================================
@@ -310,70 +302,37 @@ def process_article_rag(self, article_id: str, user_id: str):
         article_id: 文章 ID
         user_id: 用户 ID
     """
-    task_id = self.request.id
-    attempt = self.request.retries + 1
-    max_attempts = self.max_retries + 1
+    with task_context(self, article_id=article_id, user_id=user_id) as ctx:
+        ctx.log_start("Processing article RAG")
 
-    logger.info(
-        f"Processing article RAG: attempt={attempt}/{max_attempts}",
-        extra={
-            "task_id": task_id,
-            "article_id": article_id,
-            "user_id": user_id,
-        }
-    )
+        try:
+            result = do_process_article_rag(article_id, user_id)
 
-    start_time = datetime.now(timezone.utc)
-
-    try:
-        result = do_process_article_rag(article_id, user_id)
-
-        duration_ms = int((datetime.now(timezone.utc) - start_time).total_seconds() * 1000)
-
-        logger.info(
-            f"RAG completed: success={result.get('success')}, "
-            f"chunks={result.get('chunks', 0)}",
-            extra={
-                "task_id": task_id,
-                "article_id": article_id,
-                "duration_ms": duration_ms,
-            }
-        )
-
-        # Trigger repo extraction after RAG completes successfully
-        if result.get("success"):
-            from .repo_extractor import extract_article_repos
-            extract_article_repos.apply_async(
-                kwargs={"article_id": article_id, "user_id": user_id},
-                countdown=1,
-                queue="default",
+            ctx.log_success(
+                f"RAG completed: success={result.get('success')}, chunks={result.get('chunks', 0)}"
             )
-            logger.info(f"Scheduled repo extraction for article {article_id}")
 
-        return {
-            "article_id": article_id,
-            "duration_ms": duration_ms,
-            **result,
-        }
+            # Trigger repo extraction after RAG completes successfully
+            if result.get("success"):
+                from .repo_extractor import extract_article_repos
+                extract_article_repos.apply_async(
+                    kwargs={"article_id": article_id, "user_id": user_id},
+                    countdown=1,
+                    queue="default",
+                )
+                logger.info(f"Scheduled repo extraction for article {article_id}")
 
-    except Exception as e:
-        duration_ms = int((datetime.now(timezone.utc) - start_time).total_seconds() * 1000)
-        logger.exception(
-            f"RAG task failed: {e}",
-            extra={
-                "task_id": task_id,
-                "article_id": article_id,
-                "error": str(e),
-                "duration_ms": duration_ms,
-            }
-        )
-        # 不重试，让 do_process_article_rag 内部处理错误状态
-        return {
-            "article_id": article_id,
-            "success": False,
-            "error": str(e),
-            "duration_ms": duration_ms,
-        }
+            return build_task_result(ctx, article_id=article_id, **result)
+
+        except Exception as e:
+            ctx.log_exception(e, f"RAG task failed: {e}")
+            # 不重试，让 do_process_article_rag 内部处理错误状态
+            return build_task_result(
+                ctx,
+                success=False,
+                article_id=article_id,
+                error=str(e),
+            )
 
 
 @app.task(name="scan_pending_rag_articles")

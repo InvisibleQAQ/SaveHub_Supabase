@@ -20,6 +20,13 @@ from .celery import app
 from .rate_limiter import get_rate_limiter
 from .task_lock import get_task_lock
 from .supabase_client import get_supabase_service
+from .task_utils import (
+    task_context,
+    build_task_result,
+    RetryableFeedError,
+    NonRetryableFeedError,
+    is_retryable_message,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -28,30 +35,14 @@ logger = logging.getLogger(__name__)
 # Core business logic (decoupled from Celery for unit testing)
 # =============================================================================
 
-class FeedRefreshError(Exception):
-    """Base error for feed refresh."""
-    pass
+# Error classes imported from task_utils for backward compatibility
+# Keep aliases for any code that imports from this module
+from .task_utils import FeedRefreshError
+RetryableError = RetryableFeedError
+NonRetryableError = NonRetryableFeedError
 
-
-class RetryableError(FeedRefreshError):
-    """Retryable error (network issues, rate limits)."""
-    pass
-
-
-class NonRetryableError(FeedRefreshError):
-    """Non-retryable error (invalid feed, parse errors)."""
-    pass
-
-
-def is_retryable_error(error_msg: str) -> bool:
-    """Determine if an error should be retried."""
-    retryable_patterns = [
-        "ENOTFOUND", "ETIMEDOUT", "ECONNREFUSED", "ECONNRESET",
-        "socket hang up", "timeout", "temporarily unavailable",
-        "503", "502", "429", "ConnectionError", "TimeoutError"
-    ]
-    error_lower = error_msg.lower()
-    return any(p.lower() in error_lower for p in retryable_patterns)
+# Use is_retryable_message from task_utils (renamed for backward compatibility)
+is_retryable_error = is_retryable_message
 
 
 def do_refresh_feed(
@@ -275,174 +266,108 @@ def refresh_feed(
         priority: Priority level (manual/overdue/normal)
         skip_lock: Skip lock check (used during retries)
     """
-    task_id = self.request.id
-    attempt = self.request.retries + 1
-    max_attempts = self.max_retries + 1
-
-    logger.info(
-        f"Processing: attempt={attempt}/{max_attempts}, priority={priority}",
-        extra={
-            'task_id': task_id,
-            'feed_id': feed_id,
-            'user_id': user_id,
-            'feed_url': feed_url,
-            'feed_title': feed_title,
-            'refresh_interval': refresh_interval,
-        }
-    )
-
-    start_time = datetime.now(timezone.utc)
     task_lock = get_task_lock()
     lock_key = f"feed:{feed_id}"
 
-    # Check task lock (prevent duplicate execution)
-    if not skip_lock:
-        # Lock TTL should be longer than task timeout
-        lock_ttl = 180  # 3 minutes
-        if not task_lock.acquire(lock_key, lock_ttl, task_id):
-            remaining = task_lock.get_ttl(lock_key)
-            logger.info(
-                f"[{task_id}] Feed {feed_id} already being processed, "
-                f"lock expires in {remaining}s"
-            )
-            # Don't retry, just reject
-            raise Reject(f"Feed {feed_id} is locked", requeue=False)
+    with task_context(
+        self,
+        feed_id=feed_id,
+        user_id=user_id,
+        feed_url=feed_url,
+        feed_title=feed_title,
+        refresh_interval=refresh_interval,
+        priority=priority,
+    ) as ctx:
+        ctx.log_start(f"Proceed: priority={priority}")
 
-    try:
-        # Check if feed still exists (may have been deleted while task was queued)
-        supabase = get_supabase_service()
-        feed_check = supabase.table("feeds").select("id").eq(
-            "id", feed_id
-        ).eq("user_id", user_id).execute()
-
-        if not feed_check.data:
-            # Feed no longer exists, skip and terminate task chain
-            logger.info(
-                f"Feed {feed_id} no longer exists, skipping refresh",
-                extra={
-                    'task_id': task_id,
-                    'feed_id': feed_id,
-                    'user_id': user_id,
-                    'reason': 'feed_deleted'
-                }
-            )
-            return {
-                "success": True,
-                "feed_id": feed_id,
-                "skipped": True,
-                "reason": "feed_deleted"
-            }
-
-        # Execute refresh
-        result = do_refresh_feed(feed_id, feed_url, user_id)
-
-        # Update status
-        update_feed_status(feed_id, user_id, "success")
-
-        duration_ms = int((datetime.now(timezone.utc) - start_time).total_seconds() * 1000)
-        logger.info(
-            "Completed successfully",
-            extra={
-                'task_id': task_id,
-                'feed_id': feed_id,
-                'user_id': user_id,
-                'feed_url': feed_url,
-                'feed_title': feed_title,
-                'success': 'true',
-                'duration_ms': duration_ms,
-                'articles_count': result['article_count'],
-                'refresh_interval': refresh_interval,
-            }
-        )
-
-        # Schedule next refresh
-        schedule_next_refresh(feed_id, user_id, refresh_interval)
-
-        return {
-            "success": True,
-            "feed_id": feed_id,
-            "article_count": result["article_count"],
-            "duration_ms": duration_ms
-        }
-
-    except RetryableError as e:
-        duration_ms = int((datetime.now(timezone.utc) - start_time).total_seconds() * 1000)
-        logger.warning(
-            f"Retryable error: {e}",
-            extra={
-                'task_id': task_id,
-                'feed_id': feed_id,
-                'user_id': user_id,
-                'feed_url': feed_url,
-                'feed_title': feed_title,
-                'success': 'false',
-                'error': str(e),
-                'duration_ms': duration_ms,
-                'refresh_interval': refresh_interval,
-            }
-        )
-
-        update_feed_status(feed_id, user_id, "failed", str(e))
-
-        # Retry with skip_lock=True since we already hold the lock
-        raise self.retry(
-            exc=e,
-            kwargs={**self.request.kwargs, "skip_lock": True}
-        )
-
-    except NonRetryableError as e:
-        duration_ms = int((datetime.now(timezone.utc) - start_time).total_seconds() * 1000)
-        logger.error(
-            f"Non-retryable error: {e}",
-            extra={
-                'task_id': task_id,
-                'feed_id': feed_id,
-                'user_id': user_id,
-                'feed_url': feed_url,
-                'feed_title': feed_title,
-                'success': 'false',
-                'error': str(e),
-                'duration_ms': duration_ms,
-                'refresh_interval': refresh_interval,
-            }
-        )
-
-        update_feed_status(feed_id, user_id, "failed", str(e))
-
-        # Still schedule next refresh
-        schedule_next_refresh(feed_id, user_id, refresh_interval)
-
-        return {
-            "success": False,
-            "feed_id": feed_id,
-            "error": str(e),
-            "duration_ms": duration_ms
-        }
-
-    except Exception as e:
-        # Unexpected error
-        duration_ms = int((datetime.now(timezone.utc) - start_time).total_seconds() * 1000)
-        logger.exception(
-            f"Unexpected error: {e}",
-            extra={
-                'task_id': task_id,
-                'feed_id': feed_id,
-                'user_id': user_id,
-                'feed_url': feed_url,
-                'feed_title': feed_title,
-                'success': 'false',
-                'error': str(e),
-                'duration_ms': duration_ms,
-                'refresh_interval': refresh_interval,
-            }
-        )
-        update_feed_status(feed_id, user_id, "failed", str(e))
-        raise
-
-    finally:
-        # Release lock
+        # Check task lock (prevent duplicate execution)
         if not skip_lock:
-            task_lock.release(lock_key, task_id)
+            # Lock TTL should be longer than task timeout
+            lock_ttl = 180  # 3 minutes
+            if not task_lock.acquire(lock_key, lock_ttl, ctx.task_id):
+                remaining = task_lock.get_ttl(lock_key)
+                logger.info(
+                    f"[{ctx.task_id}] Feed {feed_id} already being processed, "
+                    f"lock expires in {remaining}s"
+                )
+                # Don't retry, just reject
+                raise Reject(f"Feed {feed_id} is locked", requeue=False)
+
+        try:
+            # Check if feed still exists (may have been deleted while task was queued)
+            supabase = get_supabase_service()
+            feed_check = supabase.table("feeds").select("id").eq(
+                "id", feed_id
+            ).eq("user_id", user_id).execute()
+
+            if not feed_check.data:
+                # Feed no longer exists, skip and terminate task chain
+                logger.info(
+                    f"Feed {feed_id} no longer exists, skipping refresh",
+                    extra=ctx.log_extra(reason='feed_deleted')
+                )
+                return {
+                    "success": True,
+                    "feed_id": feed_id,
+                    "skipped": True,
+                    "reason": "feed_deleted"
+                }
+
+            # Execute refresh
+            result = do_refresh_feed(feed_id, feed_url, user_id)
+
+            # Update status
+            update_feed_status(feed_id, user_id, "success")
+
+            ctx.log_success(
+                "Completed successfully",
+                articles_count=result['article_count'],
+            )
+
+            # Schedule next refresh
+            schedule_next_refresh(feed_id, user_id, refresh_interval)
+
+            return build_task_result(
+                ctx,
+                success=True,
+                feed_id=feed_id,
+                article_count=result["article_count"],
+            )
+
+        except RetryableError as e:
+            ctx.log_error(e, f"Retryable error: {e}")
+            update_feed_status(feed_id, user_id, "failed", str(e))
+
+            # Retry with skip_lock=True since we already hold the lock
+            raise self.retry(
+                exc=e,
+                kwargs={**self.request.kwargs, "skip_lock": True}
+            )
+
+        except NonRetryableError as e:
+            ctx.log_error(e, f"Non-retryable error: {e}")
+            update_feed_status(feed_id, user_id, "failed", str(e))
+
+            # Still schedule next refresh
+            schedule_next_refresh(feed_id, user_id, refresh_interval)
+
+            return build_task_result(
+                ctx,
+                success=False,
+                feed_id=feed_id,
+                error=str(e),
+            )
+
+        except Exception as e:
+            # Unexpected error
+            ctx.log_exception(e, f"Unexpected error: {e}")
+            update_feed_status(feed_id, user_id, "failed", str(e))
+            raise
+
+        finally:
+            # Release lock
+            if not skip_lock:
+                task_lock.release(lock_key, ctx.task_id)
 
 
 def schedule_next_refresh(feed_id: str, user_id: str, refresh_interval: int):
@@ -675,85 +600,91 @@ def refresh_feed_batch(
         user_id: User UUID
         refresh_interval: Refresh interval in minutes
     """
-    task_id = self.request.id
     task_lock = get_task_lock()
     lock_key = f"feed:{feed_id}"
     lock_ttl = 180
 
-    # Check task lock (prevent duplicate execution)
-    if not task_lock.acquire(lock_key, lock_ttl, task_id):
-        logger.info(f"[BATCH] Feed {feed_id} already being processed, skipping")
-        return {
-            "success": True,
-            "feed_id": feed_id,
-            "skipped": True,
-            "reason": "locked",
-            "article_ids": []
-        }
-
-    start_time = datetime.now(timezone.utc)
-
-    try:
-        # Check if feed still exists
-        supabase = get_supabase_service()
-        feed_check = supabase.table("feeds").select("id").eq(
-            "id", feed_id
-        ).eq("user_id", user_id).execute()
-
-        if not feed_check.data:
-            # Feed no longer exists, skip and terminate task chain
-            logger.info(f"[BATCH] Feed {feed_id} no longer exists, skipping")
+    with task_context(
+        self,
+        feed_id=feed_id,
+        user_id=user_id,
+        feed_url=feed_url,
+        feed_title=feed_title,
+        refresh_interval=refresh_interval,
+    ) as ctx:
+        # Check task lock (prevent duplicate execution)
+        if not task_lock.acquire(lock_key, lock_ttl, ctx.task_id):
+            logger.info(f"[BATCH] Feed {feed_id} already being processed, skipping")
             return {
                 "success": True,
                 "feed_id": feed_id,
                 "skipped": True,
-                "reason": "feed_deleted",
+                "reason": "locked",
                 "article_ids": []
             }
 
-        # Execute refresh with batch_mode=True
-        result = do_refresh_feed(feed_id, feed_url, user_id, batch_mode=True)
+        try:
+            # Check if feed still exists
+            supabase = get_supabase_service()
+            feed_check = supabase.table("feeds").select("id").eq(
+                "id", feed_id
+            ).eq("user_id", user_id).execute()
 
-        update_feed_status(feed_id, user_id, "success")
+            if not feed_check.data:
+                # Feed no longer exists, skip and terminate task chain
+                logger.info(f"[BATCH] Feed {feed_id} no longer exists, skipping")
+                return {
+                    "success": True,
+                    "feed_id": feed_id,
+                    "skipped": True,
+                    "reason": "feed_deleted",
+                    "article_ids": []
+                }
 
-        duration_ms = int((datetime.now(timezone.utc) - start_time).total_seconds() * 1000)
-        logger.info(
-            f"[BATCH] Feed {feed_id} completed: {result['article_count']} articles, {duration_ms}ms"
-        )
+            # Execute refresh with batch_mode=True
+            result = do_refresh_feed(feed_id, feed_url, user_id, batch_mode=True)
 
-        return {
-            "success": True,
-            "feed_id": feed_id,
-            "article_count": result["article_count"],
-            "article_ids": result.get("article_ids", []),
-            "duration_ms": duration_ms
-        }
+            update_feed_status(feed_id, user_id, "success")
 
-    except RetryableError as e:
-        update_feed_status(feed_id, user_id, "failed", str(e))
-        raise self.retry(exc=e)
+            logger.info(
+                f"[BATCH] Feed {feed_id} completed: {result['article_count']} articles, {ctx.duration_ms}ms"
+            )
 
-    except NonRetryableError as e:
-        update_feed_status(feed_id, user_id, "failed", str(e))
-        return {
-            "success": False,
-            "feed_id": feed_id,
-            "error": str(e),
-            "article_ids": []
-        }
+            return build_task_result(
+                ctx,
+                success=True,
+                feed_id=feed_id,
+                article_count=result["article_count"],
+                article_ids=result.get("article_ids", []),
+            )
 
-    except Exception as e:
-        update_feed_status(feed_id, user_id, "failed", str(e))
-        logger.exception(f"[BATCH] Unexpected error for feed {feed_id}: {e}")
-        return {
-            "success": False,
-            "feed_id": feed_id,
-            "error": str(e),
-            "article_ids": []
-        }
+        except RetryableError as e:
+            update_feed_status(feed_id, user_id, "failed", str(e))
+            raise self.retry(exc=e)
 
-    finally:
-        task_lock.release(lock_key, task_id)
+        except NonRetryableError as e:
+            update_feed_status(feed_id, user_id, "failed", str(e))
+            return build_task_result(
+                ctx,
+                success=False,
+                feed_id=feed_id,
+                error=str(e),
+                article_ids=[],
+            )
+
+        except Exception as e:
+            update_feed_status(feed_id, user_id, "failed", str(e))
+            ctx.log_exception(e, f"[BATCH] Unexpected error f {feed_id}: {e}")
+            return build_task_result(
+                ctx,
+                success=False,
+                feed_id=feed_id,
+                error=str(e),
+                article_ids=[],
+            )
+
+        finally:
+            task_lock.release(lock_key, ctx.task_id)
 
 
 @app.task(name="scan_due_feeds")

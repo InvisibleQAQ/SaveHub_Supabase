@@ -19,6 +19,7 @@ from .async_utils import run_async
 from .celery import app
 from .task_lock import get_task_lock
 from .supabase_client import get_supabase_service
+from .task_utils import task_context, build_task_result
 from app.services.repository_analyzer import analyze_repositories_needing_analysis
 from app.services.db.repositories import RepositoryService
 
@@ -521,124 +522,105 @@ def sync_repositories(
         user_id: User UUID
         trigger: "manual" (user clicked sync) or "auto" (scheduled)
     """
-    task_id = self.request.id
     task_lock = get_task_lock()
     lock_key = f"repo_sync:{user_id}"
     lock_ttl = 660  # 11 minutes (longer than task timeout)
 
-    logger.info(
-        f"[REPO_SYNC] Starting sync for user {user_id}, trigger={trigger}",
-        extra={'task_id': task_id, 'user_id': user_id, 'trigger': trigger}
-    )
+    with task_context(self, user_id=user_id, trigger=trigger) as ctx:
+        ctx.log_start(f"[REPO_SYNC] Starting sync for user {user_id}, trigger={trigger}")
 
-    # Acquire lock to prevent duplicate execution
-    if not task_lock.acquire(lock_key, lock_ttl, task_id):
-        remaining = task_lock.get_ttl(lock_key)
-        logger.info(f"[REPO_SYNC] User {user_id} sync already running, lock expires in {remaining}s")
-        raise Reject(f"Repo sync for user {user_id} is locked", requeue=False)
+        # Acquire lock to prevent duplicate execution
+        if not task_lock.acquire(lock_key, lock_ttl, ctx.task_id):
+            remaining = task_lock.get_ttl(lock_key)
+            logger.info(f"[REPO_SYNC] User {user_id} sync already running, lock expires in {remaining}s")
+            raise Reject(f"Repo sync for user {user_id} is locked", requeue=False)
 
-    start_time = datetime.now(timezone.utc)
-
-    try:
-        # Get GitHub token from settings
-        supabase = get_supabase_service()
-        settings_result = supabase.table("settings") \
-            .select("github_token") \
-            .eq("user_id", user_id) \
-            .single() \
-            .execute()
-
-        if not settings_result.data or not settings_result.data.get("github_token"):
-            logger.warning(f"[REPO_SYNC] No GitHub token for user {user_id}")
-            return {
-                "success": False,
-                "user_id": user_id,
-                "error": "GitHub token not configured"
-            }
-
-        github_token = settings_result.data["github_token"]
-
-        # Execute sync
-        result = do_sync_repositories(user_id, github_token)
-
-        duration_ms = int((datetime.now(timezone.utc) - start_time).total_seconds() * 1000)
-        logger.info(
-            f"[REPO_SYNC] Completed for user {user_id}: "
-            f"{result['total']} total, {result['new_count']} new, {duration_ms}ms",
-            extra={
-                'task_id': task_id,
-                'user_id': user_id,
-                'trigger': trigger,
-                'total': result['total'],
-                'new_count': result['new_count'],
-                'duration_ms': duration_ms,
-            }
-        )
-
-        # AI analyze repositories needing analysis (no condition check)
-        ai_result = {"ai_analyzed": 0, "ai_failed": 0, "ai_candidates": 0}
         try:
-            ai_analysis = do_ai_analysis(user_id)
-            ai_result["ai_analyzed"] = ai_analysis["analyzed"]
-            ai_result["ai_failed"] = ai_analysis["failed"]
-            ai_result["ai_candidates"] = ai_analysis.get("total_candidates", 0)
+            # Get GitHub token from settings
+            supabase = get_supabase_service()
+            settings_result = supabase.table("settings") \
+                .select("github_token") \
+                .eq("user_id", user_id) \
+                .single() \
+                .execute()
+
+            if not settings_result.data or not settings_result.data.get("github_token"):
+                logger.warning(f"[REPO_SYNC] No GitHub token for user {user_id}")
+                return build_task_result(
+                    ctx,
+                    success=False,
+                    user_id=user_id,
+                    error="GitHub token not configured",
+                )
+
+            github_token = settings_result.data["github_token"]
+
+            # Execute sync
+            result = do_sync_repositories(user_id, github_token)
+
+            ctx.log_success(
+                f"[REPO_SYNC] Completed for user {user_id}: "
+                f"{result['total']} total, {result['new_count']} new",
+                total=result['total'],
+                new_count=result['new_count'],
+            )
+
+            # AI analyze repositories needing analysis (no condition check)
+            ai_result = {"ai_analyzed": 0, "ai_failed": 0, "ai_candidates": 0}
+            try:
+                ai_analysis = do_ai_analysis(user_id)
+                ai_result["ai_analyzed"] = ai_analysis["analyzed"]
+                ai_result["ai_failed"] = ai_analysis["failed"]
+                ai_result["ai_candidates"] = ai_analysis.get("total_candidates", 0)
+            except Exception as e:
+                logger.warning(f"AI analysis during sync failed: {e}")
+
+            # Fetch OpenRank for all repositories
+            openrank_result = {"openrank_updated": 0, "openrank_total": 0}
+            try:
+                openrank_result = do_openrank_update(user_id)
+            except Exception as e:
+                logger.warning(f"OpenRank update during sync failed: {e}")
+
+            # Generate embeddings for repositories
+            embedding_result = {"embedding_processed": 0, "embedding_failed": 0, "embedding_total": 0}
+            try:
+                embedding_result = do_repository_embedding(user_id)
+            except Exception as e:
+                logger.warning(f"Repository embedding during sync failed: {e}")
+
+            # Schedule next auto-sync in 1 hour
+            schedule_next_repo_sync(user_id)
+
+            return build_task_result(
+                ctx,
+                success=True,
+                user_id=user_id,
+                total=result["total"],
+                new_count=result["new_count"],
+                updated_count=result["updated_count"],
+                **ai_result,
+                **openrank_result,
+                **embedding_result,
+            )
+
+        except ValueError as e:
+            # Non-retryable errors (invalid token, rate limit)
+            ctx.log_error(e, f"[REPO_SYNC] Failed for user {user_id}: {e}")
+            return build_task_result(
+                ctx,
+                success=False,
+                user_id=user_id,
+                error=str(e),
+            )
+
         except Exception as e:
-            logger.warning(f"AI analysis during sync failed: {e}")
+            ctx.log_exception(e, f"[REPO_SYNC] Unexpected error for user {user_id}: {e}")
+            # Retry on unexpected errors
+            raise self.retry(exc=e)
 
-        # Fetch OpenRank for all repositories
-        openrank_result = {"openrank_updated": 0, "openrank_total": 0}
-        try:
-            openrank_result = do_openrank_update(user_id)
-        except Exception as e:
-            logger.warning(f"OpenRank update during sync failed: {e}")
-
-        # Generate embeddings for repositories
-        embedding_result = {"embedding_processed": 0, "embedding_failed": 0, "embedding_total": 0}
-        try:
-            embedding_result = do_repository_embedding(user_id)
-        except Exception as e:
-            logger.warning(f"Repository embedding during sync failed: {e}")
-
-        # Schedule next auto-sync in 1 hour
-        schedule_next_repo_sync(user_id)
-
-        return {
-            "success": True,
-            "user_id": user_id,
-            "total": result["total"],
-            "new_count": result["new_count"],
-            "updated_count": result["updated_count"],
-            "duration_ms": duration_ms,
-            **ai_result,
-            **openrank_result,
-            **embedding_result,
-        }
-
-    except ValueError as e:
-        # Non-retryable errors (invalid token, rate limit)
-        duration_ms = int((datetime.now(timezone.utc) - start_time).total_seconds() * 1000)
-        logger.error(
-            f"[REPO_SYNC] Failed for user {user_id}: {e}",
-            extra={'task_id': task_id, 'user_id': user_id, 'error': str(e)}
-        )
-        return {
-            "success": False,
-            "user_id": user_id,
-            "error": str(e),
-            "duration_ms": duration_ms
-        }
-
-    except Exception as e:
-        duration_ms = int((datetime.now(timezone.utc) - start_time).total_seconds() * 1000)
-        logger.exception(
-            f"[REPO_SYNC] Unexpected error for user {user_id}: {e}",
-            extra={'task_id': task_id, 'user_id': user_id, 'error': str(e)}
-        )
-        # Retry on unexpected errors
-        raise self.retry(exc=e)
-
-    finally:
-        task_lock.release(lock_key, task_id)
+        finally:
+            task_lock.release(lock_key, ctx.task_id)
 
 
 # =============================================================================

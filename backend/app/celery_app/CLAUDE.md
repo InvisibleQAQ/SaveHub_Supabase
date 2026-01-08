@@ -77,6 +77,7 @@ schedule_rag_for_articles (reuse existing)
 | File | Purpose |
 |------|---------|
 | `celery.py` | Celery app configuration, beat_schedule |
+| `task_utils.py` | **Shared utilities**: unified error hierarchy, `TaskContext`, `build_task_result` |
 | `tasks.py` | Feed refresh tasks, batch scheduling orchestration |
 | `image_processor.py` | Image processing tasks (single + batch) |
 | `rag_processor.py` | RAG embedding tasks |
@@ -86,6 +87,59 @@ schedule_rag_for_articles (reuse existing)
 | `rate_limiter.py` | Domain-based rate limiting for RSS fetches |
 | `supabase_client.py` | Service-role Supabase client (bypasses RLS) |
 | `async_utils.py` | Async-to-sync bridge (`run_async`) for Celery tasks |
+
+## Shared Task Utilities (`task_utils.py`)
+
+All Celery tasks use shared utilities from `task_utils.py` for consistent error handling and logging.
+
+### Unified Error Hierarchy
+
+```python
+TaskError (base)
+├── RetryableError          # Triggers task retry
+│   ├── RetryableFeedError
+│   ├── RetryableImageError
+│   ├── EmbeddingError
+│   └── RateLimitError
+└── NonRetryableError       # No retry, return failure
+    ├── NonRetryableFeedError
+    ├── NonRetryableImageError
+    ├── ConfigError
+    └── ChunkingError
+```
+
+### TaskContext Usage
+
+```python
+from .task_utils import task_context, build_task_result, NonRetryableImageError
+
+@app.task(bind=True, name="my_task")
+def my_task(self, article_id: str):
+    with task_context(self, article_id=article_id) as ctx:
+        ctx.log_start("Processing article")
+
+        try:
+            result = do_work(article_id)
+            ctx.log_success(f"Completed: {result['count']} items")
+            return build_task_result(ctx, success=True, **result)
+
+        except NonRetryableImageError as e:
+            ctx.log_error(e)
+            return build_task_result(ctx, success=False, error=str(e))
+
+        except Exception as e:
+            ctx.log_exception(e)
+            return build_task_result(ctx, success=False, error=str(e))
+```
+
+### Key Functions
+
+| Function | Purpose |
+|----------|---------|
+| `task_context(task, **extra)` | Context manager for task execution (timing, logging) |
+| `build_task_result(ctx, success, **kwargs)` | Build standardized result dict with `duration_ms` |
+| `is_retryable(error)` | Check if error should trigger retry |
+| `is_retryable_message(msg)` | Check error message for retryable patterns |
 
 ## Task Reference
 
