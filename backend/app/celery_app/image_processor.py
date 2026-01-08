@@ -535,3 +535,66 @@ def on_batch_images_complete(
         "image_failed": failed_count,
         "rag_scheduled": rag_result.get("scheduled", 0)
     }
+
+
+# =============================================================================
+# Fallback: Scan pending image articles (Beat task)
+# =============================================================================
+
+# Stagger delay for fallback tasks (seconds between each task)
+FALLBACK_STAGGER_DELAY = 2
+# Batch size for fallback scan
+FALLBACK_BATCH_SIZE = 50
+# Minimum age before considering article as "stuck" (minutes)
+MIN_AGE_MINUTES = 5
+
+
+@app.task(name="scan_pending_image_articles")
+def scan_pending_image_articles():
+    """
+    Beat task: Scan for articles with images_processed IS NULL.
+
+    Runs every 30 minutes as fallback for the first chain link
+    (feed_refresh -> image_tasks).
+
+    Condition: images_processed IS NULL AND created_at < now() - 5min
+    """
+    from datetime import timedelta
+
+    logger.info("Scanning for pending image articles...")
+
+    try:
+        supabase = get_supabase_service()
+
+        # Calculate cutoff time (articles older than MIN_AGE_MINUTES)
+        cutoff_time = datetime.now(timezone.utc) - timedelta(minutes=MIN_AGE_MINUTES)
+
+        # Query articles needing image processing
+        result = supabase.table("articles") \
+            .select("id, user_id, feed_id") \
+            .is_("images_processed", "null") \
+            .lt("created_at", cutoff_time.isoformat()) \
+            .order("created_at", desc=False) \
+            .limit(FALLBACK_BATCH_SIZE) \
+            .execute()
+
+        if not result.data:
+            logger.info("No pending articles for image processing")
+            return {"scheduled": 0}
+
+        # Schedule image processing for each article
+        scheduled = 0
+        for i, article in enumerate(result.data):
+            process_article_images.apply_async(
+                kwargs={"article_id": article["id"]},
+                countdown=i * FALLBACK_STAGGER_DELAY,
+                queue="default",
+            )
+            scheduled += 1
+
+        logger.info(f"Scheduled image processing for {scheduled} articles")
+        return {"scheduled": scheduled}
+
+    except Exception as e:
+        logger.exception(f"Failed to scan pending image articles: {e}")
+        return {"scheduled": 0, "error": str(e)}

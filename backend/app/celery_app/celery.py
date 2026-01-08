@@ -93,6 +93,7 @@ app.conf.update(
         "extract_article_repos": {"queue": "default"},
         "schedule_repo_extraction_for_articles": {"queue": "default"},
         "scan_pending_repo_extraction": {"queue": "default"},
+        "scan_pending_image_articles": {"queue": "default"},
     },
 
     # Celery Beat schedule
@@ -110,6 +111,11 @@ app.conf.update(
         # Fallback: scan for pending repo extraction every 30 minutes
         "scan-repo-extraction-every-30-minutes": {
             "task": "scan_pending_repo_extraction",
+            "schedule": crontab(minute="*/30"),
+        },
+        # Fallback: scan for pending image articles every 30 minutes
+        "scan-image-every-30-minutes": {
+            "task": "scan_pending_image_articles",
             "schedule": crontab(minute="*/30"),
         },
     },

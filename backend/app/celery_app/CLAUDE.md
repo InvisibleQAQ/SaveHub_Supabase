@@ -191,6 +191,7 @@ def my_task(self, resource_id: str, skip_lock: bool = False):
 | `schedule_image_processing` | Single | Create chord with feed_id, callback to RAG |
 | `schedule_batch_image_processing` | Batch | Create chord with user_id, callback to RAG |
 | `on_batch_images_complete` | Batch | Chord callback, trigger RAG processing |
+| `scan_pending_image_articles` | Fallback | Beat task, scan missed image processing |
 
 ### rag_processor.py
 
@@ -220,13 +221,18 @@ def my_task(self, resource_id: str, skip_lock: bool = False):
 | Task | Schedule | Purpose |
 |------|----------|---------|
 | `scan_due_feeds` | Every minute | Trigger batch refresh for due feeds |
+| `scan_pending_image_articles` | Every 30 min | Fallback for missed image processing |
 | `scan_pending_rag_articles` | Every 30 min | Fallback for missed RAG processing |
+| `scan_pending_repo_extraction` | Every 30 min | Fallback for missed repo extraction |
 
 ## Error Handling
 
 - Single feed/article failure does NOT block the chain
 - All tasks return `{"success": bool, ...}` instead of raising exceptions
-- `scan_pending_rag_articles` runs every 30min as fallback for missed articles
+- Fallback tasks run every 30min to catch missed articles at each chain stage:
+  - `scan_pending_image_articles`: catches `images_processed IS NULL`
+  - `scan_pending_rag_articles`: catches `images_processed=true AND rag_processed IS NULL`
+  - `scan_pending_repo_extraction`: catches `images_processed=true AND repos_extracted IS NULL`
 
 ## Conflict Prevention
 
