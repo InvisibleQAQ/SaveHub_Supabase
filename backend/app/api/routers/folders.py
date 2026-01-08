@@ -56,10 +56,10 @@ async def create_folders(
     result = service.save_folders(folder_dicts)
 
     if not result.get("success"):
-        error = result.get("error", "Unknown error")
+        error = result.get("error")
         if error == "duplicate":
             raise DuplicateError("folder name")
-        raise ValidationError(error)
+        raise ValidationError(error or f"Failed to save folders (count={len(folders)})")
 
     logger.info(f"Created/updated {len(folders)} folders")
     return {"success": True, "count": len(folders)}
@@ -96,8 +96,8 @@ async def update_folder(
     result = service.update_folder(str(folder_id), update_data)
 
     if not result.get("success"):
-        error = result.get("error", "Unknown error")
-        raise ValidationError(error)
+        error = result.get("error")
+        raise ValidationError(error or f"Failed to update folder {folder_id}")
 
     logger.info(f"Updated folder {folder_id}")
     return {"success": True}

@@ -219,7 +219,11 @@ def parse_rss_feed(url: str, feed_id: str) -> Dict[str, Any]:
 
     # Check for parse errors
     if parsed.bozo and not parsed.entries:
-        error_msg = str(parsed.bozo_exception) if hasattr(parsed, 'bozo_exception') else 'Unknown error'
+        if hasattr(parsed, 'bozo_exception') and parsed.bozo_exception:
+            exc = parsed.bozo_exception
+            error_msg = f"{type(exc).__name__}: {exc}"
+        else:
+            error_msg = "Feed parsing failed (no entries found)"
         logger.error(f"Feed parse error: {error_msg}")
         raise ValueError(f"Invalid RSS feed: {error_msg}")
 

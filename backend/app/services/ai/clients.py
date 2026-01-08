@@ -11,7 +11,19 @@ import logging
 from typing import List, Dict, Any, AsyncGenerator, Optional
 
 import httpx
-from openai import AsyncOpenAI
+from openai import (
+    AsyncOpenAI,
+    APIStatusError,
+    APIConnectionError,
+    APITimeoutError,
+)
+
+from app.services.errors import (
+    handle_openai_error,
+    ChatServiceError,
+    EmbeddingServiceError,
+    VisionServiceError,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -35,19 +47,10 @@ CAPTION_PROMPT = """你是一个专业的图片描述生成器。请仔细分析
 请直接输出描述内容，不要添加前缀或标签。"""
 
 
-class AIClientError(Exception):
-    """AI客户端错误基类"""
-    pass
-
-
-class ChatError(AIClientError):
-    """Chat Completion 错误"""
-    pass
-
-
-class EmbeddingError(AIClientError):
-    """Embedding 生成错误"""
-    pass
+# 向后兼容的别名
+AIClientError = ChatServiceError
+ChatError = ChatServiceError
+EmbeddingError = EmbeddingServiceError
 
 
 class ChatClient:
@@ -114,9 +117,14 @@ class ChatClient:
             )
             content = response.choices[0].message.content
             return content or ""
+        except (APIStatusError, APIConnectionError, APITimeoutError) as e:
+            raise handle_openai_error(
+                e, "chat completion", ChatServiceError,
+                context={"model": self.model}
+            ) from e
         except Exception as e:
-            logger.error(f"Chat completion failed: {e}")
-            raise ChatError(f"Chat completion failed: {e}") from e
+            logger.error(f"Unexpected error in chat completion: {type(e).__name__}: {e}")
+            raise ChatServiceError(f"Chat completion failed: {type(e).__name__}") from e
 
     async def stream(
         self,
@@ -149,9 +157,14 @@ class ChatClient:
             async for chunk in stream:
                 if chunk.choices[0].delta.content:
                     yield chunk.choices[0].delta.content
+        except (APIStatusError, APIConnectionError, APITimeoutError) as e:
+            raise handle_openai_error(
+                e, "chat stream", ChatServiceError,
+                context={"model": self.model}
+            ) from e
         except Exception as e:
-            logger.error(f"Chat stream failed: {e}")
-            raise ChatError(f"Chat stream failed: {e}") from e
+            logger.error(f"Unexpected error in chat stream: {type(e).__name__}: {e}")
+            raise ChatServiceError(f"Chat stream failed: {type(e).__name__}") from e
 
     async def vision_caption(
         self,
@@ -192,14 +205,21 @@ class ChatClient:
 
             caption = response.choices[0].message.content
             if not caption:
-                raise ChatError("Empty caption returned")
+                raise VisionServiceError("Empty caption returned from API")
 
             logger.info(f"Generated caption for {image_url[:50]}...")
             return caption.strip()
 
+        except VisionServiceError:
+            raise
+        except (APIStatusError, APIConnectionError, APITimeoutError) as e:
+            raise handle_openai_error(
+                e, "vision caption", VisionServiceError,
+                context={"model": self.model, "image_url": image_url[:100]}
+            ) from e
         except Exception as e:
-            logger.error(f"Vision caption failed for {image_url}: {e}")
-            raise ChatError(f"Vision caption failed: {e}") from e
+            logger.error(f"Unexpected error in vision caption: {type(e).__name__}: {e}")
+            raise VisionServiceError(f"Vision caption failed: {type(e).__name__}") from e
 
     async def vision_caption_safe(
         self,
@@ -220,11 +240,11 @@ class ChatClient:
         """
         try:
             return await self.vision_caption(image_url, prompt, max_tokens)
-        except ChatError as e:
+        except (ChatServiceError, VisionServiceError) as e:
             logger.warning(f"Vision caption failed (safe mode): {e}")
             return None
         except Exception as e:
-            logger.warning(f"Unexpected error in vision caption: {e}")
+            logger.warning(f"Unexpected error in vision caption (safe mode): {type(e).__name__}: {e}")
             return None
 
 
@@ -274,7 +294,7 @@ class EmbeddingClient:
             EmbeddingError: 生成失败
         """
         if not text or not text.strip():
-            raise EmbeddingError("Empty text provided")
+            raise EmbeddingServiceError("Empty text provided for embedding")
 
         try:
             response = await self._client.embeddings.create(
@@ -283,9 +303,14 @@ class EmbeddingClient:
                 dimensions=dimensions,
             )
             return response.data[0].embedding
+        except (APIStatusError, APIConnectionError, APITimeoutError) as e:
+            raise handle_openai_error(
+                e, "embedding", EmbeddingServiceError,
+                context={"model": self.model, "text_len": len(text)}
+            ) from e
         except Exception as e:
-            logger.error(f"Embedding failed for text (len={len(text)}): {e}")
-            raise EmbeddingError(f"Failed to generate embedding: {e}") from e
+            logger.error(f"Unexpected error in embedding: {type(e).__name__}: {e}")
+            raise EmbeddingServiceError(f"Embedding failed: {type(e).__name__}") from e
 
     async def embed_batch(
         self,
@@ -359,9 +384,14 @@ class EmbeddingClient:
 
             return result
 
+        except (APIStatusError, APIConnectionError, APITimeoutError) as e:
+            raise handle_openai_error(
+                e, "batch embedding", EmbeddingServiceError,
+                context={"model": self.model, "batch_size": len(texts)}
+            ) from e
         except Exception as e:
-            logger.error(f"Batch embedding failed: {e}")
-            raise EmbeddingError(f"Failed to generate embeddings: {e}") from e
+            logger.error(f"Unexpected error in batch embedding: {type(e).__name__}: {e}")
+            raise EmbeddingServiceError(f"Batch embedding failed: {type(e).__name__}") from e
 
 
 class RerankClient:

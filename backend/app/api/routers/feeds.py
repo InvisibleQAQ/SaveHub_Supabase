@@ -57,10 +57,10 @@ async def create_feeds(
     result = service.save_feeds(feed_dicts)
 
     if not result.get("success"):
-        error = result.get("error", "Unknown error")
+        error = result.get("error")
         if error == "duplicate":
             raise DuplicateError("feed URL")
-        raise ValidationError(error)
+        raise ValidationError(error or f"Failed to save feeds (count={len(feeds)})")
 
     # Auto-schedule refresh for each saved feed
     saved_feeds = result.get("data", [])
@@ -155,10 +155,10 @@ async def update_feed(
     result = service.update_feed(str(feed_id), update_data)
 
     if not result.get("success"):
-        error = result.get("error", "Unknown error")
+        error = result.get("error")
         if error == "duplicate":
             raise DuplicateError("feed URL")
-        raise ValidationError(error)
+        raise ValidationError(error or f"Failed to update feed {feed_id}")
 
     logger.info(f"Updated feed {feed_id}")
     return {"success": True}

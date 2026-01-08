@@ -40,6 +40,14 @@ from .clients import (
 )
 from .repository_service import RepositoryAnalyzerService
 
+# 从 errors 模块导入新的异常类
+from app.services.errors import (
+    ChatServiceError,
+    EmbeddingServiceError,
+    VisionServiceError,
+    AIServiceError,
+)
+
 __all__ = [
     # Config
     "normalize_base_url",
@@ -53,10 +61,15 @@ __all__ = [
     "RerankClient",
     # Repository Analysis
     "RepositoryAnalyzerService",
-    # Errors
+    # Errors (backward compatible aliases)
     "ChatError",
     "EmbeddingError",
     "AIClientError",
+    # Errors (new)
+    "ChatServiceError",
+    "EmbeddingServiceError",
+    "VisionServiceError",
+    "AIServiceError",
     # Constants
     "CAPTION_PROMPT",
 ]
