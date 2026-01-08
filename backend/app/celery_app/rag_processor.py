@@ -9,14 +9,11 @@ RAG 处理 Celery 任务。
 - 错误容错（单篇文章失败不影响其他）
 """
 
-import asyncio
 import logging
 from datetime import datetime, timezone
-from typing import Dict, Any, List, Optional, TypeVar, Coroutine
+from typing import Dict, Any, List, Optional
 
-from celery import shared_task
-from celery.schedules import crontab
-
+from .async_utils import run_async
 from .celery import app
 from .supabase_client import get_supabase_service
 
@@ -29,37 +26,6 @@ logger = logging.getLogger(__name__)
 BATCH_SIZE = 50  # 每次扫描处理的文章数
 IMAGE_CAPTION_TIMEOUT = 30  # 单张图片 caption 生成超时（秒）
 MAX_IMAGES_PER_ARTICLE = 10  # 每篇文章最多处理的图片数
-
-T = TypeVar('T')
-
-
-def run_async(coro: Coroutine[Any, Any, T]) -> T:
-    """
-    Safely run async code in sync context (Celery tasks).
-
-    Properly cleans up pending tasks before closing the event loop
-    to avoid 'Event loop is closed' errors from httpx AsyncClient.
-    """
-    loop = asyncio.new_event_loop()
-    asyncio.set_event_loop(loop)
-    try:
-        return loop.run_until_complete(coro)
-    finally:
-        try:
-            pending = asyncio.all_tasks(loop)
-            for task in pending:
-                task.cancel()
-            if pending:
-                loop.run_until_complete(
-                    asyncio.gather(*pending, return_exceptions=True)
-                )
-        except Exception:
-            pass
-        try:
-            loop.run_until_complete(loop.shutdown_asyncgens())
-        except Exception:
-            pass
-        loop.close()
 
 
 # =============================================================================

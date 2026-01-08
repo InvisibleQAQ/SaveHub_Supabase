@@ -80,9 +80,12 @@ schedule_rag_for_articles (reuse existing)
 | `tasks.py` | Feed refresh tasks, batch scheduling orchestration |
 | `image_processor.py` | Image processing tasks (single + batch) |
 | `rag_processor.py` | RAG embedding tasks |
+| `repo_extractor.py` | GitHub repo extraction from articles |
+| `repository_tasks.py` | GitHub starred repo sync + AI analysis |
 | `task_lock.py` | Redis-based task locking (prevent duplicates) |
 | `rate_limiter.py` | Domain-based rate limiting for RSS fetches |
 | `supabase_client.py` | Service-role Supabase client (bypasses RLS) |
+| `async_utils.py` | Async-to-sync bridge (`run_async`) for Celery tasks |
 
 ## Task Reference
 
