@@ -506,7 +506,9 @@ async def _fetch_all_readmes(
     default_retry_delay=30,
     retry_backoff=True,
     retry_backoff_max=300,
+    retry_jitter=True,
     acks_late=True,
+    reject_on_worker_lost=True,
     time_limit=600,      # Hard timeout 10 minutes (README fetching is slow)
     soft_time_limit=540,  # Soft timeout 9 minutes
 )

@@ -26,6 +26,7 @@ from .task_utils import (
     RetryableFeedError,
     NonRetryableFeedError,
     is_retryable_message,
+    STAGGER_DELAY_BATCH,
 )
 
 logger = logging.getLogger(__name__)
@@ -555,7 +556,7 @@ def schedule_all_feeds(batch_size: int = 50):
         # Add delay between batches to avoid creating too many tasks at once
         schedule_feeds_batch.apply_async(
             args=[batch],
-            countdown=batches * 5  # 5 seconds between batches
+            countdown=batches * STAGGER_DELAY_BATCH  # 5 seconds between batches
         )
         batches += 1
 
@@ -574,6 +575,9 @@ def schedule_all_feeds(batch_size: int = 50):
     default_retry_delay=5,
     retry_backoff=True,
     retry_backoff_max=60,
+    retry_jitter=True,
+    acks_late=True,
+    reject_on_worker_lost=True,
     time_limit=120,
     soft_time_limit=90,
 )

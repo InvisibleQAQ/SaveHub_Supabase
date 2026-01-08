@@ -352,3 +352,16 @@ def build_task_result(
     if error:
         result["error"] = error
     return result
+
+
+# =============================================================================
+# Task Scheduling Constants
+# =============================================================================
+
+# Staggered delay constants (seconds between scheduled tasks)
+# Used to avoid API rate limits and thundering herd
+STAGGER_DELAY_TRIGGER = 1    # Quick trigger (e.g., RAG -> repo extraction)
+STAGGER_DELAY_FAST = 2       # Fast tasks (repo extraction batch)
+STAGGER_DELAY_NORMAL = 3     # Normal tasks (RAG processing, scan fallback)
+STAGGER_DELAY_BATCH = 5      # Batch scheduling (feed batches, RAG scan)
+STAGGER_DELAY_MERGE = 30     # Merge window (sync trigger debounce)

@@ -22,6 +22,9 @@ from .task_utils import (
     ConfigError,
     ChunkingError,
     EmbeddingError,
+    STAGGER_DELAY_TRIGGER,
+    STAGGER_DELAY_NORMAL,
+    STAGGER_DELAY_BATCH,
 )
 
 logger = logging.getLogger(__name__)
@@ -317,7 +320,7 @@ def process_article_rag(self, article_id: str, user_id: str):
                 from .repo_extractor import extract_article_repos
                 extract_article_repos.apply_async(
                     kwargs={"article_id": article_id, "user_id": user_id},
-                    countdown=1,
+                    countdown=STAGGER_DELAY_TRIGGER,
                     queue="default",
                 )
                 logger.info(f"Scheduled repo extraction for article {article_id}")
@@ -359,7 +362,7 @@ def scan_pending_rag_articles():
                     "article_id": article["id"],
                     "user_id": article["user_id"],
                 },
-                countdown=i * 5,  # 每篇文章间隔 5 秒
+                countdown=i * STAGGER_DELAY_BATCH,  # 每篇文章间隔 5 秒
                 queue="default",
             )
             scheduled += 1
@@ -465,7 +468,7 @@ def schedule_rag_for_articles(article_ids: List[str]) -> Dict[str, Any]:
                 "article_id": article["id"],
                 "user_id": article["user_id"],
             },
-            countdown=i * 3,  # 3 second delay between each to avoid API rate limits
+            countdown=i * STAGGER_DELAY_NORMAL,  # 3 second delay between each to avoid API rate limits
             queue="default",
         )
         scheduled += 1

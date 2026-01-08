@@ -17,6 +17,9 @@ from .task_utils import (
     RepoExtractionError,
     GitHubAPIError,
     RateLimitError,
+    STAGGER_DELAY_FAST,
+    STAGGER_DELAY_NORMAL,
+    STAGGER_DELAY_MERGE,
 )
 
 logger = logging.getLogger(__name__)
@@ -278,7 +281,7 @@ def _maybe_trigger_sync(user_id: str):
     # 延迟 30 秒执行，合并多篇文章的触发
     sync_repositories.apply_async(
         kwargs={"user_id": user_id, "trigger": "auto"},
-        countdown=30,
+        countdown=STAGGER_DELAY_MERGE,
         queue="default",
     )
     logger.info(f"Scheduled sync_repositories for user {user_id} in 30s")
@@ -294,6 +297,10 @@ def _maybe_trigger_sync(user_id: str):
     max_retries=2,
     default_retry_delay=120,
     retry_backoff=True,
+    retry_backoff_max=300,
+    retry_jitter=True,
+    acks_late=True,
+    reject_on_worker_lost=True,
     time_limit=300,
     soft_time_limit=270,
 )
@@ -342,7 +349,7 @@ def schedule_repo_extraction_for_articles(article_ids: List[str]) -> Dict[str, A
                 "article_id": article["id"],
                 "user_id": article["user_id"],
             },
-            countdown=i * 2,  # 2 second delay between each
+            countdown=i * STAGGER_DELAY_FAST,  # 2 second delay between each
             queue="default",
         )
         scheduled += 1
@@ -381,7 +388,7 @@ def scan_pending_repo_extraction():
                 "article_id": article["id"],
                 "user_id": article["user_id"],
             },
-            countdown=i * 3,
+            countdown=i * STAGGER_DELAY_NORMAL,
             queue="default",
         )
         scheduled += 1
