@@ -110,16 +110,15 @@ export class RealtimeWSManager {
       return envUrl.endsWith("/api/ws/realtime") ? envUrl : `${envUrl}/api/ws/realtime`
     }
 
-    // Priority 3: Derive from window.location
+    // Priority 3: Derive from environment variables or window.location
     if (typeof window === "undefined") {
       throw new Error("WebSocket URL must be provided in non-browser environment")
     }
 
     const protocol = window.location.protocol === "https:" ? "wss:" : "ws:"
-    const host = window.location.hostname
-    // Development: direct connection to FastAPI on port 8000
-    // Production: use same port (assumes reverse proxy handles WebSocket)
-    const port = process.env.NEXT_PUBLIC_WS_PORT || (process.env.NODE_ENV === "development" ? "8000" : "")
+    // 读取与 next.config.mjs 相同的环境变量
+    const host = process.env.NEXT_PUBLIC_BACKEND_HOST || window.location.hostname
+    const port = process.env.NEXT_PUBLIC_BACKEND_PORT || ""
     const portSuffix = port ? `:${port}` : ""
     return `${protocol}//${host}${portSuffix}/api/ws/realtime`
   }

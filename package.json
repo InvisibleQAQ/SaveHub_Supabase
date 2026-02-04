@@ -10,8 +10,8 @@
     "frontend:lint": "cd frontend && pnpm lint",
 
     "---BACKEND---": "========================================",
-    "backend": "cd backend && uvicorn app.main:app --reload --port 8000",
-    "backend:prod": "cd backend && uvicorn app.main:app --host 0.0.0.0 --port 8000",
+    "backend": "cd backend && uvicorn app.main:app --reload --port 8001",
+    "backend:prod": "cd backend && uvicorn app.main:app --host 0.0.0.0 --port 8001",
 
     "---CELERY---": "========================================",
     "celery": "cd backend && celery -A app.celery_app worker --pool=solo --loglevel=info --queues=high,default",

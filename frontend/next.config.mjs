@@ -13,13 +13,12 @@ const nextConfig = {
 
   // FastAPI Backend Rewrites
   // 将 /api/backend/* 请求转发到 FastAPI 服务器
-  // NOTE: WebSocket 不支持 rewrites，使用直接连接
-  // - 开发环境：自动连接 ws://localhost:8000/api/ws/realtime
-  // - 生产环境：设置 NEXT_PUBLIC_FASTAPI_WS_URL 或使用反向代理
+  // 配置方式：在 .env 中设置 NEXT_PUBLIC_BACKEND_HOST 和 NEXT_PUBLIC_BACKEND_PORT
+  // NOTE: WebSocket 不支持 rewrites，使用直接连接（同样读取这两个环境变量）
   async rewrites() {
-    const fastApiUrl = process.env.NODE_ENV === "development"
-      ? "http://127.0.0.1:8000"
-      : process.env.FASTAPI_URL || "http://127.0.0.1:8000"
+    const host = process.env.NEXT_PUBLIC_BACKEND_HOST || "127.0.0.1"
+    const port = process.env.NEXT_PUBLIC_BACKEND_PORT || "8000"
+    const fastApiUrl = `http://${host}:${port}`
 
     return [
       {
