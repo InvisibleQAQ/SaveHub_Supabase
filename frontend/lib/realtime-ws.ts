@@ -123,16 +123,48 @@ export class RealtimeWSManager {
     return `${protocol}//${host}${portSuffix}/api/ws/realtime`
   }
 
+  /** Fetch access token from backend session endpoint */
+  private async fetchAccessToken(): Promise<string | null> {
+    try {
+      const response = await fetch("/api/backend/auth/session", {
+        credentials: "include",
+      })
+      if (!response.ok) {
+        console.warn("[WS] Failed to fetch session:", response.status)
+        return null
+      }
+      const data = await response.json()
+      if (data.authenticated && data.access_token) {
+        return data.access_token
+      }
+      console.warn("[WS] Not authenticated or no access token")
+      return null
+    } catch (error) {
+      console.error("[WS] Error fetching session:", error)
+      return null
+    }
+  }
+
   /** Connect to WebSocket server */
-  connect(): void {
+  async connect(): Promise<void> {
     if (this.state === "connected" || this.state === "connecting") {
       console.log("[WS] Already connected or connecting")
       return
     }
 
     this.setState("connecting")
-    const url = this.getWSUrl()
-    console.log(`[WS] Connecting to ${url}`)
+
+    // Fetch token for cross-origin WebSocket auth
+    const token = await this.fetchAccessToken()
+    if (!token) {
+      console.warn("[WS] No token available, cannot connect")
+      this.setState("disconnected")
+      return
+    }
+
+    const baseUrl = this.getWSUrl()
+    const url = `${baseUrl}?token=${encodeURIComponent(token)}`
+    console.log(`[WS] Connecting to ${baseUrl}`)
 
     try {
       this.ws = new WebSocket(url)
@@ -296,9 +328,9 @@ export class RealtimeWSManager {
 
     console.log(`[WS] Reconnecting in ${Math.round(delay)}ms (attempt ${this.reconnectAttempts + 1})`)
 
-    this.reconnectTimeout = setTimeout(() => {
+    this.reconnectTimeout = setTimeout(async () => {
       this.reconnectAttempts++
-      this.connect()
+      await this.connect()
     }, delay)
   }
 
@@ -372,7 +404,7 @@ export class RealtimeWSManager {
 
   private ensureConnected(): void {
     if (this.state === "disconnected") {
-      this.connect()
+      void this.connect()
     }
   }
 

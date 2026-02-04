@@ -33,7 +33,11 @@ def get_supabase_client() -> Client:
 
 async def authenticate_websocket(websocket: WebSocket) -> str | None:
     """
-    Authenticate WebSocket connection via cookie.
+    Authenticate WebSocket connection via cookie or query parameter.
+
+    Supports two authentication methods:
+    1. Cookie: sb_access_token (same-origin requests)
+    2. Query parameter: ?token=xxx (cross-origin requests)
 
     Args:
         websocket: WebSocket connection (not yet accepted)
@@ -41,12 +45,15 @@ async def authenticate_websocket(websocket: WebSocket) -> str | None:
     Returns:
         user_id if authenticated, None otherwise
     """
-    # Get access token from cookie
-    # Note: cookies are available before accept() in FastAPI
+    # Try cookie first (same-origin)
     access_token = websocket.cookies.get(COOKIE_NAME_ACCESS)
 
+    # Fallback to query parameter (cross-origin)
     if not access_token:
-        logger.debug("WebSocket auth failed: no access token cookie")
+        access_token = websocket.query_params.get("token")
+
+    if not access_token:
+        logger.debug("WebSocket auth failed: no access token in cookie or query param")
         return None
 
     try:
