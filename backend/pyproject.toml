@@ -17,6 +17,7 @@ langchain-openai = "^0.1.22"
 langchain-community = "^0.2.12"
 python-dotenv = "^1.0.1"
 supabase = "^2.7.2"
+realtime = "^2.0.0"
 # SQLAlchemy 已移除 - 使用 Supabase Python SDK
 
 [tool.poetry.group.dev.dependencies]
