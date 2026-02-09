@@ -4,13 +4,17 @@
 
 ## Phase 0：准备与依赖
 
-- [ ] T0-1 安装后端依赖（含 `langgraph`）并锁定版本
-- [ ] T0-2 确认当前 Chat 模型在你环境中可稳定 `tool calling`
-- [ ] T0-3 在 `docs/01_agentic_rag/09_待确认参数.md` 填入初始参数
+- [x] T0-1 安装后端依赖（含 `langgraph`）并锁定版本
+- [x] T0-2 确认当前 Chat 模型在你环境中可稳定 `tool calling`
+- [x] T0-3 在 `docs/01_agentic_rag/09_待确认参数.md` 填入初始参数
 
 **完成标准（DoD）**
 - 后端可正常启动
 - 依赖冲突已解决
+
+> Phase 0 执行记录（2026-02-10）：
+> - 已安装并锁定后端依赖（`backend/requirements.txt` + `backend/pyproject.toml`，含 `langgraph==1.0.6`）
+> - Chat 模型确认：`gemini-3-pro`（你已确认可稳定 `tool calling`）
 
 ## Phase 1：后端 Agent 基础骨架
 
@@ -69,4 +73,3 @@
 
 **DoD**
 - 所有 P0/P1 验收项通过
-
