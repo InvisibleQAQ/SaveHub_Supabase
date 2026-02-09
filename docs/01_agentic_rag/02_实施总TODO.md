@@ -18,9 +18,9 @@
 
 ## Phase 1：后端 Agent 基础骨架
 
-- [ ] T1-1 新增 `agentic_rag` 模块目录（prompts/state/tools/nodes/edges/graph/service）
-- [ ] T1-2 新增 `AgenticRagService` 并实现主入口 `stream_chat`
-- [ ] T1-3 新增 LangGraph 图编排（rewrite/split/clarification/agent loop/aggregate）
+- [x] T1-1 新增 `agentic_rag` 模块目录（prompts/state/tools/nodes/edges/graph/service）
+- [x] T1-2 新增 `AgenticRagService` 并实现主入口 `stream_chat`
+- [x] T1-3 新增 LangGraph 图编排（rewrite/split/clarification/agent loop/aggregate）
 
 **DoD**
 - 本地可单元调用 `AgenticRagService.stream_chat()` 输出阶段事件

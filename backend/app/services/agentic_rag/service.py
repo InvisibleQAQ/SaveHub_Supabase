@@ -1,0 +1,97 @@
+"""Agentic-RAG 服务主入口。"""
+
+import logging
+from typing import Any, AsyncGenerator, Dict, List
+
+from supabase import Client
+
+from app.services.agentic_rag.graph import build_agentic_rag_graph
+from app.services.agentic_rag.state import AgenticRagState, create_initial_state
+from app.services.agentic_rag.tools import AgenticRagTools
+from app.services.ai import ChatClient, EmbeddingClient
+
+logger = logging.getLogger(__name__)
+
+
+class AgenticRagService:
+    """Agentic-RAG 服务（Phase 1 基础骨架）。"""
+
+    def __init__(
+        self,
+        chat_config: Dict[str, str],
+        embedding_config: Dict[str, str],
+        supabase: Client,
+        user_id: str,
+    ):
+        self.chat_config = chat_config
+        self.embedding_config = embedding_config
+        self.supabase = supabase
+        self.user_id = user_id
+
+        self.chat_client = ChatClient(
+            api_key=chat_config["api_key"],
+            api_base=chat_config["api_base"],
+            model=chat_config["model"],
+        )
+        self.embedding_client = EmbeddingClient(
+            api_key=embedding_config["api_key"],
+            api_base=embedding_config["api_base"],
+            model=embedding_config["model"],
+        )
+
+        self.tools = AgenticRagTools(
+            supabase=supabase,
+            user_id=user_id,
+            embedding_client=self.embedding_client,
+        )
+        self.graph = build_agentic_rag_graph(self.tools)
+
+    async def stream_chat(
+        self,
+        messages: List[Dict[str, str]],
+        top_k: int = 8,
+        min_score: float = 0.35,
+        max_split_questions: int = 3,
+        max_tool_rounds_per_question: int = 3,
+        max_expand_calls_per_question: int = 2,
+    ) -> AsyncGenerator[Dict[str, Any], None]:
+        """运行 LangGraph 并输出阶段事件。"""
+        state: AgenticRagState = create_initial_state(
+            messages=messages,
+            top_k=top_k,
+            min_score=min_score,
+            max_split_questions=max_split_questions,
+            max_tool_rounds_per_question=max_tool_rounds_per_question,
+            max_expand_calls_per_question=max_expand_calls_per_question,
+        )
+
+        try:
+            final_state = self.graph.invoke(state)
+
+            for event in final_state.get("events", []):
+                yield event
+
+            if final_state.get("clarification_required"):
+                yield {
+                    "event": "done",
+                    "data": {
+                        "message": "clarification_required",
+                        "sources": final_state.get("all_sources", []),
+                    },
+                }
+                return
+
+            final_answer = final_state.get("final_answer", "")
+            if final_answer:
+                yield {"event": "content", "data": {"delta": final_answer}}
+
+            yield {
+                "event": "done",
+                "data": {
+                    "message": "completed",
+                    "sources": final_state.get("all_sources", []),
+                },
+            }
+        except Exception as e:
+            logger.error(f"AgenticRagService stream_chat failed: {e}")
+            yield {"event": "error", "data": {"message": str(e)}}
