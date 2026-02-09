@@ -77,6 +77,25 @@ def search_embeddings(
         return []
 
 
+def search_all_embeddings(
+    supabase: Client,
+    query_embedding: List[float],
+    user_id: str,
+    top_k: int = 10,
+    feed_id: Optional[str] = None,
+    min_score: float = 0.0,
+) -> List[Dict[str, Any]]:
+    """语义检索 all_embeddings 的显式入口（Agentic-RAG 使用）。"""
+    return search_embeddings(
+        supabase=supabase,
+        query_embedding=query_embedding,
+        user_id=user_id,
+        top_k=top_k,
+        feed_id=feed_id,
+        min_score=min_score,
+    )
+
+
 def search_embeddings_raw(
     supabase: Client,
     query_embedding: List[float],

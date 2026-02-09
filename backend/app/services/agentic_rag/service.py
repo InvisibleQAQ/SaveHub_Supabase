@@ -54,6 +54,8 @@ class AgenticRagService:
         max_split_questions: int = 3,
         max_tool_rounds_per_question: int = 3,
         max_expand_calls_per_question: int = 2,
+        retry_tool_on_failure: bool = True,
+        max_tool_retry: int = 1,
     ) -> AsyncGenerator[Dict[str, Any], None]:
         """运行 LangGraph 并输出阶段事件。"""
         state: AgenticRagState = create_initial_state(
@@ -63,6 +65,8 @@ class AgenticRagService:
             max_split_questions=max_split_questions,
             max_tool_rounds_per_question=max_tool_rounds_per_question,
             max_expand_calls_per_question=max_expand_calls_per_question,
+            retry_tool_on_failure=retry_tool_on_failure,
+            max_tool_retry=max_tool_retry,
         )
 
         try:

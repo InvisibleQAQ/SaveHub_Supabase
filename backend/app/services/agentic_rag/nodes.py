@@ -79,6 +79,8 @@ def dispatch_questions_node(state: AgenticRagState) -> AgenticRagState:
     state["current_question_index"] = state.get("current_question_index", -1) + 1
     state["current_tool_round"] = 0
     state["current_expand_calls"] = 0
+    state["current_tool_retry"] = 0
+    state["current_seed_source_ids"] = []
     state["current_sources"] = []
     state["enough_for_finalize"] = False
 
@@ -97,7 +99,19 @@ def agent_reason_node(state: AgenticRagState) -> AgenticRagState:
 
     if tool_round >= max_rounds:
         state["enough_for_finalize"] = True
+        append_event(
+            state,
+            "tool_loop_guard",
+            {
+                "question_index": state.get("current_question_index", 0),
+                "reason": "max_tool_rounds_reached",
+                "current_tool_round": tool_round,
+                "max_tool_rounds": max_rounds,
+            },
+        )
         return state
+
+    current_seed_source_ids = state.get("current_seed_source_ids", [])
 
     if tool_round == 0:
         tool_name = "search_embeddings"
@@ -109,13 +123,16 @@ def agent_reason_node(state: AgenticRagState) -> AgenticRagState:
     else:
         tool_name = "expand_context"
         tool_args = {
+            "seed_source_ids": current_seed_source_ids,
             "seed_query": current_question,
+            "window_size": 2,
             "top_k": max(2, state.get("top_k", 8) // 2),
             "min_score": max(0.0, state.get("min_score", 0.35) - 0.05),
         }
 
     state["current_tool_name"] = tool_name
     state["current_tool_args"] = tool_args
+    state["current_tool_retry"] = 0
     state["current_tool_round"] = tool_round + 1
 
     append_event(
@@ -137,23 +154,56 @@ def run_tools_node_factory(tools: AgenticRagTools):
         tool_name = state.get("current_tool_name")
         tool_args = state.get("current_tool_args", {})
 
+        max_retry = max(0, int(state.get("max_tool_retry", 1)))
+        should_retry = bool(state.get("retry_tool_on_failure", True))
+
         sources: List[Dict[str, Any]] = []
-        if tool_name == "search_embeddings":
-            sources = tools.search_embeddings_tool(**tool_args)
-        elif tool_name == "expand_context":
-            max_expand_calls = state.get("max_expand_calls_per_question", 2)
-            if state.get("current_expand_calls", 0) < max_expand_calls:
-                state["current_expand_calls"] = state.get("current_expand_calls", 0) + 1
-                sources = tools.expand_context_tool(**tool_args)
-            else:
-                sources = []
-        else:
-            logger.warning(f"Unknown tool: {tool_name}")
+        tool_error: str | None = None
+        retry_attempt = 0
+
+        while True:
+            try:
+                if tool_name == "search_embeddings":
+                    sources = tools.search_embeddings_tool(**tool_args)
+                elif tool_name == "expand_context":
+                    max_expand_calls = state.get("max_expand_calls_per_question", 2)
+                    if state.get("current_expand_calls", 0) < max_expand_calls:
+                        state["current_expand_calls"] = state.get("current_expand_calls", 0) + 1
+                        sources = tools.expand_context_tool(**tool_args)
+                    else:
+                        sources = []
+                else:
+                    logger.warning(f"Unknown tool: {tool_name}")
+                    sources = []
+                break
+            except Exception as e:  # pragma: no cover
+                tool_error = str(e)
+                if (not should_retry) or retry_attempt >= max_retry:
+                    break
+
+                retry_attempt += 1
+                state["current_tool_retry"] = retry_attempt
+                append_event(
+                    state,
+                    "tool_retry",
+                    {
+                        "question_index": state.get("current_question_index", 0),
+                        "tool_name": tool_name,
+                        "attempt": retry_attempt,
+                        "max_retry": max_retry,
+                        "error": tool_error,
+                    },
+                )
+
+        state["current_tool_retry"] = retry_attempt
 
         indexed_sources = register_sources_with_index(state, sources)
         current_sources = state.get("current_sources", [])
         current_sources.extend(indexed_sources)
         state["current_sources"] = current_sources
+
+        if indexed_sources:
+            state["current_seed_source_ids"] = [src.get("id") for src in indexed_sources if src.get("id")]
 
         append_event(
             state,
@@ -161,6 +211,8 @@ def run_tools_node_factory(tools: AgenticRagTools):
             {
                 "question_index": state.get("current_question_index", 0),
                 "tool_name": tool_name,
+                "retry": retry_attempt,
+                "error": tool_error,
                 "result_count": len(indexed_sources),
                 "sources": indexed_sources[:5],
             },
@@ -176,10 +228,26 @@ def judge_enough_node(state: AgenticRagState) -> AgenticRagState:
     current_tool_round = state.get("current_tool_round", 0)
     max_tool_rounds = state.get("max_tool_rounds_per_question", 3)
 
+    max_expand_calls = state.get("max_expand_calls_per_question", 2)
+    current_expand_calls = state.get("current_expand_calls", 0)
+
     state["enough_for_finalize"] = (
         len(current_sources) > 0
         or current_tool_round >= max_tool_rounds
+        or current_expand_calls >= max_expand_calls
     )
+
+    if state["enough_for_finalize"] and current_tool_round >= max_tool_rounds:
+        append_event(
+            state,
+            "tool_loop_guard",
+            {
+                "question_index": state.get("current_question_index", 0),
+                "reason": "judge_max_tool_rounds",
+                "current_tool_round": current_tool_round,
+                "max_tool_rounds": max_tool_rounds,
+            },
+        )
     return state
 
 
@@ -209,6 +277,8 @@ def finalize_answer_node(state: AgenticRagState) -> AgenticRagState:
     state["current_sources"] = []
     state["current_tool_name"] = None
     state["current_tool_args"] = {}
+    state["current_tool_retry"] = 0
+    state["current_seed_source_ids"] = []
     state["enough_for_finalize"] = False
     return state
 
@@ -229,4 +299,3 @@ def aggregate_answers_node(state: AgenticRagState) -> AgenticRagState:
     final_answer = "\n\n".join(item.get("answer", "") for item in question_answers).strip()
     state["final_answer"] = final_answer
     return state
-

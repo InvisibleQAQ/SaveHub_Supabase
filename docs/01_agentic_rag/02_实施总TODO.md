@@ -27,10 +27,10 @@
 
 ## Phase 2：工具调用与检索循环
 
-- [ ] T2-1 实现 `search_embeddings` 工具（调用 `search_all_embeddings`）
-- [ ] T2-2 实现 `expand_context` 工具（二次检索/邻域补全）
-- [ ] T2-3 实现工具调用循环上限与重试策略（防死循环）
-- [ ] T2-4 建立全局来源索引池（保证 `[ref:N]` 一致）
+- [x] T2-1 实现 `search_embeddings` 工具（调用 `search_all_embeddings`）
+- [x] T2-2 实现 `expand_context` 工具（二次检索/邻域补全）
+- [x] T2-3 实现工具调用循环上限与重试策略（防死循环）
+- [x] T2-4 建立全局来源索引池（保证 `[ref:N]` 一致）
 
 **DoD**
 - 能看到工具调用事件
