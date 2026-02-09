@@ -15,8 +15,12 @@ from datetime import datetime
 from logging.handlers import TimedRotatingFileHandler
 from pathlib import Path
 
-# Log directory (relative to backend/)
-LOG_DIR = Path(__file__).parent.parent.parent / "logs"
+# Log directory (relative to repository root)
+# NOTE:
+# - Uvicorn dev mode watches backend/ when --reload is enabled
+# - Writing logs into backend/logs can trigger reload loops
+# - Reload during requests can surface as frontend proxy socket hang up / ECONNRESET
+LOG_DIR = Path(__file__).resolve().parents[3] / "logs"
 
 # Console format: human-readable
 CONSOLE_FORMAT = "%(asctime)s | %(levelname)-8s | %(name)s | %(message)s"
