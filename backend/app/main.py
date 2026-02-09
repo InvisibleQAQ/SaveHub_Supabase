@@ -58,7 +58,15 @@ app.add_middleware(
 # Import and register routers
 from app.api.routers import rss, auth, feeds, folders, articles, settings, websocket
 from app.api.routers import queue, health as queue_health
-from app.api.routers import api_configs, proxy, rag, github, repositories, rag_chat
+from app.api.routers import (
+    api_configs,
+    proxy,
+    rag,
+    github,
+    repositories,
+    rag_chat,
+    agentic_rag_chat,
+)
 app.include_router(rss.router, prefix="/api")
 app.include_router(auth.router, prefix="/api")
 app.include_router(feeds.router, prefix="/api")
@@ -74,6 +82,7 @@ app.include_router(rag.router, prefix="/api")
 app.include_router(github.router, prefix="/api")
 app.include_router(repositories.router, prefix="/api")
 app.include_router(rag_chat.router, prefix="/api")
+app.include_router(agentic_rag_chat.router, prefix="/api")
 
 
 @app.get("/health")

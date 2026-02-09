@@ -38,9 +38,9 @@
 
 ## Phase 3：新路由与SSE协议
 
-- [ ] T3-1 新增路由 `POST /api/agentic-rag/stream`
-- [ ] T3-2 定义并实现 SSE v2 事件（见 `05_SSE事件协议_v2.md`）
-- [ ] T3-3 在 `backend/app/main.py` 注册新路由
+- [x] T3-1 新增路由 `POST /api/agentic-rag/stream`
+- [x] T3-2 定义并实现 SSE v2 事件（见 `05_SSE事件协议_v2.md`）
+- [x] T3-3 在 `backend/app/main.py` 注册新路由
 
 **DoD**
 - 前端/脚本可消费 SSE 完整流程到 `done`

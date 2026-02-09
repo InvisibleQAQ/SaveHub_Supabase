@@ -12,6 +12,17 @@ from app.services.ai import ChatClient, EmbeddingClient
 
 logger = logging.getLogger(__name__)
 
+SSE_V2_EVENTS = {
+    "rewrite",
+    "clarification_required",
+    "tool_call",
+    "tool_result",
+    "aggregation",
+    "content",
+    "done",
+    "error",
+}
+
 
 class AgenticRagService:
     """Agentic-RAG 服务（Phase 1 基础骨架）。"""
@@ -46,6 +57,88 @@ class AgenticRagService:
         )
         self.graph = build_agentic_rag_graph(self.tools)
 
+    @staticmethod
+    def _normalize_v2_event(event: Dict[str, Any]) -> Dict[str, Any] | None:
+        """过滤并规范 SSE v2 事件。"""
+        event_name = str(event.get("event") or "").strip()
+        data = event.get("data") or {}
+
+        if event_name not in SSE_V2_EVENTS:
+            return None
+
+        if event_name == "tool_result":
+            return {
+                "event": "tool_result",
+                "data": {
+                    "question_index": data.get("question_index", 0),
+                    "tool_name": data.get("tool_name", ""),
+                    "result_count": data.get("result_count", 0),
+                    "sources": data.get("sources", []),
+                },
+            }
+
+        if event_name == "tool_call":
+            return {
+                "event": "tool_call",
+                "data": {
+                    "question_index": data.get("question_index", 0),
+                    "tool_name": data.get("tool_name", ""),
+                    "args": data.get("args", {}),
+                },
+            }
+
+        if event_name == "rewrite":
+            rewritten_queries = data.get("rewritten_queries") or []
+            return {
+                "event": "rewrite",
+                "data": {
+                    "original_query": data.get("original_query", ""),
+                    "rewritten_queries": rewritten_queries,
+                    "count": data.get("count", len(rewritten_queries)),
+                },
+            }
+
+        if event_name == "aggregation":
+            return {
+                "event": "aggregation",
+                "data": {
+                    "total_questions": data.get("total_questions", 0),
+                    "completed": data.get("completed", 0),
+                },
+            }
+
+        if event_name == "clarification_required":
+            return {
+                "event": "clarification_required",
+                "data": {
+                    "message": data.get("message", "请补充更多问题细节。"),
+                },
+            }
+
+        if event_name == "content":
+            return {
+                "event": "content",
+                "data": {
+                    "delta": data.get("delta", ""),
+                },
+            }
+
+        if event_name == "done":
+            return {
+                "event": "done",
+                "data": {
+                    "message": data.get("message", "completed"),
+                    "sources": data.get("sources", []),
+                },
+            }
+
+        return {
+            "event": "error",
+            "data": {
+                "message": data.get("message", "unknown error"),
+            },
+        }
+
     async def stream_chat(
         self,
         messages: List[Dict[str, str]],
@@ -73,29 +166,42 @@ class AgenticRagService:
             final_state = self.graph.invoke(state)
 
             for event in final_state.get("events", []):
-                yield event
+                normalized = self._normalize_v2_event(event)
+                if normalized:
+                    yield normalized
 
             if final_state.get("clarification_required"):
-                yield {
+                yield self._normalize_v2_event(
+                    {
                     "event": "done",
                     "data": {
                         "message": "clarification_required",
                         "sources": final_state.get("all_sources", []),
                     },
-                }
+                    }
+                )
                 return
 
             final_answer = final_state.get("final_answer", "")
             if final_answer:
-                yield {"event": "content", "data": {"delta": final_answer}}
+                yield self._normalize_v2_event(
+                    {"event": "content", "data": {"delta": final_answer}}
+                )
 
-            yield {
+            yield self._normalize_v2_event(
+                {
                 "event": "done",
                 "data": {
                     "message": "completed",
                     "sources": final_state.get("all_sources", []),
                 },
-            }
+                }
+            )
         except Exception as e:
             logger.error(f"AgenticRagService stream_chat failed: {e}")
-            yield {"event": "error", "data": {"message": str(e)}}
+            yield {
+                "event": "error",
+                "data": {
+                    "message": str(e),
+                },
+            }
