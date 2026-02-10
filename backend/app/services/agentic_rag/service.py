@@ -23,6 +23,13 @@ SSE_V2_EVENTS = {
     "error",
 }
 
+STAGE_LOG_EVENTS = {
+    "rewrite",
+    "tool_call",
+    "tool_result",
+    "done",
+}
+
 
 class AgenticRagService:
     """Agentic-RAG 服务（Phase 1 基础骨架）。"""
@@ -139,6 +146,23 @@ class AgenticRagService:
             },
         }
 
+    @staticmethod
+    def _log_stage_event(event: Dict[str, Any]) -> None:
+        """记录关键阶段事件日志，便于验收与排障。"""
+        event_name = event.get("event")
+        if event_name not in STAGE_LOG_EVENTS:
+            return
+
+        data = event.get("data") or {}
+        logger.info(
+            "agentic_rag_event event=%s question_index=%s tool_name=%s result_count=%s message=%s",
+            event_name,
+            data.get("question_index"),
+            data.get("tool_name"),
+            data.get("result_count"),
+            data.get("message"),
+        )
+
     async def stream_chat(
         self,
         messages: List[Dict[str, str]],
@@ -168,10 +192,11 @@ class AgenticRagService:
             for event in final_state.get("events", []):
                 normalized = self._normalize_v2_event(event)
                 if normalized:
+                    self._log_stage_event(normalized)
                     yield normalized
 
             if final_state.get("clarification_required"):
-                yield self._normalize_v2_event(
+                done_event = self._normalize_v2_event(
                     {
                     "event": "done",
                     "data": {
@@ -180,15 +205,20 @@ class AgenticRagService:
                     },
                     }
                 )
+                if done_event:
+                    self._log_stage_event(done_event)
+                    yield done_event
                 return
 
             final_answer = final_state.get("final_answer", "")
             if final_answer:
-                yield self._normalize_v2_event(
+                content_event = self._normalize_v2_event(
                     {"event": "content", "data": {"delta": final_answer}}
                 )
+                if content_event:
+                    yield content_event
 
-            yield self._normalize_v2_event(
+            done_event = self._normalize_v2_event(
                 {
                 "event": "done",
                 "data": {
@@ -197,6 +227,9 @@ class AgenticRagService:
                 },
                 }
             )
+            if done_event:
+                self._log_stage_event(done_event)
+                yield done_event
         except Exception as e:
             logger.error(f"AgenticRagService stream_chat failed: {e}")
             yield {
