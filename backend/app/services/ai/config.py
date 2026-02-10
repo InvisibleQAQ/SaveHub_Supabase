@@ -8,7 +8,7 @@ AI服务配置管理。
 """
 
 import logging
-from typing import Dict, Optional
+from typing import Dict, Optional, Sequence
 
 from supabase import Client
 
@@ -19,7 +19,17 @@ logger = logging.getLogger(__name__)
 
 class ConfigError(Exception):
     """AI配置错误"""
-    pass
+
+    def __init__(
+        self,
+        message: str,
+        missing_types: Optional[Sequence[str]] = None,
+    ):
+        super().__init__(message)
+        self.missing_types = list(missing_types or [])
+
+
+SUPPORTED_CONFIG_TYPES = ("chat", "embedding", "rerank")
 
 
 def normalize_base_url(url: str) -> str:
@@ -188,3 +198,44 @@ def get_active_config(
         logger.debug(f"No active {config_type} config for user {user_id}: {e}")
 
     return None
+
+
+def get_required_ai_configs(
+    supabase: Client,
+    user_id: str,
+    required_types: Sequence[str],
+) -> Dict[str, dict]:
+    """
+    获取并校验必需的 AI 配置。
+
+    Args:
+        supabase: Supabase客户端
+        user_id: 用户ID
+        required_types: 必需的配置类型序列（如 ["chat", "embedding"]）
+
+    Returns:
+        按配置类型组织的解密且规范化后的配置
+
+    Raises:
+        ConfigError: 缺少配置或类型非法
+    """
+    configs: Dict[str, dict] = {}
+    missing_types = []
+
+    for config_type in required_types:
+        if config_type not in SUPPORTED_CONFIG_TYPES:
+            raise ConfigError(f"Unsupported config type: {config_type}")
+
+        config = get_active_config(supabase, user_id, config_type)
+        if config:
+            configs[config_type] = config
+        else:
+            missing_types.append(config_type)
+
+    if missing_types:
+        raise ConfigError(
+            f"Missing required AI configs: {', '.join(missing_types)}",
+            missing_types=missing_types,
+        )
+
+    return configs

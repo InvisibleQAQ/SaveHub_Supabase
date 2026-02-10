@@ -71,17 +71,22 @@ def get_user_api_configs(user_id: str) -> Dict[str, Dict[str, str]]:
     Raises:
         ConfigError: 配置不存在或不完整
     """
-    from app.services.ai import get_user_ai_configs as _get_user_ai_configs
+    from app.services.ai import ConfigError as AIConfigError
+    from app.services.ai import get_required_ai_configs
 
     supabase = get_supabase_service()
-    configs = _get_user_ai_configs(supabase, user_id)
-
-    if "chat" not in configs:
-        raise ConfigError(f"No active chat config for user {user_id}")
-    if "embedding" not in configs:
-        raise ConfigError(f"No active embedding config for user {user_id}")
-
-    return configs
+    try:
+        return get_required_ai_configs(
+            supabase=supabase,
+            user_id=user_id,
+            required_types=("chat", "embedding"),
+        )
+    except AIConfigError as e:
+        if e.missing_types:
+            raise ConfigError(
+                f"No active {e.missing_types[0]} config for user {user_id}"
+            ) from e
+        raise ConfigError(f"Invalid AI config for user {user_id}") from e
 
 
 def do_process_article_rag(article_id: str, user_id: str) -> Dict[str, Any]:

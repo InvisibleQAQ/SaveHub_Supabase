@@ -13,7 +13,7 @@ from fastapi.responses import StreamingResponse
 
 from app.dependencies import COOKIE_NAME_ACCESS, verify_auth
 from app.schemas.agentic_rag_chat import AgenticRagChatRequest
-from app.services.ai import get_active_config
+from app.services.ai import ConfigError, get_required_ai_configs
 from app.services.agentic_rag_service import AgenticRagService
 from app.supabase_client import get_supabase_client
 
@@ -85,13 +85,21 @@ async def agentic_rag_chat_stream(
     supabase = get_supabase_client(access_token)
     user_id = str(auth_response.user.id)
 
-    chat_config = get_active_config(supabase, user_id, "chat")
-    if not chat_config:
-        raise HTTPException(status_code=400, detail="未配置 Chat API")
+    try:
+        configs = get_required_ai_configs(
+            supabase=supabase,
+            user_id=user_id,
+            required_types=("chat", "embedding"),
+        )
+    except ConfigError as e:
+        if "chat" in e.missing_types:
+            raise HTTPException(status_code=400, detail="未配置 Chat API") from e
+        if "embedding" in e.missing_types:
+            raise HTTPException(status_code=400, detail="未配置 Embedding API") from e
+        raise HTTPException(status_code=400, detail="AI 配置无效") from e
 
-    embedding_config = get_active_config(supabase, user_id, "embedding")
-    if not embedding_config:
-        raise HTTPException(status_code=400, detail="未配置 Embedding API")
+    chat_config = configs["chat"]
+    embedding_config = configs["embedding"]
 
     service = AgenticRagService(
         chat_config=chat_config,

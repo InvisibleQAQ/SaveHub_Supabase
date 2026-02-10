@@ -13,7 +13,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 from app.dependencies import verify_auth, COOKIE_NAME_ACCESS
 from app.supabase_client import get_supabase_client
 from app.services.db.rag import RagService
-from app.services.ai import EmbeddingClient, ChatClient, get_active_config, normalize_base_url
+from app.services.ai import EmbeddingClient, ChatClient, get_required_ai_configs, ConfigError
 from app.services.rag.retriever import get_context_for_answer
 from app.schemas.rag import (
     RagQueryRequest,
@@ -62,18 +62,20 @@ def get_active_configs(
     supabase = get_supabase_client(access_token)
     user_id = str(auth_response.user.id)
 
-    configs = {}
-
-    for config_type in ["chat", "embedding"]:
-        config = get_active_config(supabase, user_id, config_type)
-        if not config:
+    try:
+        return get_required_ai_configs(
+            supabase=supabase,
+            user_id=user_id,
+            required_types=("chat", "embedding"),
+        )
+    except ConfigError as e:
+        if e.missing_types:
+            missing = e.missing_types[0]
             raise HTTPException(
                 status_code=400,
-                detail=f"请先配置 {config_type} 类型的 API"
-            )
-        configs[config_type] = config
-
-    return configs
+                detail=f"请先配置 {missing} 类型的 API"
+            ) from e
+        raise HTTPException(status_code=400, detail="AI 配置无效") from e
 
 
 # =============================================================================

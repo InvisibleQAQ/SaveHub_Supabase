@@ -27,6 +27,7 @@ from .config import (
     get_decrypted_config,
     get_user_ai_configs,
     get_active_config,
+    get_required_ai_configs,
     ConfigError,
 )
 from .clients import (
@@ -46,6 +47,7 @@ __all__ = [
     "get_decrypted_config",
     "get_user_ai_configs",
     "get_active_config",
+    "get_required_ai_configs",
     "ConfigError",
     # Clients
     "ChatClient",
