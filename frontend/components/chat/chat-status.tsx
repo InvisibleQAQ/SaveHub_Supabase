@@ -1,6 +1,14 @@
 "use client"
 
-import { CheckCircle2, Circle, Loader2 } from "lucide-react"
+import {
+  CheckCircle2,
+  Circle,
+  Loader2,
+  PenLine,
+  Search,
+  Sparkles,
+  Wrench,
+} from "lucide-react"
 
 export type AgentStageStatus = "pending" | "active" | "completed"
 
@@ -11,10 +19,19 @@ export interface AgentStageProgress {
   aggregation: AgentStageStatus
 }
 
+export type AgentStageLogStage = keyof AgentStageProgress | "system"
+
+export interface AgentStageLogEntry {
+  id: string
+  stage: AgentStageLogStage
+  message: string
+  timestamp: number
+}
+
 interface ChatStatusProps {
   status: string
   stages: AgentStageProgress
-  stageLogs: string[]
+  stageLogs: AgentStageLogEntry[]
 }
 
 const STAGE_DEFINITIONS: Array<{
@@ -37,6 +54,43 @@ function StageIcon({ status }: { status: AgentStageStatus }) {
   }
 
   return <Circle className="w-3.5 h-3.5 text-muted-foreground/60" />
+}
+
+function TimelineStageIcon({ stage }: { stage: AgentStageLogStage }) {
+  if (stage === "rewrite") {
+    return <PenLine className="w-3.5 h-3.5 text-violet-500" />
+  }
+
+  if (stage === "toolCall") {
+    return <Wrench className="w-3.5 h-3.5 text-primary" />
+  }
+
+  if (stage === "expandContext") {
+    return <Search className="w-3.5 h-3.5 text-cyan-500" />
+  }
+
+  if (stage === "aggregation") {
+    return <Sparkles className="w-3.5 h-3.5 text-emerald-500" />
+  }
+
+  return <Circle className="w-3.5 h-3.5 text-muted-foreground" />
+}
+
+function stageLabel(stage: AgentStageLogStage): string {
+  if (stage === "rewrite") return "重写"
+  if (stage === "toolCall") return "调用工具"
+  if (stage === "expandContext") return "二次检索"
+  if (stage === "aggregation") return "聚合"
+  return "系统"
+}
+
+function formatTimelineTime(timestamp: number): string {
+  return new Date(timestamp).toLocaleTimeString("zh-CN", {
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+    hour12: false,
+  })
 }
 
 export function ChatStatus({ status, stages, stageLogs }: ChatStatusProps) {
@@ -74,10 +128,30 @@ export function ChatStatus({ status, stages, stageLogs }: ChatStatusProps) {
       </div>
 
       {stageLogs.length > 0 && (
-        <div className="space-y-1 rounded-xl border border-border/60 bg-background/60 px-3 py-2 text-xs text-muted-foreground">
-          {stageLogs.map((log, index) => (
-            <div key={`${index}-${log}`}>• {log}</div>
-          ))}
+        <div className="space-y-3 rounded-xl border border-border/60 bg-background/60 px-3 py-3">
+          {stageLogs.map((log, index) => {
+            const isLast = index === stageLogs.length - 1
+
+            return (
+              <div key={log.id} className="relative pl-7">
+                {!isLast && (
+                  <span className="absolute left-[9px] top-5 h-[calc(100%-10px)] w-px bg-border/60" />
+                )}
+
+                <span className="absolute left-0 top-0.5 inline-flex h-[18px] w-[18px] items-center justify-center rounded-full border border-border/70 bg-card">
+                  <TimelineStageIcon stage={log.stage} />
+                </span>
+
+                <div className="space-y-0.5">
+                  <div className="flex items-center justify-between gap-3 text-[11px] leading-none">
+                    <span className="font-medium text-foreground/90">{stageLabel(log.stage)}</span>
+                    <span className="text-muted-foreground">{formatTimelineTime(log.timestamp)}</span>
+                  </div>
+                  <div className="text-xs text-muted-foreground">{log.message}</div>
+                </div>
+              </div>
+            )
+          })}
         </div>
       )}
     </div>

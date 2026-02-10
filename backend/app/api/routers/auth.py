@@ -5,7 +5,16 @@ import logging
 from fastapi import APIRouter, HTTPException, Response, Request
 from dotenv import load_dotenv, find_dotenv
 from supabase import create_client, Client
-from gotrue.errors import AuthApiError
+
+try:
+    from supabase_auth.errors import AuthApiError as SupabaseAuthApiError
+except ImportError:
+    SupabaseAuthApiError = None
+
+try:
+    from gotrue.errors import AuthApiError as GoTrueAuthApiError
+except ImportError:
+    GoTrueAuthApiError = None
 
 from app.schemas.auth import (
     LoginRequest,
@@ -34,6 +43,20 @@ COOKIE_MAX_AGE = 60 * 60 * 24 * 7  # 7 days
 COOKIE_HTTPONLY = True
 COOKIE_SECURE = os.environ.get("COOKIE_SECURE", "false").lower() == "true"
 COOKIE_SAMESITE = "lax"
+
+AUTH_API_ERRORS = tuple(
+    error_type
+    for error_type in (SupabaseAuthApiError, GoTrueAuthApiError)
+    if error_type is not None
+)
+
+
+def get_auth_error_status(error: Exception, default_status: int) -> int:
+    """Extract HTTP-like status from Supabase auth exceptions safely."""
+    status = getattr(error, "status", None)
+    if isinstance(status, int) and 100 <= status <= 599:
+        return status
+    return default_status
 
 
 def set_auth_cookies(response: Response, access_token: str, refresh_token: str) -> None:
@@ -91,9 +114,10 @@ async def login(request: LoginRequest, response: Response):
             refresh_token=session.refresh_token,
         )
 
-    except AuthApiError as e:
+    except AUTH_API_ERRORS as e:
+        status_code = get_auth_error_status(e, 401)
         logger.warning(f"Login failed for {request.email}: {str(e)}")
-        raise HTTPException(status_code=401, detail=str(e))
+        raise HTTPException(status_code=status_code, detail=str(e))
     except HTTPException:
         raise
     except Exception as e:
@@ -132,9 +156,10 @@ async def register(request: RegisterRequest, response: Response):
             refresh_token=session.refresh_token if session else None,
         )
 
-    except AuthApiError as e:
+    except AUTH_API_ERRORS as e:
+        status_code = get_auth_error_status(e, 400)
         logger.warning(f"Registration failed for {request.email}: {str(e)}")
-        raise HTTPException(status_code=400, detail=str(e))
+        raise HTTPException(status_code=status_code, detail=str(e))
     except HTTPException:
         raise
     except Exception as e:
@@ -228,10 +253,21 @@ async def refresh_token(request: Request, response: Response):
 
         return RefreshResponse(success=True, message="Token refreshed")
 
-    except AuthApiError as e:
+    except AUTH_API_ERRORS as e:
+        status_code = get_auth_error_status(e, 401)
+        if status_code == 429:
+            logger.warning("Token refresh rate limited")
+            raise HTTPException(
+                status_code=429,
+                detail="Too many refresh attempts. Please retry shortly.",
+                headers={"Retry-After": "1"},
+            )
+
         logger.warning(f"Token refresh failed: {str(e)}")
-        clear_auth_cookies(response)
-        raise HTTPException(status_code=401, detail=str(e))
+        if status_code in {400, 401, 403}:
+            clear_auth_cookies(response)
+
+        raise HTTPException(status_code=status_code, detail=str(e))
     except HTTPException:
         raise
     except Exception as e:

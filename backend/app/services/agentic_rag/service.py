@@ -14,6 +14,7 @@ from app.services.ai import ChatClient, EmbeddingClient
 logger = logging.getLogger(__name__)
 
 SSE_V2_EVENTS = {
+    "progress",
     "rewrite",
     "clarification_required",
     "tool_call",
@@ -25,9 +26,11 @@ SSE_V2_EVENTS = {
 }
 
 STAGE_LOG_EVENTS = {
+    "progress",
     "rewrite",
     "tool_call",
     "tool_result",
+    "aggregation",
     "done",
 }
 
@@ -66,6 +69,50 @@ class AgenticRagService:
         self.graph = build_agentic_rag_graph(self.tools, self.chat_client)
 
     @staticmethod
+    def _build_tool_call_message(data: Dict[str, Any]) -> str:
+        """生成工具调用阶段的自然语言描述。"""
+        question_index = int(data.get("question_index", 0)) + 1
+        tool_name = str(data.get("tool_name") or "")
+        args = data.get("args") or {}
+
+        if tool_name == "expand_context":
+            top_k = int(args.get("top_k", 0) or 0)
+            if top_k > 0:
+                return f"第 {question_index} 个子问题初检结果不足，正在二次检索并扩展上下文（目标 {top_k} 条）"
+            return f"第 {question_index} 个子问题初检结果不足，正在二次检索并扩展上下文"
+
+        query = str(args.get("query") or "").strip()
+        query_display = (query[:28] + "…") if len(query) > 28 else query
+        if query_display:
+            return f"正在检索第 {question_index} 个子问题：{query_display}"
+        return f"正在检索第 {question_index} 个子问题"
+
+    @staticmethod
+    def _build_tool_result_message(data: Dict[str, Any]) -> str:
+        """生成工具结果阶段的自然语言描述。"""
+        question_index = int(data.get("question_index", 0)) + 1
+        tool_name = str(data.get("tool_name") or "")
+        result_count = int(data.get("result_count", 0) or 0)
+
+        tool_display_name = "二次检索" if tool_name == "expand_context" else "初次检索"
+        if result_count > 0:
+            return f"第 {question_index} 个子问题{tool_display_name}完成，命中 {result_count} 条证据"
+        return f"第 {question_index} 个子问题{tool_display_name}完成，未命中有效证据"
+
+    @staticmethod
+    def _extract_state_from_stream_chunk(chunk: Any) -> AgenticRagState | None:
+        """从 LangGraph stream 返回值中提取状态字典。"""
+        if isinstance(chunk, dict):
+            if "events" in chunk:
+                return chunk
+
+            for value in chunk.values():
+                if isinstance(value, dict) and "events" in value:
+                    return value
+
+        return None
+
+    @staticmethod
     def _normalize_v2_event(event: Dict[str, Any]) -> Dict[str, Any] | None:
         """过滤并规范 SSE v2 事件。"""
         event_name = str(event.get("event") or "").strip()
@@ -82,6 +129,19 @@ class AgenticRagService:
                     "tool_name": data.get("tool_name", ""),
                     "result_count": data.get("result_count", 0),
                     "sources": data.get("sources", []),
+                    "display_text": AgenticRagService._build_tool_result_message(data),
+                },
+            }
+
+        if event_name == "progress":
+            stage = str(data.get("stage") or "")
+            message = str(data.get("message") or "").strip() or "正在处理你的问题"
+            return {
+                "event": "progress",
+                "data": {
+                    "stage": stage,
+                    "message": message,
+                    "display_text": message,
                 },
             }
 
@@ -92,34 +152,46 @@ class AgenticRagService:
                     "question_index": data.get("question_index", 0),
                     "tool_name": data.get("tool_name", ""),
                     "args": data.get("args", {}),
+                    "display_text": AgenticRagService._build_tool_call_message(data),
                 },
             }
 
         if event_name == "rewrite":
             rewritten_queries = data.get("rewritten_queries") or []
+            count = data.get("count", len(rewritten_queries))
             return {
                 "event": "rewrite",
                 "data": {
                     "original_query": data.get("original_query", ""),
                     "rewritten_queries": rewritten_queries,
-                    "count": data.get("count", len(rewritten_queries)),
+                    "count": count,
+                    "display_text": (
+                        f"已完成问题重写，并拆分为 {count} 个子问题"
+                        if int(count or 0) > 0
+                        else "问题意图不够明确，准备请求补充信息"
+                    ),
                 },
             }
 
         if event_name == "aggregation":
+            total_questions = int(data.get("total_questions", 0) or 0)
+            completed = int(data.get("completed", 0) or 0)
             return {
                 "event": "aggregation",
                 "data": {
-                    "total_questions": data.get("total_questions", 0),
-                    "completed": data.get("completed", 0),
+                    "total_questions": total_questions,
+                    "completed": completed,
+                    "display_text": f"已完成 {completed}/{total_questions} 个子问题，正在聚合答案",
                 },
             }
 
         if event_name == "clarification_required":
+            message = data.get("message", "请补充更多问题细节。")
             return {
                 "event": "clarification_required",
                 "data": {
-                    "message": data.get("message", "请补充更多问题细节。"),
+                    "message": message,
+                    "display_text": "需要补充问题细节后才能继续检索",
                 },
             }
 
@@ -128,15 +200,20 @@ class AgenticRagService:
                 "event": "content",
                 "data": {
                     "delta": data.get("delta", ""),
+                    "display_text": "证据准备完成，正在生成最终回答",
                 },
             }
 
         if event_name == "done":
+            message = data.get("message", "completed")
             return {
                 "event": "done",
                 "data": {
-                    "message": data.get("message", "completed"),
+                    "message": message,
                     "sources": data.get("sources", []),
+                    "display_text": (
+                        "已暂停，等待你补充信息" if message == "clarification_required" else "回答已完成"
+                    ),
                 },
             }
 
@@ -190,13 +267,43 @@ class AgenticRagService:
         )
 
         try:
-            final_state = self.graph.invoke(state)
+            start_progress_event = self._normalize_v2_event(
+                {
+                    "event": "progress",
+                    "data": {
+                        "stage": "rewrite",
+                        "message": "收到问题，正在分析意图并重写拆分",
+                    },
+                }
+            )
+            if start_progress_event:
+                self._log_stage_event(start_progress_event)
+                yield start_progress_event
 
-            for event in final_state.get("events", []):
-                normalized = self._normalize_v2_event(event)
-                if normalized:
-                    self._log_stage_event(normalized)
-                    yield normalized
+            final_state: AgenticRagState = state
+            emitted_event_count = 0
+
+            try:
+                stream_iter = self.graph.stream(state, stream_mode="values")
+            except TypeError:
+                stream_iter = self.graph.stream(state)
+
+            for chunk in stream_iter:
+                streamed_state = self._extract_state_from_stream_chunk(chunk)
+                if streamed_state is None:
+                    continue
+
+                final_state = streamed_state
+                events = final_state.get("events", [])
+
+                while emitted_event_count < len(events):
+                    event = events[emitted_event_count]
+                    emitted_event_count += 1
+
+                    normalized = self._normalize_v2_event(event)
+                    if normalized:
+                        self._log_stage_event(normalized)
+                        yield normalized
 
             if final_state.get("clarification_required"):
                 done_event = self._normalize_v2_event(

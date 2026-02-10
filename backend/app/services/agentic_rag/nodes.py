@@ -206,6 +206,14 @@ def dispatch_questions_node(state: AgenticRagState) -> AgenticRagState:
     state["current_seed_source_ids"] = []
     state["current_sources"] = []
     state["enough_for_finalize"] = False
+    append_event(
+        state,
+        "progress",
+        {
+            "stage": "toolCall",
+            "message": f"开始处理第 {state['current_question_index'] + 1} 个子问题，准备检索证据",
+        },
+    )
     return state
 
 
@@ -395,6 +403,16 @@ def finalize_answer_node_factory(chat_client: ChatClient):
     def finalize_answer_node(state: AgenticRagState) -> AgenticRagState:
         question = state.get("current_question") or ""
         sources = state.get("current_sources", [])
+        question_index = int(state.get("current_question_index", 0)) + 1
+
+        append_event(
+            state,
+            "progress",
+            {
+                "stage": "aggregation",
+                "message": f"第 {question_index} 个子问题证据收集完成，正在生成子答案",
+            },
+        )
 
         if not sources:
             answer = NO_KB_ANSWER
@@ -458,6 +476,15 @@ def aggregate_answers_node_factory(chat_client: ChatClient):
 
     def aggregate_answers_node(state: AgenticRagState) -> AgenticRagState:
         question_answers = state.get("question_answers", [])
+
+        append_event(
+            state,
+            "progress",
+            {
+                "stage": "aggregation",
+                "message": f"已生成 {len(question_answers)} 个子答案，正在聚合最终回复",
+            },
+        )
 
         append_event(
             state,

@@ -29,6 +29,7 @@ export interface RetrievedSource {
 }
 
 export type AgenticStreamEventType =
+  | "progress"
   | "rewrite"
   | "clarification_required"
   | "tool_call"
@@ -38,20 +39,29 @@ export type AgenticStreamEventType =
   | "done"
   | "error"
 
+export interface ProgressEventData {
+  stage?: string
+  message: string
+  display_text?: string
+}
+
 export interface RewriteEventData {
   original_query: string
   rewritten_queries: string[]
   count: number
+  display_text?: string
 }
 
 export interface ClarificationRequiredEventData {
   message: string
+  display_text?: string
 }
 
 export interface ToolCallEventData {
   question_index: number
   tool_name: string
   args: Record<string, unknown>
+  display_text?: string
 }
 
 export interface ToolResultEventData {
@@ -59,20 +69,24 @@ export interface ToolResultEventData {
   tool_name: string
   result_count: number
   sources: RetrievedSource[]
+  display_text?: string
 }
 
 export interface AggregationEventData {
   total_questions: number
   completed: number
+  display_text?: string
 }
 
 export interface ContentEventData {
   delta: string
+  display_text?: string
 }
 
 export interface DoneEventData {
   message: string
   sources: RetrievedSource[]
+  display_text?: string
 }
 
 export interface ErrorEventData {
@@ -80,6 +94,7 @@ export interface ErrorEventData {
 }
 
 export type AgenticStreamEvent =
+  | { event: "progress"; data: ProgressEventData }
   | { event: "rewrite"; data: RewriteEventData }
   | { event: "clarification_required"; data: ClarificationRequiredEventData }
   | { event: "tool_call"; data: ToolCallEventData }
@@ -100,6 +115,7 @@ export interface AgenticRagRequestOptions {
 }
 
 const STREAM_EVENT_TYPES: Record<AgenticStreamEventType, true> = {
+  progress: true,
   rewrite: true,
   clarification_required: true,
   tool_call: true,

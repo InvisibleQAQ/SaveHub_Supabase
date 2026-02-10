@@ -11,7 +11,12 @@ import {
   PromptInputTextarea,
 } from "@/components/ai-elements"
 import { ChatMessage } from "./chat-message"
-import { ChatStatus, type AgentStageProgress } from "./chat-status"
+import {
+  ChatStatus,
+  type AgentStageLogEntry,
+  type AgentStageLogStage,
+  type AgentStageProgress,
+} from "./chat-status"
 import {
   agenticRagApi,
   type ChatMessage as Message,
@@ -33,7 +38,7 @@ interface ChatState {
   currentStatus: string | null
   messageSources: RetrievedSource[][]
   stages: AgentStageProgress
-  stageLogs: string[]
+  stageLogs: AgentStageLogEntry[]
   clarificationPrompt: string | null
   error: string | null
 }
@@ -47,8 +52,44 @@ function initialStages(): AgentStageProgress {
   }
 }
 
-function appendStageLog(logs: string[], log: string): string[] {
-  return [...logs, log].slice(-5)
+function appendStageLog(
+  logs: AgentStageLogEntry[],
+  message: string,
+  stage: AgentStageLogStage = "system"
+): AgentStageLogEntry[] {
+  return [
+    ...logs,
+    {
+      id: `${Date.now()}-${Math.random().toString(16).slice(2, 8)}`,
+      stage,
+      message,
+      timestamp: Date.now(),
+    },
+  ].slice(-8)
+}
+
+function toNumber(value: unknown, fallback = 0): number {
+  const parsed = Number(value)
+  return Number.isFinite(parsed) ? parsed : fallback
+}
+
+function formatQuestionIndex(value: unknown): number {
+  return toNumber(value, 0) + 1
+}
+
+function stageKeyFromProgress(stage?: string): keyof AgentStageProgress | null {
+  if (!stage) return null
+
+  if (stage === "rewrite") return "rewrite"
+  if (stage === "toolCall" || stage === "tool_call") return "toolCall"
+  if (stage === "expandContext" || stage === "expand_context") return "expandContext"
+  if (stage === "aggregation") return "aggregation"
+
+  return null
+}
+
+function stageFromToolName(toolName?: string): AgentStageLogStage {
+  return toolName === "expand_context" ? "expandContext" : "toolCall"
 }
 
 function mergeSources(
@@ -123,33 +164,53 @@ export function ChatPage() {
         newMessages,
         (event: AgenticStreamEvent) => {
           switch (event.event) {
-            case "rewrite": {
-              const rewrittenCount = event.data.count ?? event.data.rewritten_queries.length
+            case "progress": {
+              const progressText = event.data.display_text || event.data.message || "思考中..."
+              const stageKey = stageKeyFromProgress(event.data.stage)
+              const logStage = (stageKey ?? "system") as AgentStageLogStage
 
               setState((prev) => ({
                 ...prev,
-                currentStatus: "正在重写与拆分问题...",
+                currentStatus: progressText,
+                stages: stageKey
+                  ? {
+                      ...prev.stages,
+                      [stageKey]: prev.stages[stageKey] === "completed" ? "completed" : "active",
+                    }
+                  : prev.stages,
+                stageLogs: appendStageLog(prev.stageLogs, progressText, logStage),
+              }))
+              break
+            }
+
+            case "rewrite": {
+              const rewrittenCount = event.data.count ?? event.data.rewritten_queries.length
+              const rewriteLog =
+                event.data.display_text || `重写完成，拆分 ${rewrittenCount} 个子问题`
+
+              setState((prev) => ({
+                ...prev,
+                currentStatus: rewriteLog,
                 stages: {
                   ...prev.stages,
                   rewrite: "completed",
                   toolCall: "active",
                 },
-                stageLogs: appendStageLog(
-                  prev.stageLogs,
-                  `重写完成，拆分 ${rewrittenCount} 个子问题`
-                ),
+                stageLogs: appendStageLog(prev.stageLogs, rewriteLog, "rewrite"),
               }))
               break
             }
 
             case "tool_call": {
               const isExpandContext = event.data.tool_name === "expand_context"
+              const defaultToolCallText = isExpandContext
+                ? `第 ${formatQuestionIndex(event.data.question_index)} 个子问题进入二次检索`
+                : `正在检索第 ${formatQuestionIndex(event.data.question_index)} 个子问题`
+              const toolCallText = event.data.display_text || defaultToolCallText
 
               setState((prev) => ({
                 ...prev,
-                currentStatus: isExpandContext
-                  ? "正在进行二次检索..."
-                  : "正在调用检索工具...",
+                currentStatus: toolCallText,
                 stages: {
                   ...prev.stages,
                   toolCall: isExpandContext ? "completed" : "active",
@@ -157,7 +218,8 @@ export function ChatPage() {
                 },
                 stageLogs: appendStageLog(
                   prev.stageLogs,
-                  `调用工具：${event.data.tool_name}`
+                  toolCallText,
+                  stageFromToolName(event.data.tool_name)
                 ),
               }))
               break
@@ -167,9 +229,15 @@ export function ChatPage() {
               const eventSources = event.data.sources || []
               sources = mergeSources(sources, eventSources)
 
+              const fallbackResultText =
+                event.data.tool_name === "expand_context"
+                  ? `第 ${formatQuestionIndex(event.data.question_index)} 个子问题二次检索返回 ${toNumber(event.data.result_count)} 条结果`
+                  : `第 ${formatQuestionIndex(event.data.question_index)} 个子问题检索返回 ${toNumber(event.data.result_count)} 条结果`
+              const toolResultText = event.data.display_text || fallbackResultText
+
               setState((prev) => ({
                 ...prev,
-                currentStatus: "已获取检索结果，分析中...",
+                currentStatus: toolResultText,
                 stages: {
                   ...prev.stages,
                   toolCall:
@@ -183,30 +251,34 @@ export function ChatPage() {
                 },
                 stageLogs: appendStageLog(
                   prev.stageLogs,
-                  `${event.data.tool_name} 返回 ${event.data.result_count} 条结果`
+                  toolResultText,
+                  stageFromToolName(event.data.tool_name)
                 ),
               }))
               break
             }
 
             case "aggregation": {
+              const aggregationText =
+                event.data.display_text ||
+                `已完成 ${event.data.completed}/${event.data.total_questions} 个子问题，正在聚合答案`
+
               setState((prev) => ({
                 ...prev,
-                currentStatus: "正在聚合多问题答案...",
+                currentStatus: aggregationText,
                 stages: {
                   ...prev.stages,
                   aggregation: "active",
                 },
-                stageLogs: appendStageLog(
-                  prev.stageLogs,
-                  `聚合进度 ${event.data.completed}/${event.data.total_questions}`
-                ),
+                stageLogs: appendStageLog(prev.stageLogs, aggregationText, "aggregation"),
               }))
               break
             }
 
             case "clarification_required": {
               const clarificationMessage = event.data.message || "请补充更多问题细节。"
+              const clarificationStatus =
+                event.data.display_text || "需要补充问题细节后才能继续检索"
 
               setState((prev) => ({
                 ...prev,
@@ -225,7 +297,7 @@ export function ChatPage() {
                   aggregation:
                     prev.stages.aggregation === "active" ? "completed" : prev.stages.aggregation,
                 },
-                stageLogs: appendStageLog(prev.stageLogs, "需要你补充信息后继续"),
+                stageLogs: appendStageLog(prev.stageLogs, clarificationStatus, "system"),
               }))
 
               abortRef.current?.abort()
@@ -234,9 +306,12 @@ export function ChatPage() {
 
             case "content":
               assistantContent += event.data.delta
+
+              const contentStatus =
+                event.data.display_text || "证据准备完成，正在生成最终回答"
               setState((prev) => ({
                 ...prev,
-                currentStatus: "生成回答中...",
+                currentStatus: contentStatus,
                 stages: {
                   ...prev.stages,
                   rewrite: prev.stages.rewrite === "pending" ? "completed" : prev.stages.rewrite,
@@ -258,6 +333,7 @@ export function ChatPage() {
 
             case "done": {
               sources = mergeSources(sources, event.data.sources || [])
+              const doneLog = event.data.display_text || "回答完成"
 
               setState((prev) => ({
                 ...prev,
@@ -272,18 +348,17 @@ export function ChatPage() {
                     ? prev.clarificationPrompt
                     : null,
                 stages: {
-                  rewrite: prev.stages.rewrite === "active" ? "completed" : prev.stages.rewrite,
-                  toolCall: prev.stages.toolCall === "active" ? "completed" : prev.stages.toolCall,
+                  rewrite: "completed",
+                  toolCall: "completed",
                   expandContext:
                     prev.stages.expandContext === "active"
                       ? "completed"
                       : prev.stages.expandContext,
-                  aggregation:
-                    prev.stages.aggregation === "active" ? "completed" : prev.stages.aggregation,
+                  aggregation: "completed",
                 },
                 stageLogs:
                   event.data.message === "completed"
-                    ? appendStageLog(prev.stageLogs, "回答完成")
+                    ? appendStageLog(prev.stageLogs, doneLog, "aggregation")
                     : prev.stageLogs,
               }))
               break
