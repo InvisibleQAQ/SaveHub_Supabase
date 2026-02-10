@@ -11,7 +11,6 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Switch } from "@/components/ui/switch"
 import { useRSSStore } from "@/lib/store"
 import { useToast } from "@/hooks/use-toast"
-import { feedsApi } from "@/lib/api/feeds"
 import { validateRSSUrl } from "@/lib/rss-parser"
 
 interface EditFeedFormProps {
@@ -114,11 +113,11 @@ export function EditFeedForm({ feedId }: EditFeedFormProps) {
         enableDeduplication: formData.enableDeduplication,
       }
 
-      // Update in store
-      updateFeed(feedId, updates)
-
-      // Update in database via HTTP API
-      await feedsApi.updateFeed(feedId, updates)
+      // updateFeed 已包含后端 API 持久化，这里避免重复请求
+      const result = await updateFeed(feedId, updates)
+      if (!result.success) {
+        throw new Error(result.error || "Failed to update feed")
+      }
 
       toast({
         title: "Success",
