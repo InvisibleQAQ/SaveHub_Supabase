@@ -1,9 +1,15 @@
 "use client"
 
 import { useState, useRef, useEffect } from "react"
-import { Send, Loader2, MessageSquare, Sparkles } from "lucide-react"
-import { Button } from "@/components/ui/button"
-import { Textarea } from "@/components/ui/textarea"
+import { MessageSquare, Sparkles } from "lucide-react"
+import {
+  Conversation,
+  ConversationContent,
+  PromptInput,
+  PromptInputStop,
+  PromptInputSubmit,
+  PromptInputTextarea,
+} from "@/components/ai-elements"
 import { ChatMessage } from "./chat-message"
 import { ChatStatus, type AgentStageProgress } from "./chat-status"
 import {
@@ -12,6 +18,14 @@ import {
   type AgenticStreamEvent,
   type RetrievedSource,
 } from "@/lib/api/agentic-rag"
+import { cn } from "@/lib/utils"
+import { Button } from "@/components/ui/button"
+
+const QUICK_PROMPTS = [
+  "最近收藏的仓库里，最值得关注的 3 个项目是什么？",
+  "帮我总结今天新增文章的核心观点",
+  "基于我的收藏内容，给出下周学习计划",
+]
 
 interface ChatState {
   messages: Message[]
@@ -302,31 +316,71 @@ export function ChatPage() {
     }
   }
 
+  const handleStop = () => {
+    abortRef.current?.abort()
+    setState((prev) => ({
+      ...prev,
+      isLoading: false,
+      currentStatus: null,
+    }))
+  }
+
   return (
-    <div className="flex-1 flex flex-col h-full overflow-hidden bg-background">
+    <div className="flex-1 flex flex-col h-full overflow-hidden bg-gradient-to-b from-background to-muted/20">
       {/* Header */}
-      <div className="border-b px-6 py-4 flex items-center gap-3">
-        <div className="p-2 rounded-lg bg-primary/10">
-          <Sparkles className="w-5 h-5 text-primary" />
-        </div>
-        <div>
-          <h1 className="font-semibold">智能问答</h1>
-          <p className="text-sm text-muted-foreground">
-            基于您的文章和仓库进行问答
-          </p>
+      <div className="border-b border-border/70 bg-background/80 px-6 py-4 backdrop-blur supports-[backdrop-filter]:bg-background/65">
+        <div className="mx-auto flex w-full max-w-3xl items-center gap-3">
+          <div className="rounded-xl border border-primary/30 bg-primary/10 p-2 text-primary shadow-sm">
+            <Sparkles className="w-5 h-5 text-primary" />
+          </div>
+          <div className="flex-1">
+            <h1 className="font-semibold">智能问答</h1>
+            <p className="text-sm text-muted-foreground">
+              基于您的文章和仓库进行问答
+            </p>
+          </div>
+          <span className="hidden rounded-full border border-border/70 bg-card/70 px-2.5 py-1 text-xs text-muted-foreground md:inline-flex">
+            Agentic RAG
+          </span>
+          <span
+            className={cn(
+              "inline-flex items-center rounded-full border px-2.5 py-1 text-xs font-medium",
+              state.isLoading
+                ? "border-primary/30 bg-primary/10 text-primary"
+                : "border-emerald-500/30 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300"
+            )}
+          >
+            {state.isLoading ? "Streaming" : "Ready"}
+          </span>
         </div>
       </div>
 
       {/* Messages */}
-      <div className="flex-1 overflow-y-auto px-6">
-        <div className="max-w-3xl mx-auto py-6 space-y-6">
+      <Conversation className="px-6">
+        <ConversationContent>
           {state.messages.length === 0 ? (
-            <div className="text-center py-12">
-              <MessageSquare className="w-12 h-12 mx-auto text-muted-foreground/50 mb-4" />
-              <h2 className="text-lg font-medium mb-2">开始对话</h2>
-              <p className="text-sm text-muted-foreground">
+            <div className="py-10">
+              <div className="mx-auto max-w-2xl rounded-2xl border border-border/70 bg-card/80 p-6 text-center shadow-sm">
+                <MessageSquare className="w-12 h-12 mx-auto text-primary/70 mb-4" />
+                <h2 className="text-lg font-semibold mb-2">开始对话</h2>
+                <p className="text-sm text-muted-foreground">
                 输入问题，我会从您的文章和仓库中检索相关信息来回答
-              </p>
+                </p>
+                <div className="mt-5 flex flex-wrap justify-center gap-2">
+                  {QUICK_PROMPTS.map((prompt) => (
+                    <Button
+                      key={prompt}
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      className="rounded-full border-border/70 bg-background/60"
+                      onClick={() => setInput(prompt)}
+                    >
+                      {prompt}
+                    </Button>
+                  ))}
+                </div>
+              </div>
             </div>
           ) : (
             state.messages.map((msg, i) => (
@@ -338,25 +392,27 @@ export function ChatPage() {
             ))
           )}
           {state.currentStatus && (
-            <ChatStatus
-              status={state.currentStatus}
-              stages={state.stages}
-              stageLogs={state.stageLogs}
-            />
+            <div className="pt-1">
+              <ChatStatus
+                status={state.currentStatus}
+                stages={state.stages}
+                stageLogs={state.stageLogs}
+              />
+            </div>
           )}
           {state.error && (
-            <div className="p-4 rounded-lg bg-destructive/10 text-destructive text-sm">
+            <div className="rounded-2xl border border-destructive/20 bg-destructive/10 p-4 text-sm text-destructive shadow-sm">
               {state.error}
             </div>
           )}
           <div ref={scrollRef} />
-        </div>
-      </div>
+        </ConversationContent>
+      </Conversation>
 
       {/* Input */}
-      <div className="border-t px-6 py-4">
-        <div className="max-w-3xl mx-auto flex gap-3">
-          <Textarea
+      <PromptInput>
+        <div className="mx-auto flex w-full max-w-3xl items-end gap-3">
+          <PromptInputTextarea
             value={input}
             onChange={(e) => setInput(e.target.value)}
             onKeyDown={handleKeyDown}
@@ -365,23 +421,20 @@ export function ChatPage() {
                 ? "请先补充上方澄清问题的细节..."
                 : "输入您的问题..."
             }
-            className="min-h-[60px] max-h-[200px] resize-none"
             disabled={state.isLoading}
           />
-          <Button
+          {state.isLoading && (
+            <PromptInputStop onClick={handleStop}>
+              停止生成
+            </PromptInputStop>
+          )}
+          <PromptInputSubmit
             onClick={handleSubmit}
             disabled={!input.trim() || state.isLoading}
-            size="icon"
-            className="h-[60px] w-[60px]"
-          >
-            {state.isLoading ? (
-              <Loader2 className="w-5 h-5 animate-spin" />
-            ) : (
-              <Send className="w-5 h-5" />
-            )}
-          </Button>
+            isLoading={state.isLoading}
+          />
         </div>
-      </div>
+      </PromptInput>
     </div>
   )
 }
