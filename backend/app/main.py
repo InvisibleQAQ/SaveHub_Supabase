@@ -64,7 +64,6 @@ from app.api.routers import (
     rag,
     github,
     repositories,
-    rag_chat,
     agentic_rag_chat,
 )
 app.include_router(rss.router, prefix="/api")
@@ -81,7 +80,6 @@ app.include_router(proxy.router, prefix="/api")
 app.include_router(rag.router, prefix="/api")
 app.include_router(github.router, prefix="/api")
 app.include_router(repositories.router, prefix="/api")
-app.include_router(rag_chat.router, prefix="/api")
 app.include_router(agentic_rag_chat.router, prefix="/api")
 
 

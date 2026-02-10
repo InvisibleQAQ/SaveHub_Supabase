@@ -17,7 +17,6 @@ interface ChatState {
   messages: Message[]
   isLoading: boolean
   currentStatus: string | null
-  currentSources: RetrievedSource[]
   messageSources: RetrievedSource[][]
   stages: AgentStageProgress
   stageLogs: string[]
@@ -60,7 +59,6 @@ export function ChatPage() {
     messages: [],
     isLoading: false,
     currentStatus: null,
-    currentSources: [],
     messageSources: [],
     stages: initialStages(),
     stageLogs: [],
@@ -94,7 +92,6 @@ export function ChatPage() {
       messageSources: newMessageSources,
       isLoading: true,
       currentStatus: "思考中...",
-      currentSources: [],
       stages: initialStages(),
       stageLogs: [],
       clarificationPrompt: null,
@@ -159,7 +156,6 @@ export function ChatPage() {
               setState((prev) => ({
                 ...prev,
                 currentStatus: "已获取检索结果，分析中...",
-                currentSources: sources,
                 stages: {
                   ...prev.stages,
                   toolCall:
@@ -253,7 +249,6 @@ export function ChatPage() {
                 ...prev,
                 isLoading: false,
                 currentStatus: null,
-                currentSources: sources,
                 messageSources:
                   prev.messages.length > 0 && prev.messages[prev.messages.length - 1]?.role === "assistant"
                     ? [...prev.messageSources.slice(0, -1), sources]
