@@ -5,7 +5,7 @@ import { cn } from "@/lib/utils"
 import { ChatSources } from "./chat-sources"
 import { ReferencedContent } from "./referenced-content"
 import { renderMarkdown } from "@/lib/markdown-renderer"
-import type { ChatMessage as Message, RetrievedSource } from "@/lib/api/rag-chat"
+import type { ChatMessage as Message, RetrievedSource } from "@/lib/api/agentic-rag"
 
 interface ChatMessageProps {
   message: Message

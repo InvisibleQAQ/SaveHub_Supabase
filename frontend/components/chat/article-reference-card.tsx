@@ -1,7 +1,7 @@
 "use client"
 
 import { FileText, ExternalLink } from "lucide-react"
-import type { RetrievedSource } from "@/lib/api/rag-chat"
+import type { RetrievedSource } from "@/lib/api/agentic-rag"
 
 interface ArticleReferenceCardProps {
   source: RetrievedSource

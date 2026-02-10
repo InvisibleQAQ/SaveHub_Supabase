@@ -5,20 +5,53 @@ import { Send, Loader2, MessageSquare, Sparkles } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Textarea } from "@/components/ui/textarea"
 import { ChatMessage } from "./chat-message"
-import { ChatStatus } from "./chat-status"
+import { ChatStatus, type AgentStageProgress } from "./chat-status"
 import {
-  ragChatApi,
+  agenticRagApi,
   type ChatMessage as Message,
-  type StreamEvent,
+  type AgenticStreamEvent,
   type RetrievedSource,
-} from "@/lib/api/rag-chat"
+} from "@/lib/api/agentic-rag"
 
 interface ChatState {
   messages: Message[]
   isLoading: boolean
   currentStatus: string | null
   currentSources: RetrievedSource[]
+  stages: AgentStageProgress
+  stageLogs: string[]
+  clarificationPrompt: string | null
   error: string | null
+}
+
+function initialStages(): AgentStageProgress {
+  return {
+    rewrite: "pending",
+    toolCall: "pending",
+    expandContext: "pending",
+    aggregation: "pending",
+  }
+}
+
+function appendStageLog(logs: string[], log: string): string[] {
+  return [...logs, log].slice(-5)
+}
+
+function mergeSources(
+  existing: RetrievedSource[],
+  incoming: RetrievedSource[]
+): RetrievedSource[] {
+  const sourceMap = new Map<string, RetrievedSource>()
+
+  for (const source of existing) {
+    sourceMap.set(source.id, source)
+  }
+
+  for (const source of incoming) {
+    sourceMap.set(source.id, source)
+  }
+
+  return Array.from(sourceMap.values()).sort((a, b) => a.index - b.index)
 }
 
 export function ChatPage() {
@@ -27,6 +60,9 @@ export function ChatPage() {
     isLoading: false,
     currentStatus: null,
     currentSources: [],
+    stages: initialStages(),
+    stageLogs: [],
+    clarificationPrompt: null,
     error: null,
   })
   const [input, setInput] = useState("")
@@ -36,6 +72,12 @@ export function ChatPage() {
   useEffect(() => {
     scrollRef.current?.scrollIntoView({ behavior: "smooth" })
   }, [state.messages])
+
+  useEffect(() => {
+    return () => {
+      abortRef.current?.abort()
+    }
+  }, [])
 
   const handleSubmit = async () => {
     if (!input.trim() || state.isLoading) return
@@ -49,6 +91,9 @@ export function ChatPage() {
       isLoading: true,
       currentStatus: "思考中...",
       currentSources: [],
+      stages: initialStages(),
+      stageLogs: [],
+      clarificationPrompt: null,
       error: null,
     }))
     setInput("")
@@ -59,33 +104,136 @@ export function ChatPage() {
       let assistantContent = ""
       let sources: RetrievedSource[] = []
 
-      await ragChatApi.streamChat(
+      await agenticRagApi.streamChat(
         newMessages,
-        (event: StreamEvent) => {
+        (event: AgenticStreamEvent) => {
           switch (event.event) {
-            case "decision":
-              setState((prev) => ({
-                ...prev,
-                currentStatus: event.data.needs_retrieval
-                  ? "正在检索相关内容..."
-                  : "直接回答...",
-              }))
-              break
+            case "rewrite": {
+              const rewrittenCount = event.data.count ?? event.data.rewritten_queries.length
 
-            case "retrieval":
-              sources = (event.data.sources as RetrievedSource[]) || []
               setState((prev) => ({
                 ...prev,
-                currentStatus: `找到 ${event.data.total} 条相关内容`,
-                currentSources: sources,
+                currentStatus: "正在重写与拆分问题...",
+                stages: {
+                  ...prev.stages,
+                  rewrite: "completed",
+                  toolCall: "active",
+                },
+                stageLogs: appendStageLog(
+                  prev.stageLogs,
+                  `重写完成，拆分 ${rewrittenCount} 个子问题`
+                ),
               }))
               break
+            }
+
+            case "tool_call": {
+              const isExpandContext = event.data.tool_name === "expand_context"
+
+              setState((prev) => ({
+                ...prev,
+                currentStatus: isExpandContext
+                  ? "正在进行二次检索..."
+                  : "正在调用检索工具...",
+                stages: {
+                  ...prev.stages,
+                  toolCall: isExpandContext ? "completed" : "active",
+                  expandContext: isExpandContext ? "active" : prev.stages.expandContext,
+                },
+                stageLogs: appendStageLog(
+                  prev.stageLogs,
+                  `调用工具：${event.data.tool_name}`
+                ),
+              }))
+              break
+            }
+
+            case "tool_result": {
+              const eventSources = event.data.sources || []
+              sources = mergeSources(sources, eventSources)
+
+              setState((prev) => ({
+                ...prev,
+                currentStatus: "已获取检索结果，分析中...",
+                currentSources: sources,
+                stages: {
+                  ...prev.stages,
+                  toolCall:
+                    event.data.tool_name === "search_embeddings"
+                      ? "completed"
+                      : prev.stages.toolCall,
+                  expandContext:
+                    event.data.tool_name === "expand_context"
+                      ? "completed"
+                      : prev.stages.expandContext,
+                },
+                stageLogs: appendStageLog(
+                  prev.stageLogs,
+                  `${event.data.tool_name} 返回 ${event.data.result_count} 条结果`
+                ),
+              }))
+              break
+            }
+
+            case "aggregation": {
+              setState((prev) => ({
+                ...prev,
+                currentStatus: "正在聚合多问题答案...",
+                stages: {
+                  ...prev.stages,
+                  aggregation: "active",
+                },
+                stageLogs: appendStageLog(
+                  prev.stageLogs,
+                  `聚合进度 ${event.data.completed}/${event.data.total_questions}`
+                ),
+              }))
+              break
+            }
+
+            case "clarification_required": {
+              const clarificationMessage = event.data.message || "请补充更多问题细节。"
+
+              setState((prev) => ({
+                ...prev,
+                messages: [...prev.messages, { role: "assistant", content: clarificationMessage }],
+                isLoading: false,
+                currentStatus: null,
+                clarificationPrompt: clarificationMessage,
+                stages: {
+                  ...prev.stages,
+                  rewrite: prev.stages.rewrite === "pending" ? "completed" : prev.stages.rewrite,
+                  toolCall: prev.stages.toolCall === "active" ? "completed" : prev.stages.toolCall,
+                  expandContext:
+                    prev.stages.expandContext === "active"
+                      ? "completed"
+                      : prev.stages.expandContext,
+                  aggregation:
+                    prev.stages.aggregation === "active" ? "completed" : prev.stages.aggregation,
+                },
+                stageLogs: appendStageLog(prev.stageLogs, "需要你补充信息后继续"),
+              }))
+
+              abortRef.current?.abort()
+              break
+            }
 
             case "content":
-              assistantContent += event.data.delta as string
+              assistantContent += event.data.delta
               setState((prev) => ({
                 ...prev,
                 currentStatus: "生成回答中...",
+                stages: {
+                  ...prev.stages,
+                  rewrite: prev.stages.rewrite === "pending" ? "completed" : prev.stages.rewrite,
+                  toolCall: prev.stages.toolCall === "active" ? "completed" : prev.stages.toolCall,
+                  expandContext:
+                    prev.stages.expandContext === "active"
+                      ? "completed"
+                      : prev.stages.expandContext,
+                  aggregation:
+                    prev.stages.aggregation === "active" ? "completed" : prev.stages.aggregation,
+                },
                 messages: [
                   ...newMessages,
                   { role: "assistant", content: assistantContent },
@@ -93,29 +241,46 @@ export function ChatPage() {
               }))
               break
 
-            case "assessment":
-              setState((prev) => ({
-                ...prev,
-                currentStatus: null,
-              }))
-              break
+            case "done": {
+              sources = mergeSources(sources, event.data.sources || [])
 
-            case "done":
               setState((prev) => ({
                 ...prev,
                 isLoading: false,
                 currentStatus: null,
+                currentSources: sources,
+                clarificationPrompt:
+                  event.data.message === "clarification_required"
+                    ? prev.clarificationPrompt
+                    : null,
+                stages: {
+                  rewrite: prev.stages.rewrite === "active" ? "completed" : prev.stages.rewrite,
+                  toolCall: prev.stages.toolCall === "active" ? "completed" : prev.stages.toolCall,
+                  expandContext:
+                    prev.stages.expandContext === "active"
+                      ? "completed"
+                      : prev.stages.expandContext,
+                  aggregation:
+                    prev.stages.aggregation === "active" ? "completed" : prev.stages.aggregation,
+                },
+                stageLogs:
+                  event.data.message === "completed"
+                    ? appendStageLog(prev.stageLogs, "回答完成")
+                    : prev.stageLogs,
               }))
               break
+            }
 
             case "error":
-              throw new Error(event.data.message as string)
+              throw new Error(event.data.message)
           }
         },
         abortRef.current.signal
       )
     } catch (error) {
-      if ((error as Error).name === "AbortError") return
+      if ((error as Error).name === "AbortError") {
+        return
+      }
 
       setState((prev) => ({
         ...prev,
@@ -168,7 +333,13 @@ export function ChatPage() {
               />
             ))
           )}
-          {state.currentStatus && <ChatStatus status={state.currentStatus} />}
+          {state.currentStatus && (
+            <ChatStatus
+              status={state.currentStatus}
+              stages={state.stages}
+              stageLogs={state.stageLogs}
+            />
+          )}
           {state.error && (
             <div className="p-4 rounded-lg bg-destructive/10 text-destructive text-sm">
               {state.error}
@@ -185,7 +356,11 @@ export function ChatPage() {
             value={input}
             onChange={(e) => setInput(e.target.value)}
             onKeyDown={handleKeyDown}
-            placeholder="输入您的问题..."
+            placeholder={
+              state.clarificationPrompt
+                ? "请先补充上方澄清问题的细节..."
+                : "输入您的问题..."
+            }
             className="min-h-[60px] max-h-[200px] resize-none"
             disabled={state.isLoading}
           />

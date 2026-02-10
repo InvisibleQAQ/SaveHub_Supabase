@@ -1,7 +1,7 @@
 "use client"
 
 import { Star, ExternalLink } from "lucide-react"
-import type { RetrievedSource } from "@/lib/api/rag-chat"
+import type { RetrievedSource } from "@/lib/api/agentic-rag"
 import { getLanguageColor } from "@/lib/language-colors"
 
 interface RepositoryReferenceCardProps {

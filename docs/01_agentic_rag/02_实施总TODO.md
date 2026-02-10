@@ -47,10 +47,10 @@
 
 ## Phase 4：前端接入与状态可视化
 
-- [ ] T4-1 新增 `frontend/lib/api/agentic-rag.ts`
-- [ ] T4-2 聊天页切换到新 API
-- [ ] T4-3 UI 增加 agent 阶段状态展示（重写、调用工具、二次检索、聚合）
-- [ ] T4-4 支持 `clarification_required` 的交互闭环
+- [x] T4-1 新增 `frontend/lib/api/agentic-rag.ts`
+- [x] T4-2 聊天页切换到新 API
+- [x] T4-3 UI 增加 agent 阶段状态展示（重写、调用工具、二次检索、聚合）
+- [x] T4-4 支持 `clarification_required` 的交互闭环
 
 **DoD**
 - 用户能直观看到 agent 过程状态

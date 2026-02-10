@@ -3,7 +3,7 @@
 import { useMemo } from "react"
 import { ReferenceMarker } from "./reference-marker"
 import { parseReferences } from "@/lib/reference-parser"
-import type { RetrievedSource } from "@/lib/api/rag-chat"
+import type { RetrievedSource } from "@/lib/api/agentic-rag"
 
 interface ReferencedContentProps {
   content: string

@@ -8,7 +8,7 @@ import {
 } from "@/components/ui/popover"
 import { ArticleReferenceCard } from "./article-reference-card"
 import { RepositoryReferenceCard } from "./repository-reference-card"
-import type { RetrievedSource } from "@/lib/api/rag-chat"
+import type { RetrievedSource } from "@/lib/api/agentic-rag"
 import { getCircledNumber } from "@/lib/reference-parser"
 
 interface ReferenceMarkerProps {

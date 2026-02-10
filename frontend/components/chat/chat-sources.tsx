@@ -1,7 +1,7 @@
 "use client"
 
 import { ExternalLink, FileText, Github } from "lucide-react"
-import type { RetrievedSource } from "@/lib/api/rag-chat"
+import type { RetrievedSource } from "@/lib/api/agentic-rag"
 
 interface ChatSourcesProps {
   sources: RetrievedSource[]
