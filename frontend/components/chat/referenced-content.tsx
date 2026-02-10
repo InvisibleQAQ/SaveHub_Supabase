@@ -19,9 +19,13 @@ export function ReferencedContent({ content, sources }: ReferencedContentProps) 
   }, [sources])
 
   // 解析引用标记
+  const maxSourceIndex = useMemo(() => {
+    return sources.reduce((max, source) => Math.max(max, source.index || 0), 0)
+  }, [sources])
+
   const { segments } = useMemo(() => {
-    return parseReferences(content, sources.length)
-  }, [content, sources.length])
+    return parseReferences(content, maxSourceIndex)
+  }, [content, maxSourceIndex])
 
   // 渲染片段
   const renderSegments = () => {

@@ -18,6 +18,7 @@ interface ChatState {
   isLoading: boolean
   currentStatus: string | null
   currentSources: RetrievedSource[]
+  messageSources: RetrievedSource[][]
   stages: AgentStageProgress
   stageLogs: string[]
   clarificationPrompt: string | null
@@ -60,6 +61,7 @@ export function ChatPage() {
     isLoading: false,
     currentStatus: null,
     currentSources: [],
+    messageSources: [],
     stages: initialStages(),
     stageLogs: [],
     clarificationPrompt: null,
@@ -84,10 +86,12 @@ export function ChatPage() {
 
     const userMessage: Message = { role: "user", content: input.trim() }
     const newMessages = [...state.messages, userMessage]
+    const newMessageSources = [...state.messageSources, []]
 
     setState((prev) => ({
       ...prev,
       messages: newMessages,
+      messageSources: newMessageSources,
       isLoading: true,
       currentStatus: "思考中...",
       currentSources: [],
@@ -238,6 +242,7 @@ export function ChatPage() {
                   ...newMessages,
                   { role: "assistant", content: assistantContent },
                 ],
+                messageSources: [...newMessageSources, sources],
               }))
               break
 
@@ -249,6 +254,10 @@ export function ChatPage() {
                 isLoading: false,
                 currentStatus: null,
                 currentSources: sources,
+                messageSources:
+                  prev.messages.length > 0 && prev.messages[prev.messages.length - 1]?.role === "assistant"
+                    ? [...prev.messageSources.slice(0, -1), sources]
+                    : prev.messageSources,
                 clarificationPrompt:
                   event.data.message === "clarification_required"
                     ? prev.clarificationPrompt
@@ -329,7 +338,7 @@ export function ChatPage() {
               <ChatMessage
                 key={i}
                 message={msg}
-                sources={msg.role === "assistant" ? state.currentSources : undefined}
+                sources={msg.role === "assistant" ? state.messageSources[i] : undefined}
               />
             ))
           )}
