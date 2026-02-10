@@ -5,7 +5,7 @@
  * - Automatic 401 detection and token refresh
  * - Request retry after successful refresh
  * - Concurrent request handling (single refresh via mutex)
- * - Silent redirect to /login on refresh failure
+ * - Silent redirect to /login on refresh 401 failure
  * - Proactive refresh before token expiry
  */
 
@@ -17,8 +17,10 @@ interface RefreshState {
   /** Whether a refresh is currently in progress */
   isRefreshing: boolean
   /** Promise that resolves when refresh completes */
-  refreshPromise: Promise<boolean> | null
+  refreshPromise: Promise<RefreshResult> | null
 }
+
+type RefreshResult = "success" | "unauthorized" | "temporary_failure"
 
 // ============================================================================
 // State
@@ -33,7 +35,7 @@ const SKIP_AUTH_URLS = [
   "/api/backend/auth/session",
 ]
 
-/** Callback when refresh fails - redirect to login */
+/** Callback when refresh is unauthorized - redirect to login */
 let onAuthFailure: () => void = () => {
   if (typeof window !== "undefined") {
     window.location.href = "/login"
@@ -54,6 +56,12 @@ const EXPIRY_BUFFER_MS = 5 * 60 * 1000
 
 /** Default token validity (1 hour, Supabase default) */
 const DEFAULT_TOKEN_VALIDITY_SECONDS = 3600
+
+/** Refresh retry delays for transient errors */
+const REFRESH_RETRY_DELAYS_MS = [300, 1000]
+
+/** HTTP status codes considered transient/retryable */
+const RETRYABLE_REFRESH_STATUS = new Set([408, 429, 500, 502, 503, 504])
 
 // ============================================================================
 // Configuration Functions
@@ -108,11 +116,43 @@ function shouldSkipAuth(url: string): boolean {
 // Refresh Logic
 // ============================================================================
 
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms))
+}
+
+async function doRefreshOnce(): Promise<RefreshResult> {
+  try {
+    const response = await fetch("/api/backend/auth/refresh", {
+      method: "POST",
+      credentials: "include",
+    })
+
+    if (response.ok) {
+      // Update token expiry on successful refresh
+      setTokenExpiry(DEFAULT_TOKEN_VALIDITY_SECONDS)
+      return "success"
+    }
+
+    if (response.status === 401) {
+      return "unauthorized"
+    }
+
+    if (RETRYABLE_REFRESH_STATUS.has(response.status)) {
+      return "temporary_failure"
+    }
+
+    // Requirement: only 401 should trigger logout.
+    return "temporary_failure"
+  } catch {
+    return "temporary_failure"
+  }
+}
+
 /**
  * Perform token refresh with mutex lock.
  * Ensures only one refresh happens at a time, even with concurrent requests.
  */
-async function doRefresh(): Promise<boolean> {
+async function doRefreshWithResult(): Promise<RefreshResult> {
   // If already refreshing, wait for that to complete
   if (refreshState.isRefreshing && refreshState.refreshPromise) {
     return refreshState.refreshPromise
@@ -121,19 +161,21 @@ async function doRefresh(): Promise<boolean> {
   refreshState.isRefreshing = true
   refreshState.refreshPromise = (async () => {
     try {
-      const response = await fetch("/api/backend/auth/refresh", {
-        method: "POST",
-        credentials: "include",
-      })
+      const attempts = REFRESH_RETRY_DELAYS_MS.length + 1
 
-      if (response.ok) {
-        // Update token expiry on successful refresh
-        setTokenExpiry(DEFAULT_TOKEN_VALIDITY_SECONDS)
-        return true
+      for (let attempt = 0; attempt < attempts; attempt++) {
+        const result = await doRefreshOnce()
+
+        if (result === "success" || result === "unauthorized") {
+          return result
+        }
+
+        if (attempt < REFRESH_RETRY_DELAYS_MS.length) {
+          await sleep(REFRESH_RETRY_DELAYS_MS[attempt])
+        }
       }
-      return false
-    } catch {
-      return false
+
+      return "temporary_failure"
     } finally {
       refreshState.isRefreshing = false
       refreshState.refreshPromise = null
@@ -150,7 +192,14 @@ async function doRefresh(): Promise<boolean> {
  */
 export async function proactiveRefresh(): Promise<boolean> {
   if (isTokenExpiringSoon()) {
-    return doRefresh()
+    const result = await doRefreshWithResult()
+
+    if (result === "unauthorized") {
+      onAuthFailure()
+      return false
+    }
+
+    return true
   }
   return true
 }
@@ -161,7 +210,14 @@ export async function proactiveRefresh(): Promise<boolean> {
  * This is the ONLY function that should be used to refresh tokens from outside this module.
  */
 export async function forceRefresh(): Promise<boolean> {
-  return doRefresh()
+  const result = await doRefreshWithResult()
+
+  if (result === "unauthorized") {
+    onAuthFailure()
+    return false
+  }
+
+  return true
 }
 
 // ============================================================================
@@ -178,9 +234,9 @@ export async function forceRefresh(): Promise<boolean> {
  * Behavior:
  * 1. If token is expiring soon, proactively refresh before request
  * 2. If request returns 401, refresh token and retry once
- * 3. If refresh fails, call onAuthFailure (redirect to login)
+ * 3. Only refresh 401 triggers onAuthFailure; transient errors keep session
  *
- * @throws Error with message "Session expired" if refresh fails
+ * @throws Error with message "Session expired" only on refresh 401
  */
 export async function fetchWithAuth(
   input: RequestInfo | URL,
@@ -204,11 +260,14 @@ export async function fetchWithAuth(
 
   // Proactive refresh: if token is expiring soon, refresh first
   if (isTokenExpiringSoon()) {
-    const refreshed = await doRefresh()
-    if (!refreshed) {
+    const refreshResult = await doRefreshWithResult()
+
+    if (refreshResult === "unauthorized") {
       onAuthFailure()
       throw new Error("Session expired")
     }
+
+    // temporary_failure -> continue with current token, don't force logout
   }
 
   // Make the request with credentials
@@ -219,19 +278,24 @@ export async function fetchWithAuth(
 
   // If 401, try to refresh and retry once
   if (response.status === 401) {
-    const refreshed = await doRefresh()
+    const refreshResult = await doRefreshWithResult()
 
-    if (refreshed) {
+    if (refreshResult === "success") {
       // Retry the original request
       return fetch(input, {
         ...init,
         credentials: "include",
       })
-    } else {
+    }
+
+    if (refreshResult === "unauthorized") {
       // Refresh failed, trigger auth failure handler
       onAuthFailure()
       throw new Error("Session expired")
     }
+
+    // Transient/network failure: keep session and return original response.
+    return response
   }
 
   return response

@@ -20,8 +20,8 @@ from app.schemas.repositories import (
 )
 from app.services.db.repositories import RepositoryService
 from app.services.db.settings import SettingsService
-from app.services.db.api_configs import ApiConfigService
 from app.services.repository_analyzer import analyze_repositories_needing_analysis
+from app.services.ai import get_active_config, RepositoryAnalyzerService
 from app.celery_app.repository_tasks import schedule_next_repo_sync
 
 logger = logging.getLogger(__name__)
@@ -439,8 +439,6 @@ async def analyze_repository(
     user_id = user.user.id
 
     repo_service = RepositoryService(supabase, user_id)
-    api_config_service = ApiConfigService(supabase, user_id)
-
     # Get repository
     repo = repo_service.get_repository_by_id(repo_id)
     if not repo:
@@ -454,7 +452,7 @@ async def analyze_repository(
         )
 
     # Get active chat API config
-    config = api_config_service.get_active_config("chat")
+    config = get_active_config(supabase, user_id, "chat")
     if not config:
         raise HTTPException(
             status_code=400,
@@ -463,7 +461,7 @@ async def analyze_repository(
 
     try:
         # Create AI service and analyze
-        ai_service = create_ai_service_from_config(config)
+        ai_service = RepositoryAnalyzerService(**config)
         analysis = await ai_service.analyze_repository(
             readme_content=repo["readme_content"],
             repo_name=repo["full_name"],

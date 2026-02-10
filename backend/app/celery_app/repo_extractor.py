@@ -13,6 +13,7 @@ from celery import shared_task
 
 from .celery import app
 from .supabase_client import get_supabase_service
+from app.services.ai import get_active_config
 
 logger = logging.getLogger(__name__)
 
@@ -108,22 +109,16 @@ def get_user_chat_config(user_id: str) -> Dict[str, str] | None:
     Returns:
         {"api_key": "...", "api_base": "...", "model": "..."} or None
     """
-    from app.services.db.api_configs import ApiConfigService
-    from app.api.routers.api_configs import _decrypt_config
-
     supabase = get_supabase_service()
-    config_service = ApiConfigService(supabase, user_id)
-    config = config_service.get_active_config("chat")
+    config = get_active_config(supabase, user_id, "chat")
 
     if not config:
         return None
 
-    # Decrypt sensitive fields
-    decrypted = _decrypt_config(config)
     return {
-        "api_key": decrypted.get("api_key"),
-        "api_base": decrypted.get("api_base"),
-        "model": decrypted.get("model"),
+        "api_key": config.get("api_key"),
+        "api_base": config.get("api_base"),
+        "model": config.get("model"),
     }
 
 
