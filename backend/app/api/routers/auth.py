@@ -94,6 +94,8 @@ async def login(request: LoginRequest, response: Response):
     except AuthApiError as e:
         logger.warning(f"Login failed for {request.email}: {str(e)}")
         raise HTTPException(status_code=401, detail=str(e))
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"Login error: {str(e)}")
         raise HTTPException(status_code=500, detail="Internal server error")
@@ -133,6 +135,8 @@ async def register(request: RegisterRequest, response: Response):
     except AuthApiError as e:
         logger.warning(f"Registration failed for {request.email}: {str(e)}")
         raise HTTPException(status_code=400, detail=str(e))
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"Registration error: {str(e)}")
         raise HTTPException(status_code=500, detail="Internal server error")
@@ -195,7 +199,7 @@ async def get_session(request: Request):
         )
 
     except Exception as e:
-        logger.debug(f"Session check failed: {str(e)}")
+        logger.warning("Session check failed", exc_info=True)
         return SessionResponse(authenticated=False)
 
 
@@ -228,6 +232,8 @@ async def refresh_token(request: Request, response: Response):
         logger.warning(f"Token refresh failed: {str(e)}")
         clear_auth_cookies(response)
         raise HTTPException(status_code=401, detail=str(e))
+    except HTTPException:
+        raise
     except Exception as e:
-        logger.error(f"Token refresh error: {str(e)}")
+        logger.error("Token refresh error", exc_info=True)
         raise HTTPException(status_code=500, detail="Internal server error")

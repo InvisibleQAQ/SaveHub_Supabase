@@ -1,5 +1,6 @@
 """Agentic-RAG 图状态定义与辅助函数。"""
 
+from hashlib import md5
 from typing import Any, Dict, List, Optional, TypedDict
 
 
@@ -14,6 +15,10 @@ class AgenticRagState(TypedDict, total=False):
     max_expand_calls_per_question: int
     retry_tool_on_failure: bool
     max_tool_retry: int
+    answer_max_tokens: int
+
+    conversation_summary: str
+    last_user_query: str
 
     original_query: str
     rewritten_queries: List[str]
@@ -23,6 +28,7 @@ class AgenticRagState(TypedDict, total=False):
 
     clarification_required: bool
     clarification_message: Optional[str]
+    analysis_reason: str
 
     current_tool_round: int
     current_expand_calls: int
@@ -51,6 +57,7 @@ def create_initial_state(
     max_expand_calls_per_question: int,
     retry_tool_on_failure: bool,
     max_tool_retry: int,
+    answer_max_tokens: int,
 ) -> AgenticRagState:
     """创建图初始状态。"""
     return {
@@ -62,6 +69,9 @@ def create_initial_state(
         "max_expand_calls_per_question": max_expand_calls_per_question,
         "retry_tool_on_failure": retry_tool_on_failure,
         "max_tool_retry": max_tool_retry,
+        "answer_max_tokens": answer_max_tokens,
+        "conversation_summary": "",
+        "last_user_query": "",
         "original_query": "",
         "rewritten_queries": [],
         "pending_questions": [],
@@ -69,6 +79,7 @@ def create_initial_state(
         "current_question_index": -1,
         "clarification_required": False,
         "clarification_message": None,
+        "analysis_reason": "",
         "current_tool_round": 0,
         "current_expand_calls": 0,
         "current_tool_name": None,
@@ -140,5 +151,10 @@ def build_source_key(source: Dict[str, Any]) -> str:
     source_id = source.get("id")
     if source_id:
         return f"embedding:{source_id}"
+
+    content = str(source.get("content") or "").strip()
+    if content:
+        digest = md5(content[:200].encode("utf-8")).hexdigest()[:16]
+        return f"content:{digest}"
 
     return ""

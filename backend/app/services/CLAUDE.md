@@ -105,3 +105,10 @@ is_running = realtime_forwarder.is_running
 
 - `ApiConfigService` 未实现加密，敏感数据明文存储
 - 前端 TypeScript 版本包含加密逻辑，参见 `lib/db/api-configs.ts`
+
+## AI 配置读取规范（关键）
+
+- 对所有 OpenAI 兼容运行时调用（`ChatClient`/`EmbeddingClient` 等），统一使用 `app.services.ai.get_active_config()` 或 `get_user_ai_configs()` 读取配置。
+- 禁止在业务路由/服务中使用 `ApiConfigService.get_active_config()` 后手动 `decrypt()` 来直接喂给 SDK。
+- 原因：统一入口会同时完成解密与 `normalize_base_url()`，确保传给 OpenAI SDK 的是 `.../v1` 形式的 `base_url`，避免 `404 Not Found`（例如把 `/chat/completions` 或 `/embeddings` 误当作 base_url）。
+- 例外：`/api-configs/validate` 属于“端点可用性验证”，需要按用户输入的完整 endpoint URL 直连验证，不走 SDK base_url 语义。

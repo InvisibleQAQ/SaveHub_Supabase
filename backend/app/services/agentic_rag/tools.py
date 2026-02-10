@@ -1,4 +1,4 @@
-"""Agentic-RAG 工具定义（Phase 1 骨架版）。"""
+"""Agentic-RAG 工具定义。"""
 
 import asyncio
 import logging
@@ -33,7 +33,7 @@ class AgenticRagTools:
         top_k: int = 8,
         min_score: float = 0.35,
     ) -> List[Dict[str, Any]]:
-        """检索 all_embeddings（结构化返回）。"""
+        """检索 all_embeddings（结构化返回 + 去重多样化）。"""
         if not query.strip():
             return []
 
@@ -41,18 +41,24 @@ class AgenticRagTools:
             logger.warning("Embedding client not configured, returning empty hits")
             return []
 
+        safe_top_k = max(1, int(top_k))
+        fetch_count = min(48, max(safe_top_k * 3, safe_top_k))
+
         try:
-            query_embedding = _run_async_in_thread(self.embedding_client.embed(query))
+            query_embedding = run_async_in_thread(self.embedding_client.embed(query))
             hits = search_all_embeddings(
                 supabase=self.supabase,
                 query_embedding=query_embedding,
                 user_id=self.user_id,
-                top_k=top_k,
+                top_k=fetch_count,
                 min_score=min_score,
             )
-            return [self._normalize_hit(hit) for hit in hits]
-        except Exception as e:
-            logger.error(f"search_embeddings_tool failed: {e}")
+
+            normalized = [self._normalize_hit(hit) for hit in hits]
+            reranked = self._diversify_sources(normalized, top_k=safe_top_k)
+            return reranked
+        except Exception as exc:
+            logger.error("search_embeddings_tool failed: %s", exc)
             raise
 
     def expand_context_tool(
@@ -67,20 +73,21 @@ class AgenticRagTools:
         if not seed_query.strip() and not seed_source_ids:
             return []
 
+        safe_top_k = max(1, int(top_k))
         normalized_seed_ids = self._normalize_uuid_list(seed_source_ids or [])
         neighborhood_hits = self._expand_by_neighborhood(
             seed_source_ids=normalized_seed_ids,
             window_size=window_size,
-            limit=top_k,
+            limit=safe_top_k * 2,
         )
 
         if neighborhood_hits:
-            return neighborhood_hits
+            return self._diversify_sources(neighborhood_hits, top_k=safe_top_k)
 
         if not seed_query.strip():
             return []
 
-        return self.search_embeddings_tool(query=seed_query, top_k=top_k, min_score=min_score)
+        return self.search_embeddings_tool(query=seed_query, top_k=safe_top_k, min_score=min_score)
 
     @staticmethod
     def _normalize_hit(hit: Dict[str, Any]) -> Dict[str, Any]:
@@ -100,7 +107,7 @@ class AgenticRagTools:
             "article_id": str(hit.get("article_id") or "") or None,
             "repository_id": str(hit.get("repository_id") or "") or None,
             "chunk_index": int(hit.get("chunk_index") or 0),
-            "content": hit.get("content", "")[:500],
+            "content": (hit.get("content") or "")[:700],
             "score": float(hit.get("score") or 0.0),
             "source_type": source_type,
             "title": title,
@@ -131,11 +138,13 @@ class AgenticRagTools:
                 .execute()
             )
             seed_rows = seed_rows_result.data or []
-        except Exception as e:
-            logger.warning(f"expand_context_tool seed lookup failed: {e}")
+        except Exception as exc:
+            logger.warning("expand_context_tool seed lookup failed: %s", exc)
             return []
 
         expanded_rows: List[Dict[str, Any]] = []
+        safe_window = max(0, int(window_size))
+        safe_limit = max(1, int(limit))
 
         for row in seed_rows:
             source_field = "article_id" if row.get("article_id") else "repository_id"
@@ -145,8 +154,8 @@ class AgenticRagTools:
             if not source_value or chunk_index is None:
                 continue
 
-            lower_bound = max(0, int(chunk_index) - max(0, int(window_size)))
-            upper_bound = int(chunk_index) + max(0, int(window_size))
+            lower_bound = max(0, int(chunk_index) - safe_window)
+            upper_bound = int(chunk_index) + safe_window
 
             try:
                 query_result = (
@@ -161,14 +170,14 @@ class AgenticRagTools:
                     .gte("chunk_index", lower_bound)
                     .lte("chunk_index", upper_bound)
                     .order("chunk_index")
-                    .limit(limit)
+                    .limit(safe_limit)
                     .execute()
                 )
                 expanded_rows.extend(query_result.data or [])
-            except Exception as e:
+            except Exception as exc:
                 logger.warning(
                     "expand_context_tool neighborhood query failed: %s (%s=%s)",
-                    e,
+                    exc,
                     source_field,
                     source_value,
                 )
@@ -181,8 +190,8 @@ class AgenticRagTools:
             deduped[embedding_id] = row
 
         normalized = [self._normalize_expand_row(hit) for hit in deduped.values()]
-        normalized.sort(key=lambda item: item.get("chunk_index", 0))
-        return normalized[: max(0, int(limit))]
+        normalized.sort(key=lambda item: (int(item.get("chunk_index") or 0), -(float(item.get("score") or 0.0))))
+        return normalized[:safe_limit]
 
     @staticmethod
     def _normalize_expand_row(hit: Dict[str, Any]) -> Dict[str, Any]:
@@ -212,8 +221,8 @@ class AgenticRagTools:
             "article_id": str(article_id or "") or None,
             "repository_id": str(repository_id or "") or None,
             "chunk_index": int(hit.get("chunk_index") or 0),
-            "content": (hit.get("content") or "")[:500],
-            "score": 0.0,
+            "content": (hit.get("content") or "")[:700],
+            "score": 0.48,
             "source_type": source_type,
             "title": title,
             "url": url,
@@ -238,8 +247,54 @@ class AgenticRagTools:
                 continue
         return normalized
 
+    @staticmethod
+    def _source_family(source: Dict[str, Any]) -> str:
+        article_id = str(source.get("article_id") or "").strip()
+        repository_id = str(source.get("repository_id") or "").strip()
+        if article_id:
+            return f"article:{article_id}"
+        if repository_id:
+            return f"repository:{repository_id}"
+        return f"embedding:{source.get('id') or ''}"
 
-def _run_async_in_thread(coro):
+    def _diversify_sources(self, sources: List[Dict[str, Any]], top_k: int) -> List[Dict[str, Any]]:
+        """在高分前提下增加来源多样性，减少同源重复。"""
+        if not sources:
+            return []
+
+        safe_top_k = max(1, int(top_k))
+        sorted_sources = sorted(
+            sources,
+            key=lambda item: (-(float(item.get("score") or 0.0)), int(item.get("chunk_index") or 0)),
+        )
+
+        per_family_limit = 2 if safe_top_k >= 6 else 1
+        family_count: Dict[str, int] = {}
+        selected: List[Dict[str, Any]] = []
+
+        for source in sorted_sources:
+            family = self._source_family(source)
+            used = family_count.get(family, 0)
+            if used >= per_family_limit:
+                continue
+            family_count[family] = used + 1
+            selected.append(source)
+            if len(selected) >= safe_top_k:
+                break
+
+        if len(selected) < safe_top_k:
+            selected_ids = {item.get("id") for item in selected}
+            for source in sorted_sources:
+                if source.get("id") in selected_ids:
+                    continue
+                selected.append(source)
+                if len(selected) >= safe_top_k:
+                    break
+
+        return selected[:safe_top_k]
+
+
+def run_async_in_thread(coro):
     """在同步上下文中执行异步任务。"""
     try:
         asyncio.get_running_loop()

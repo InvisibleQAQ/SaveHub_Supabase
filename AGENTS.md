@@ -41,3 +41,9 @@ Automated tests are not yet standardized in this repo.
 ## Security & Configuration Tips
 - Never commit secrets in `.env` files; use `frontend/.env` and `backend/.env` locally.
 - Review SQL scripts in `backend/scripts/` carefully before applying to shared Supabase environments.
+
+## AI Config Usage Rule (Critical)
+- For all backend OpenAI-compatible runtime calls, always read active config via `app.services.ai.get_active_config()` (or `get_user_ai_configs()`).
+- Do **not** use `ApiConfigService.get_active_config()` + manual `decrypt()` in business routes/services that instantiate `ChatClient`/`EmbeddingClient`.
+- Reason: `app.services.ai.get_active_config()` applies both decryption and `normalize_base_url()`; this prevents 404 issues caused by using endpoint URLs (e.g. `/chat/completions`, `/embeddings`) as SDK `base_url`.
+- Exception: `/api-configs/validate` is endpoint-validation logic and intentionally uses full endpoint URLs provided by user.

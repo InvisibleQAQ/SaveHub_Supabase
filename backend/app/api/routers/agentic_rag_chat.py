@@ -13,9 +13,8 @@ from fastapi.responses import StreamingResponse
 
 from app.dependencies import COOKIE_NAME_ACCESS, verify_auth
 from app.schemas.agentic_rag_chat import AgenticRagChatRequest
+from app.services.ai import get_active_config
 from app.services.agentic_rag_service import AgenticRagService
-from app.services.db.api_configs import ApiConfigService
-from app.services.encryption import decrypt
 from app.supabase_client import get_supabase_client
 
 logger = logging.getLogger(__name__)
@@ -32,17 +31,6 @@ SSE_V2_EVENTS = {
     "done",
     "error",
 }
-
-
-def _get_decrypted_config(config: dict) -> dict:
-    """解密 API 配置。"""
-    result = config.copy()
-    if result.get("api_key"):
-        result["api_key"] = decrypt(result["api_key"])
-    if result.get("api_base"):
-        result["api_base"] = decrypt(result["api_base"])
-    return result
-
 
 async def _sse_generator(
     service: AgenticRagService,
@@ -97,18 +85,13 @@ async def agentic_rag_chat_stream(
     supabase = get_supabase_client(access_token)
     user_id = str(auth_response.user.id)
 
-    config_service = ApiConfigService(supabase, user_id)
-
-    chat_config = config_service.get_active_config("chat")
+    chat_config = get_active_config(supabase, user_id, "chat")
     if not chat_config:
         raise HTTPException(status_code=400, detail="未配置 Chat API")
 
-    embedding_config = config_service.get_active_config("embedding")
+    embedding_config = get_active_config(supabase, user_id, "embedding")
     if not embedding_config:
         raise HTTPException(status_code=400, detail="未配置 Embedding API")
-
-    chat_config = _get_decrypted_config(chat_config)
-    embedding_config = _get_decrypted_config(embedding_config)
 
     service = AgenticRagService(
         chat_config=chat_config,

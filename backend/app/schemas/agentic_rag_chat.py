@@ -33,3 +33,4 @@ class AgenticRagChatRequest(BaseModel):
     )
     retry_tool_on_failure: bool = Field(default=True, description="工具失败时是否重试")
     max_tool_retry: int = Field(default=1, ge=0, le=3, description="工具最大重试次数")
+    answer_max_tokens: int = Field(default=900, ge=200, le=2200, description="答案最大生成长度")

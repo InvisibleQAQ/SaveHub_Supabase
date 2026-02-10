@@ -83,6 +83,16 @@ api.example.com/v1 → https://api.example.com/v1
 
 敏感字段（api_key, api_base）使用AES-256-GCM加密存储。
 
+## AI 配置读取规范（关键）
+
+- 对所有 OpenAI 兼容运行时调用，统一通过 `get_active_config()` 或 `get_user_ai_configs()` 读取配置。
+- 禁止在业务路由/服务中使用 `ApiConfigService.get_active_config()` 后手动解密并直接传给 `ChatClient`/`EmbeddingClient`。
+- 原因：统一入口会同时处理解密与 `normalize_base_url()`，确保 SDK 使用 `.../v1` 形式的 `base_url`，避免把 `/chat/completions`、`/embeddings` 当作 base_url 导致 404。
+
+### 例外说明
+
+- `/api-configs/validate` 是端点可用性验证，按用户输入的完整 endpoint URL 直连校验；该场景不走 SDK base_url 语义。
+
 ## 错误处理
 
 | 异常 | 场景 |

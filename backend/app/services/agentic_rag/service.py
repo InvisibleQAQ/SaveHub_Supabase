@@ -6,6 +6,7 @@ from typing import Any, AsyncGenerator, Dict, List
 from supabase import Client
 
 from app.services.agentic_rag.graph import build_agentic_rag_graph
+from app.services.agentic_rag.prompts import NO_KB_ANSWER
 from app.services.agentic_rag.state import AgenticRagState, create_initial_state
 from app.services.agentic_rag.tools import AgenticRagTools
 from app.services.ai import ChatClient, EmbeddingClient
@@ -32,7 +33,7 @@ STAGE_LOG_EVENTS = {
 
 
 class AgenticRagService:
-    """Agentic-RAG 服务（Phase 1 基础骨架）。"""
+    """Agentic-RAG 服务。"""
 
     def __init__(
         self,
@@ -62,7 +63,7 @@ class AgenticRagService:
             user_id=user_id,
             embedding_client=self.embedding_client,
         )
-        self.graph = build_agentic_rag_graph(self.tools)
+        self.graph = build_agentic_rag_graph(self.tools, self.chat_client)
 
     @staticmethod
     def _normalize_v2_event(event: Dict[str, Any]) -> Dict[str, Any] | None:
@@ -173,6 +174,7 @@ class AgenticRagService:
         max_expand_calls_per_question: int = 2,
         retry_tool_on_failure: bool = True,
         max_tool_retry: int = 1,
+        answer_max_tokens: int = 900,
     ) -> AsyncGenerator[Dict[str, Any], None]:
         """运行 LangGraph 并输出阶段事件。"""
         state: AgenticRagState = create_initial_state(
@@ -184,6 +186,7 @@ class AgenticRagService:
             max_expand_calls_per_question=max_expand_calls_per_question,
             retry_tool_on_failure=retry_tool_on_failure,
             max_tool_retry=max_tool_retry,
+            answer_max_tokens=answer_max_tokens,
         )
 
         try:
@@ -198,11 +201,11 @@ class AgenticRagService:
             if final_state.get("clarification_required"):
                 done_event = self._normalize_v2_event(
                     {
-                    "event": "done",
-                    "data": {
-                        "message": "clarification_required",
-                        "sources": final_state.get("all_sources", []),
-                    },
+                        "event": "done",
+                        "data": {
+                            "message": "clarification_required",
+                            "sources": final_state.get("all_sources", []),
+                        },
                     }
                 )
                 if done_event:
@@ -210,31 +213,30 @@ class AgenticRagService:
                     yield done_event
                 return
 
-            final_answer = final_state.get("final_answer", "")
-            if final_answer:
-                content_event = self._normalize_v2_event(
-                    {"event": "content", "data": {"delta": final_answer}}
-                )
-                if content_event:
-                    yield content_event
+            final_answer = str(final_state.get("final_answer") or "").strip() or NO_KB_ANSWER
+            content_event = self._normalize_v2_event(
+                {"event": "content", "data": {"delta": final_answer}}
+            )
+            if content_event:
+                yield content_event
 
             done_event = self._normalize_v2_event(
                 {
-                "event": "done",
-                "data": {
-                    "message": "completed",
-                    "sources": final_state.get("all_sources", []),
-                },
+                    "event": "done",
+                    "data": {
+                        "message": "completed",
+                        "sources": final_state.get("all_sources", []),
+                    },
                 }
             )
             if done_event:
                 self._log_stage_event(done_event)
                 yield done_event
-        except Exception as e:
-            logger.error(f"AgenticRagService stream_chat failed: {e}")
+        except Exception as exc:
+            logger.error("AgenticRagService stream_chat failed: %s", exc)
             yield {
                 "event": "error",
                 "data": {
-                    "message": str(e),
+                    "message": str(exc),
                 },
             }

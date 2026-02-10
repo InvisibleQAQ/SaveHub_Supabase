@@ -1,4 +1,5 @@
 import os
+import asyncio
 from dotenv import load_dotenv, find_dotenv
 
 # Load environment variables FIRST
@@ -29,15 +30,43 @@ from app.services.supabase_realtime import realtime_forwarder
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Application lifespan manager for startup/shutdown events."""
-    # Startup: Start Supabase Realtime subscription
-    logger.info("Starting Supabase Realtime forwarder...")
-    await realtime_forwarder.start()
+    realtime_enabled = (
+        os.environ.get("SUPABASE_REALTIME_ENABLED", "true").lower() == "true"
+    )
+    realtime_startup_timeout = float(
+        os.environ.get("SUPABASE_REALTIME_STARTUP_TIMEOUT", "8")
+    )
+
+    # Startup: Start Supabase Realtime subscription (non-blocking fail-safe)
+    if realtime_enabled:
+        logger.info("Starting Supabase Realtime forwarder...")
+        try:
+            await asyncio.wait_for(
+                realtime_forwarder.start(),
+                timeout=realtime_startup_timeout,
+            )
+        except asyncio.TimeoutError:
+            logger.warning(
+                "Supabase Realtime startup timed out after %.1fs; "
+                "continue without realtime",
+                realtime_startup_timeout,
+            )
+        except Exception:
+            logger.exception(
+                "Supabase Realtime startup failed; continue without realtime"
+            )
+    else:
+        logger.info("Supabase Realtime forwarder is disabled by config")
 
     yield
 
     # Shutdown: Stop Supabase Realtime subscription
-    logger.info("Stopping Supabase Realtime forwarder...")
-    await realtime_forwarder.stop()
+    if realtime_enabled and realtime_forwarder.is_running:
+        logger.info("Stopping Supabase Realtime forwarder...")
+        try:
+            await realtime_forwarder.stop()
+        except Exception:
+            logger.exception("Supabase Realtime shutdown error")
 
 
 app = FastAPI(

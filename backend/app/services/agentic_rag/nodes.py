@@ -1,57 +1,184 @@
-"""Agentic-RAG 图节点实现（Phase 1 骨架版）。"""
+"""Agentic-RAG 图节点实现。"""
 
+import json
 import logging
+import re
 from typing import Any, Dict, List
 
-from app.services.agentic_rag.prompts import CLARIFICATION_PROMPT
+from app.services.agentic_rag.prompts import (
+    AGGREGATION_SYSTEM_PROMPT,
+    ANSWER_GENERATION_SYSTEM_PROMPT,
+    CLARIFICATION_PROMPT,
+    NO_KB_ANSWER,
+    QUERY_ANALYSIS_SYSTEM_PROMPT,
+)
 from app.services.agentic_rag.state import (
     AgenticRagState,
     append_event,
     register_sources_with_index,
 )
-from app.services.agentic_rag.tools import AgenticRagTools
+from app.services.agentic_rag.tools import AgenticRagTools, run_async_in_thread
+from app.services.ai import ChatClient
 
 logger = logging.getLogger(__name__)
 
+REF_PATTERN = re.compile(r"\[ref:(\d+)\]")
 
-def rewrite_and_split_node(state: AgenticRagState) -> AgenticRagState:
-    """改写并拆分用户问题（Phase 1 先做规则拆分）。"""
-    messages = state.get("messages", [])
-    if not messages:
-        state["error"] = "messages is empty"
+
+def summarize_history_node_factory(chat_client: ChatClient):
+    """构建会话摘要节点。"""
+
+    def summarize_history_node(state: AgenticRagState) -> AgenticRagState:
+        messages = state.get("messages", [])
+        if not messages:
+            state["error"] = "messages is empty"
+            return state
+
+        user_messages = [m for m in messages if m.get("role") == "user" and m.get("content")]
+        last_user_query = str(user_messages[-1].get("content") if user_messages else "").strip()
+        state["last_user_query"] = last_user_query
+
+        if len(messages) < 4:
+            state["conversation_summary"] = ""
+            return state
+
+        history_for_summary = messages[:-1][-6:]
+        if not history_for_summary:
+            state["conversation_summary"] = ""
+            return state
+
+        lines: List[str] = []
+        for msg in history_for_summary:
+            role = "用户" if msg.get("role") == "user" else "助手"
+            content = str(msg.get("content") or "").strip()
+            if content:
+                lines.append(f"{role}: {content}")
+
+        if not lines:
+            state["conversation_summary"] = ""
+            return state
+
+        history_text = "\n".join(lines)
+        prompt = (
+            "你是对话摘要助手。请把以下历史对话压缩为 1-2 句中文摘要，"
+            "保留主题、关键实体和未解决问题。只输出摘要正文。\n\n"
+            f"对话历史：\n{history_text}"
+        )
+
+        try:
+            summary = run_async_in_thread(
+                chat_client.complete(
+                    messages=[
+                        {"role": "system", "content": "你是精炼总结助手。"},
+                        {"role": "user", "content": prompt},
+                    ],
+                    temperature=0.1,
+                    max_tokens=160,
+                )
+            )
+            state["conversation_summary"] = str(summary or "").strip()
+        except Exception as exc:  # pragma: no cover
+            logger.warning("history summarization failed: %s", exc)
+            state["conversation_summary"] = ""
+
         return state
 
-    original_query = messages[-1].get("content", "").strip()
-    state["original_query"] = original_query
+    return summarize_history_node
 
-    max_split = state.get("max_split_questions", 3)
-    candidate_parts = [
-        p.strip()
-        for p in original_query.replace("？", "?").split("?")
-        if p.strip()
-    ]
-    rewritten_queries = candidate_parts[:max_split] if candidate_parts else [original_query]
 
-    state["rewritten_queries"] = rewritten_queries
-    state["pending_questions"] = list(rewritten_queries)
+def rewrite_and_split_node_factory(chat_client: ChatClient):
+    """构建改写与拆分节点。"""
 
-    append_event(
-        state,
-        "rewrite",
-        {
-            "original_query": original_query,
-            "rewritten_queries": rewritten_queries,
-            "count": len(rewritten_queries),
-        },
-    )
-    return state
+    def rewrite_and_split_node(state: AgenticRagState) -> AgenticRagState:
+        messages = state.get("messages", [])
+        if not messages:
+            state["error"] = "messages is empty"
+            return state
+
+        original_query = (state.get("last_user_query") or messages[-1].get("content") or "").strip()
+        summary = (state.get("conversation_summary") or "").strip()
+
+        state["original_query"] = original_query
+        state["analysis_reason"] = ""
+
+        if not original_query:
+            state["clarification_required"] = True
+            state["clarification_message"] = CLARIFICATION_PROMPT
+            append_event(
+                state,
+                "clarification_required",
+                {"message": state["clarification_message"]},
+            )
+            return state
+
+        max_split = max(1, int(state.get("max_split_questions", 3)))
+
+        analysis_payload = _analyze_query_with_llm(
+            chat_client=chat_client,
+            original_query=original_query,
+            conversation_summary=summary,
+            max_split=max_split,
+        )
+
+        questions = analysis_payload.get("questions") or []
+        is_clear = bool(analysis_payload.get("is_clear")) and len(questions) > 0
+        clarification_needed = str(analysis_payload.get("clarification_needed") or "").strip()
+        reason = str(analysis_payload.get("reason") or "").strip()
+        state["analysis_reason"] = reason[:20]
+
+        if not is_clear:
+            state["clarification_required"] = True
+            state["clarification_message"] = (
+                clarification_needed if len(clarification_needed) >= 6 else CLARIFICATION_PROMPT
+            )
+            state["rewritten_queries"] = []
+            state["pending_questions"] = []
+            append_event(
+                state,
+                "rewrite",
+                {
+                    "original_query": original_query,
+                    "rewritten_queries": [],
+                    "count": 0,
+                },
+            )
+            append_event(
+                state,
+                "clarification_required",
+                {"message": state["clarification_message"]},
+            )
+            return state
+
+        rewritten_queries = [str(item).strip() for item in questions if str(item).strip()][:max_split]
+        if not rewritten_queries:
+            rewritten_queries = [original_query]
+
+        state["rewritten_queries"] = rewritten_queries
+        state["pending_questions"] = list(rewritten_queries)
+        state["clarification_required"] = False
+        state["clarification_message"] = None
+
+        append_event(
+            state,
+            "rewrite",
+            {
+                "original_query": original_query,
+                "rewritten_queries": rewritten_queries,
+                "count": len(rewritten_queries),
+            },
+        )
+        return state
+
+    return rewrite_and_split_node
 
 
 def clarification_gate_node(state: AgenticRagState) -> AgenticRagState:
     """澄清判断节点。"""
-    original_query = state.get("original_query", "")
+    if state.get("clarification_required"):
+        return state
 
-    if len(original_query) < 2:
+    original_query = state.get("original_query", "")
+    if len(original_query.strip()) < 2:
         state["clarification_required"] = True
         state["clarification_message"] = CLARIFICATION_PROMPT
         append_event(
@@ -59,10 +186,6 @@ def clarification_gate_node(state: AgenticRagState) -> AgenticRagState:
             "clarification_required",
             {"message": state["clarification_message"]},
         )
-    else:
-        state["clarification_required"] = False
-        state["clarification_message"] = None
-
     return state
 
 
@@ -83,19 +206,18 @@ def dispatch_questions_node(state: AgenticRagState) -> AgenticRagState:
     state["current_seed_source_ids"] = []
     state["current_sources"] = []
     state["enough_for_finalize"] = False
-
     return state
 
 
 def agent_reason_node(state: AgenticRagState) -> AgenticRagState:
-    """Agent 推理节点（Phase 1 使用规则触发工具）。"""
+    """Agent 推理节点（检索策略决策）。"""
     current_question = (state.get("current_question") or "").strip()
     if not current_question:
         state["enough_for_finalize"] = True
         return state
 
-    max_rounds = state.get("max_tool_rounds_per_question", 3)
-    tool_round = state.get("current_tool_round", 0)
+    max_rounds = max(1, int(state.get("max_tool_rounds_per_question", 3)))
+    tool_round = int(state.get("current_tool_round", 0))
 
     if tool_round >= max_rounds:
         state["enough_for_finalize"] = True
@@ -111,7 +233,11 @@ def agent_reason_node(state: AgenticRagState) -> AgenticRagState:
         )
         return state
 
-    current_seed_source_ids = state.get("current_seed_source_ids", [])
+    current_sources = state.get("current_sources", [])
+    seed_ids = [src.get("id") for src in current_sources if src.get("id")][:8]
+
+    need_more_context = len(current_sources) < max(2, int(state.get("top_k", 8) // 2))
+    can_expand = state.get("current_expand_calls", 0) < state.get("max_expand_calls_per_question", 2)
 
     if tool_round == 0:
         tool_name = "search_embeddings"
@@ -120,14 +246,21 @@ def agent_reason_node(state: AgenticRagState) -> AgenticRagState:
             "top_k": state.get("top_k", 8),
             "min_score": state.get("min_score", 0.35),
         }
-    else:
+    elif need_more_context and can_expand and seed_ids:
         tool_name = "expand_context"
         tool_args = {
-            "seed_source_ids": current_seed_source_ids,
+            "seed_source_ids": seed_ids,
             "seed_query": current_question,
             "window_size": 2,
-            "top_k": max(2, state.get("top_k", 8) // 2),
-            "min_score": max(0.0, state.get("min_score", 0.35) - 0.05),
+            "top_k": max(3, int(state.get("top_k", 8) // 2)),
+            "min_score": max(0.0, float(state.get("min_score", 0.35)) - 0.1),
+        }
+    else:
+        tool_name = "search_embeddings"
+        tool_args = {
+            "query": current_question,
+            "top_k": max(5, int(state.get("top_k", 8))),
+            "min_score": max(0.0, float(state.get("min_score", 0.35)) - 0.08),
         }
 
     state["current_tool_name"] = tool_name
@@ -173,11 +306,11 @@ def run_tools_node_factory(tools: AgenticRagTools):
                     else:
                         sources = []
                 else:
-                    logger.warning(f"Unknown tool: {tool_name}")
+                    logger.warning("Unknown tool: %s", tool_name)
                     sources = []
                 break
-            except Exception as e:  # pragma: no cover
-                tool_error = str(e)
+            except Exception as exc:  # pragma: no cover
+                tool_error = str(exc)
                 if (not should_retry) or retry_attempt >= max_retry:
                     break
 
@@ -199,8 +332,8 @@ def run_tools_node_factory(tools: AgenticRagTools):
 
         indexed_sources = register_sources_with_index(state, sources)
         current_sources = state.get("current_sources", [])
-        current_sources.extend(indexed_sources)
-        state["current_sources"] = current_sources
+        merged = _merge_sources(current_sources, indexed_sources)
+        state["current_sources"] = merged
 
         if indexed_sources:
             state["current_seed_source_ids"] = [src.get("id") for src in indexed_sources if src.get("id")]
@@ -214,7 +347,7 @@ def run_tools_node_factory(tools: AgenticRagTools):
                 "retry": retry_attempt,
                 "error": tool_error,
                 "result_count": len(indexed_sources),
-                "sources": indexed_sources[:5],
+                "sources": indexed_sources[:8],
             },
         )
         return state
@@ -225,14 +358,18 @@ def run_tools_node_factory(tools: AgenticRagTools):
 def judge_enough_node(state: AgenticRagState) -> AgenticRagState:
     """判断当前子问题是否可收敛。"""
     current_sources = state.get("current_sources", [])
-    current_tool_round = state.get("current_tool_round", 0)
-    max_tool_rounds = state.get("max_tool_rounds_per_question", 3)
+    current_tool_round = int(state.get("current_tool_round", 0))
+    max_tool_rounds = int(state.get("max_tool_rounds_per_question", 3))
 
-    max_expand_calls = state.get("max_expand_calls_per_question", 2)
-    current_expand_calls = state.get("current_expand_calls", 0)
+    max_expand_calls = int(state.get("max_expand_calls_per_question", 2))
+    current_expand_calls = int(state.get("current_expand_calls", 0))
+
+    min_score = float(state.get("min_score", 0.35))
+    high_confidence = [src for src in current_sources if float(src.get("score") or 0.0) >= min_score]
 
     state["enough_for_finalize"] = (
-        len(current_sources) > 0
+        len(high_confidence) >= 1
+        or len(current_sources) >= 4
         or current_tool_round >= max_tool_rounds
         or current_expand_calls >= max_expand_calls
     )
@@ -248,54 +385,277 @@ def judge_enough_node(state: AgenticRagState) -> AgenticRagState:
                 "max_tool_rounds": max_tool_rounds,
             },
         )
+
     return state
 
 
-def finalize_answer_node(state: AgenticRagState) -> AgenticRagState:
-    """生成子问题答案片段（骨架版：基于检索摘要）。"""
-    question = state.get("current_question") or ""
-    sources = state.get("current_sources", [])
+def finalize_answer_node_factory(chat_client: ChatClient):
+    """构建子问题回答生成节点。"""
 
-    if sources:
-        ref_indices = sorted({int(src.get("index", 0)) for src in sources if src.get("index")})
-        ref_tags = "".join([f"[ref:{idx}]" for idx in ref_indices])
-        answer = f"针对“{question}”，已在知识库中检索到相关信息{ref_tags}。"
-    else:
-        answer = f"针对“{question}”，知识库暂无相关信息。"
+    def finalize_answer_node(state: AgenticRagState) -> AgenticRagState:
+        question = state.get("current_question") or ""
+        sources = state.get("current_sources", [])
 
-    question_answers = state.get("question_answers", [])
-    question_answers.append(
-        {
-            "question": question,
-            "answer": answer,
-            "sources": sources,
-        }
+        if not sources:
+            answer = NO_KB_ANSWER
+        else:
+            evidence_lines: List[str] = []
+            sorted_sources = sorted(
+                sources,
+                key=lambda item: (-(float(item.get("score") or 0.0)), int(item.get("index") or 0)),
+            )
+
+            for src in sorted_sources[:12]:
+                ref_index = src.get("index")
+                title = src.get("title") or "未命名来源"
+                snippet = str(src.get("content") or "").strip().replace("\n", " ")
+                snippet = snippet[:380]
+                evidence_lines.append(f"[ref:{ref_index}] 标题: {title} | 证据: {snippet}")
+
+            answer = _generate_answer_with_evidence(
+                chat_client=chat_client,
+                question=question,
+                evidence_lines=evidence_lines,
+                max_tokens=int(state.get("answer_max_tokens", 800)),
+            )
+
+            valid_refs = {
+                int(src.get("index"))
+                for src in sources
+                if src.get("index") and str(src.get("index")).isdigit()
+            }
+            answer = _ensure_valid_refs(answer, valid_refs)
+            if not answer.strip():
+                answer = NO_KB_ANSWER
+            if valid_refs and not REF_PATTERN.search(answer):
+                smallest = min(valid_refs)
+                answer = f"{answer.rstrip()}[ref:{smallest}]"
+
+        question_answers = state.get("question_answers", [])
+        question_answers.append(
+            {
+                "question": question,
+                "answer": answer,
+                "sources": sources,
+            }
+        )
+        state["question_answers"] = question_answers
+
+        state["current_question"] = None
+        state["current_sources"] = []
+        state["current_tool_name"] = None
+        state["current_tool_args"] = {}
+        state["current_tool_retry"] = 0
+        state["current_seed_source_ids"] = []
+        state["enough_for_finalize"] = False
+        return state
+
+    return finalize_answer_node
+
+
+def aggregate_answers_node_factory(chat_client: ChatClient):
+    """构建多子问题聚合节点。"""
+
+    def aggregate_answers_node(state: AgenticRagState) -> AgenticRagState:
+        question_answers = state.get("question_answers", [])
+
+        append_event(
+            state,
+            "aggregation",
+            {
+                "total_questions": len(state.get("rewritten_queries", [])),
+                "completed": len(question_answers),
+            },
+        )
+
+        if not question_answers:
+            state["final_answer"] = NO_KB_ANSWER
+            return state
+
+        if len(question_answers) == 1:
+            state["final_answer"] = str(question_answers[0].get("answer") or NO_KB_ANSWER)
+            return state
+
+        answer_lines: List[str] = []
+        for idx, item in enumerate(question_answers, start=1):
+            sub_question = str(item.get("question") or "")
+            sub_answer = str(item.get("answer") or "")
+            answer_lines.append(f"子问题{idx}: {sub_question}\n子答案{idx}: {sub_answer}")
+
+        merged_answers = "\n\n".join(answer_lines)
+        user_prompt = (
+            f"原始问题：{state.get('original_query', '')}\n\n"
+            f"子问题回答：\n{merged_answers}\n\n"
+            "请合并为最终回答。"
+        )
+
+        try:
+            aggregated = run_async_in_thread(
+                chat_client.complete(
+                    messages=[
+                        {"role": "system", "content": AGGREGATION_SYSTEM_PROMPT},
+                        {"role": "user", "content": user_prompt},
+                    ],
+                    temperature=0.2,
+                    max_tokens=max(500, int(state.get("answer_max_tokens", 800)) + 400),
+                )
+            )
+            aggregated_text = str(aggregated or "").strip()
+            state["final_answer"] = aggregated_text or _fallback_concat(question_answers)
+        except Exception as exc:  # pragma: no cover
+            logger.warning("aggregate answers failed: %s", exc)
+            state["final_answer"] = _fallback_concat(question_answers)
+
+        if not state["final_answer"].strip():
+            state["final_answer"] = NO_KB_ANSWER
+        return state
+
+    return aggregate_answers_node
+
+
+def _analyze_query_with_llm(
+    chat_client: ChatClient,
+    original_query: str,
+    conversation_summary: str,
+    max_split: int,
+) -> Dict[str, Any]:
+    payload = {
+        "is_clear": True,
+        "questions": [original_query],
+        "clarification_needed": "",
+        "reason": "fallback",
+    }
+
+    user_prompt = (
+        f"conversation_summary:\n{conversation_summary or '无'}\n\n"
+        f"current_query:\n{original_query}\n\n"
+        f"max_split_questions={max_split}"
     )
-    state["question_answers"] = question_answers
 
-    state["current_question"] = None
-    state["current_sources"] = []
-    state["current_tool_name"] = None
-    state["current_tool_args"] = {}
-    state["current_tool_retry"] = 0
-    state["current_seed_source_ids"] = []
-    state["enough_for_finalize"] = False
-    return state
+    try:
+        response_text = run_async_in_thread(
+            chat_client.complete(
+                messages=[
+                    {"role": "system", "content": QUERY_ANALYSIS_SYSTEM_PROMPT},
+                    {"role": "user", "content": user_prompt},
+                ],
+                temperature=0.1,
+                max_tokens=320,
+            )
+        )
+
+        parsed = _safe_parse_json(str(response_text or ""))
+        if not isinstance(parsed, dict):
+            return payload
+
+        questions = [str(item).strip() for item in parsed.get("questions", []) if str(item).strip()]
+        if questions:
+            questions = questions[:max_split]
+
+        payload["is_clear"] = bool(parsed.get("is_clear"))
+        payload["questions"] = questions or [original_query]
+        payload["clarification_needed"] = str(parsed.get("clarification_needed") or "").strip()
+        payload["reason"] = str(parsed.get("reason") or "").strip()
+        return payload
+    except Exception as exc:  # pragma: no cover
+        logger.warning("query analysis with llm failed: %s", exc)
+        return payload
 
 
-def aggregate_answers_node(state: AgenticRagState) -> AgenticRagState:
-    """聚合多子问题答案。"""
-    question_answers = state.get("question_answers", [])
+def _generate_answer_with_evidence(
+    chat_client: ChatClient,
+    question: str,
+    evidence_lines: List[str],
+    max_tokens: int,
+) -> str:
+    if not evidence_lines:
+        return NO_KB_ANSWER
 
-    append_event(
-        state,
-        "aggregation",
-        {
-            "total_questions": len(state.get("rewritten_queries", [])),
-            "completed": len(question_answers),
-        },
+    evidence_text = "\n".join(evidence_lines)
+    user_prompt = (
+        f"用户问题：{question}\n\n"
+        "检索证据（只可使用这些证据）：\n"
+        f"{evidence_text}\n\n"
+        "请输出最终回答。"
     )
 
-    final_answer = "\n\n".join(item.get("answer", "") for item in question_answers).strip()
-    state["final_answer"] = final_answer
-    return state
+    try:
+        result = run_async_in_thread(
+            chat_client.complete(
+                messages=[
+                    {"role": "system", "content": ANSWER_GENERATION_SYSTEM_PROMPT},
+                    {"role": "user", "content": user_prompt},
+                ],
+                temperature=0.2,
+                max_tokens=max(320, max_tokens),
+            )
+        )
+        return str(result or "").strip()
+    except Exception as exc:  # pragma: no cover
+        logger.warning("answer generation failed: %s", exc)
+        return NO_KB_ANSWER
+
+
+def _safe_parse_json(text: str) -> Dict[str, Any] | None:
+    cleaned = text.strip()
+    if not cleaned:
+        return None
+
+    try:
+        return json.loads(cleaned)
+    except Exception:
+        pass
+
+    start = cleaned.find("{")
+    end = cleaned.rfind("}")
+    if start == -1 or end == -1 or end <= start:
+        return None
+
+    try:
+        return json.loads(cleaned[start : end + 1])
+    except Exception:
+        return None
+
+
+def _merge_sources(existing: List[Dict[str, Any]], incoming: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    source_map: Dict[str, Dict[str, Any]] = {}
+
+    for item in existing + incoming:
+        source_key = str(item.get("source_key") or "").strip()
+        if not source_key:
+            continue
+
+        current_score = float(item.get("score") or 0.0)
+        old = source_map.get(source_key)
+        if old is None:
+            source_map[source_key] = dict(item)
+            continue
+
+        old_score = float(old.get("score") or 0.0)
+        if current_score > old_score:
+            source_map[source_key] = dict(item)
+
+    merged = list(source_map.values())
+    merged.sort(key=lambda src: (-(float(src.get("score") or 0.0)), int(src.get("index") or 0)))
+    return merged
+
+
+def _ensure_valid_refs(answer: str, valid_refs: set[int]) -> str:
+    if not answer or not valid_refs:
+        return answer
+
+    def _replace(match: re.Match[str]) -> str:
+        ref = int(match.group(1))
+        if ref in valid_refs:
+            return match.group(0)
+        return ""
+
+    cleaned = REF_PATTERN.sub(_replace, answer)
+    cleaned = re.sub(r"\s+\n", "\n", cleaned)
+    return cleaned.strip()
+
+
+def _fallback_concat(question_answers: List[Dict[str, Any]]) -> str:
+    parts = [str(item.get("answer") or "").strip() for item in question_answers if item.get("answer")]
+    text = "\n\n".join([part for part in parts if part]).strip()
+    return text or NO_KB_ANSWER
