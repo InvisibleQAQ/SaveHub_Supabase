@@ -20,11 +20,11 @@ export default function ReaderLayout({ children }: { children: React.ReactNode }
   // Redirect to login if not authenticated
   useEffect(() => {
     if (!isAuthLoading && !isAuthenticated) {
-      router.push('/login')
+      router.push("/login")
     }
   }, [isAuthLoading, isAuthenticated, router])
 
-  useRealtimeSync()
+  useRealtimeSync(isAuthenticated)
 
   useEffect(() => {
     const checkDatabase = async () => {

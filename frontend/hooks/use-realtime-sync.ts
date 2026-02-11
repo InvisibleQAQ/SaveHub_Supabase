@@ -50,8 +50,13 @@ function mapFolderRowToFolder(folderRow: Record<string, any>): Folder {
   }
 }
 
-export function useRealtimeSync() {
+export function useRealtimeSync(enabled: boolean = true) {
   useEffect(() => {
+    if (!enabled) {
+      realtimeWSManager.unsubscribeAll()
+      return
+    }
+
     console.log("[WS] Setting up real-time subscriptions")
 
     // Subscribe to feeds changes
@@ -187,7 +192,7 @@ export function useRealtimeSync() {
       console.log("[WS] Cleaning up real-time subscriptions")
       realtimeWSManager.unsubscribeAll()
     }
-  }, []) // Empty dependency array - only run once on mount
+  }, [enabled])
 
   return null
 }

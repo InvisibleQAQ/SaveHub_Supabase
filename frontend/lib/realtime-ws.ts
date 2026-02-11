@@ -131,6 +131,11 @@ export class RealtimeWSManager {
       return
     }
 
+    if (!this.hasSubscriptions()) {
+      console.log("[WS] No active subscriptions, skip connect")
+      return
+    }
+
     this.setState("connecting")
     const url = this.getWSUrl()
     console.log(`[WS] Connecting to ${url}`)
@@ -161,6 +166,22 @@ export class RealtimeWSManager {
       // 4001 = unauthorized, don't reconnect
       if (event.code === 4001) {
         console.log("[WS] Unauthorized, not reconnecting")
+        this.setState("disconnected")
+        return
+      }
+
+      // 1000 = normal close, 1001 = going away
+      if (event.code === 1000 || event.code === 1001) {
+        this.setState("disconnected")
+        return
+      }
+
+      // 1013 = server temporarily unavailable
+      if (event.code === 1013) {
+        console.log("[WS] Server temporary unavailable, retry with backoff")
+      }
+
+      if (!this.hasSubscriptions()) {
         this.setState("disconnected")
         return
       }
@@ -281,6 +302,11 @@ export class RealtimeWSManager {
 
   /** Schedule reconnection with exponential backoff */
   private scheduleReconnect(): void {
+    if (!this.hasSubscriptions()) {
+      this.setState("disconnected")
+      return
+    }
+
     if (this.reconnectAttempts >= this.config.maxReconnectAttempts) {
       console.log("[WS] Max reconnect attempts reached")
       this.setState("disconnected")
@@ -306,6 +332,13 @@ export class RealtimeWSManager {
   private cleanup(): void {
     this.stopHeartbeat()
 
+    if (this.ws) {
+      this.ws.onopen = null
+      this.ws.onclose = null
+      this.ws.onerror = null
+      this.ws.onmessage = null
+    }
+
     if (this.reconnectTimeout) {
       clearTimeout(this.reconnectTimeout)
       this.reconnectTimeout = null
@@ -317,12 +350,12 @@ export class RealtimeWSManager {
   /** Disconnect and stop all activity */
   disconnect(): void {
     console.log("[WS] Disconnecting")
-    this.cleanup()
 
     if (this.ws) {
       this.ws.close(1000, "Client disconnect")
-      this.ws = null
     }
+
+    this.cleanup()
 
     this.setState("disconnected")
     this.reconnectAttempts = 0

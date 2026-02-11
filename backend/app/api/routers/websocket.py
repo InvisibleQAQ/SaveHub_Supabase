@@ -4,30 +4,27 @@ Provides WebSocket endpoint that authenticates via cookie and
 forwards Supabase postgres_changes to connected clients.
 """
 
-import logging
-from fastapi import APIRouter, WebSocket, WebSocketDisconnect
-from supabase import create_client, Client
 import os
+import asyncio
+import logging
 
+from fastapi import APIRouter, WebSocket, WebSocketDisconnect
+
+from app.core.supabase_auth import supabase_auth_client, is_network_error
 from app.services.realtime import connection_manager
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/ws", tags=["websocket"])
 
-SUPABASE_URL = os.environ.get("SUPABASE_URL", "")
-SUPABASE_KEY = os.environ.get("SUPABASE_ANON_KEY", "")
-
 # Cookie names (must match auth router)
 COOKIE_NAME_ACCESS = "sb_access_token"
 
-
-def get_supabase_client() -> Client:
-    """Get Supabase client for auth verification."""
-    return create_client(SUPABASE_URL, SUPABASE_KEY)
+WS_AUTH_MAX_RETRIES = int(os.environ.get("WS_AUTH_MAX_RETRIES", "2"))
+WS_AUTH_RETRY_BASE_DELAY = float(os.environ.get("WS_AUTH_RETRY_BASE_DELAY", "0.3"))
 
 
-async def authenticate_websocket(websocket: WebSocket) -> str | None:
+async def authenticate_websocket(websocket: WebSocket) -> tuple[str | None, bool]:
     """
     Authenticate WebSocket connection via cookie.
 
@@ -35,30 +32,47 @@ async def authenticate_websocket(websocket: WebSocket) -> str | None:
         websocket: WebSocket connection (not yet accepted)
 
     Returns:
-        user_id if authenticated, None otherwise
+        (user_id if authenticated else None, network_failure)
     """
-    # Get access token from cookie
-    # Note: cookies are available before accept() in FastAPI
     access_token = websocket.cookies.get(COOKIE_NAME_ACCESS)
 
     if not access_token:
         logger.debug("WebSocket auth failed: no access token cookie")
-        return None
+        return None, False
 
-    try:
-        client = get_supabase_client()
-        user_response = client.auth.get_user(access_token)
-        user = user_response.user
+    for attempt in range(WS_AUTH_MAX_RETRIES):
+        try:
+            with supabase_auth_client() as client:
+                user_response = client.auth.get_user(access_token)
 
-        if not user:
-            logger.debug("WebSocket auth failed: invalid token")
-            return None
+            user = user_response.user
+            if not user:
+                logger.debug("WebSocket auth failed: invalid token")
+                return None, False
 
-        return user.id
+            return user.id, False
 
-    except Exception as e:
-        logger.warning(f"WebSocket auth error: {e}")
-        return None
+        except Exception as error:
+            if is_network_error(error):
+                if attempt < WS_AUTH_MAX_RETRIES - 1:
+                    delay = WS_AUTH_RETRY_BASE_DELAY * (2 ** attempt)
+                    logger.warning(
+                        "WebSocket auth retry %s/%s in %.1fs: %s",
+                        attempt + 1,
+                        WS_AUTH_MAX_RETRIES,
+                        delay,
+                        error,
+                    )
+                    await asyncio.sleep(delay)
+                    continue
+
+                logger.warning("WebSocket auth temporary network error: %s", error)
+                return None, True
+
+            logger.warning(f"WebSocket auth error: {error}")
+            return None, False
+
+    return None, False
 
 
 @router.websocket("/realtime")
@@ -86,12 +100,17 @@ async def websocket_realtime(websocket: WebSocket):
     Client can send:
     - {"type": "ping"} - Server responds with {"type": "pong"}
     """
-    # Authenticate before accepting
-    user_id = await authenticate_websocket(websocket)
+    user_id, network_failure = await authenticate_websocket(websocket)
 
     if not user_id:
-        # Reject connection with 4001 (unauthorized)
-        await websocket.close(code=4001, reason="Unauthorized")
+        await websocket.accept()
+        if network_failure:
+            await websocket.send_json(
+                {"type": "error", "message": "Authentication service unavailable"}
+            )
+            await websocket.close(code=1013, reason="Auth unavailable")
+        else:
+            await websocket.close(code=4001, reason="Unauthorized")
         return
 
     # Accept connection and register
@@ -112,8 +131,8 @@ async def websocket_realtime(websocket: WebSocket):
                 logger.info(f"WebSocket client disconnected: user={user_id}")
                 break
 
-            except Exception as e:
-                logger.warning(f"WebSocket receive error: {e}")
+            except Exception as error:
+                logger.warning(f"WebSocket receive error: {error}")
                 break
 
     finally:

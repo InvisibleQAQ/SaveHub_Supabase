@@ -1,21 +1,17 @@
-import os
 import time
 import logging
 from typing import Optional, Tuple, Any
+
 from fastapi import Depends, HTTPException, Request
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
-from supabase import create_client, Client
 from dotenv import load_dotenv, find_dotenv
+
+from app.core.supabase_auth import supabase_auth_client, is_network_error
 
 _ = load_dotenv(find_dotenv())  # read local .env file
 
 logger = logging.getLogger(__name__)
 
-SUPABASE_URL = os.environ["SUPABASE_URL"]
-SUPABASE_KEY = os.environ["SUPABASE_ANON_KEY"]
-
-
-supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
 security = HTTPBearer(auto_error=False)
 
 # Cookie names (must match auth router)
@@ -27,41 +23,42 @@ AUTH_MAX_RETRIES = 3
 AUTH_RETRY_BASE_DELAY = 0.5  # seconds
 
 
-def _is_network_error(error: Exception) -> bool:
-    """Check if error is network/SSL related (retryable)."""
-    error_str = str(error).lower()
-    patterns = ["ssl", "handshake", "timed out", "timeout", "connection"]
-    return any(p in error_str for p in patterns)
-
-
-def _verify_token_with_retry(token: str) -> Tuple[Any, str | None]:
+def _verify_token_with_retry(token: str) -> Tuple[Any, str | None, bool]:
     """
     Verify token with exponential backoff retry for network errors.
 
     Returns:
-        (user_response, error_message) - error_message is None on success
+        (user_response, error_message, is_network_failure)
     """
     last_error = None
     for attempt in range(AUTH_MAX_RETRIES):
         try:
-            user_response = supabase.auth.get_user(token)
+            with supabase_auth_client() as client:
+                user_response = client.auth.get_user(token)
+
             if user_response and user_response.user:
-                return user_response, None
-            return None, "Invalid token response"
-        except Exception as e:
-            last_error = e
-            if _is_network_error(e) and attempt < AUTH_MAX_RETRIES - 1:
+                return user_response, None, False
+
+            return None, "Invalid token response", False
+        except Exception as error:
+            last_error = error
+            if is_network_error(error) and attempt < AUTH_MAX_RETRIES - 1:
                 delay = AUTH_RETRY_BASE_DELAY * (2 ** attempt)
                 logger.warning(
-                    f"Auth retry {attempt + 1}/{AUTH_MAX_RETRIES} in {delay}s: {e}"
+                    f"Auth retry {attempt + 1}/{AUTH_MAX_RETRIES} in {delay}s: {error}"
                 )
                 time.sleep(delay)
             else:
                 break
 
-    if _is_network_error(last_error):
-        return None, f"Network timeout after {AUTH_MAX_RETRIES} retries: {last_error}"
-    return None, f"Token validation failed: {last_error}"
+    if last_error and is_network_error(last_error):
+        return (
+            None,
+            f"Network timeout after {AUTH_MAX_RETRIES} retries: {last_error}",
+            True,
+        )
+
+    return None, f"Token validation failed: {last_error}", False
 
 
 def verify_jwt(credentials: HTTPAuthorizationCredentials = Depends(security)):
@@ -71,14 +68,18 @@ def verify_jwt(credentials: HTTPAuthorizationCredentials = Depends(security)):
     """
     if not credentials:
         raise HTTPException(status_code=401, detail="No credentials provided")
-    token = credentials.credentials
-    try:
-        user = supabase.auth.get_user(token)
-        if not user:
-            raise HTTPException(status_code=401, detail="Invalid token")
-        return user
-    except Exception as e:
-        raise HTTPException(status_code=401, detail=str(e))
+
+    user_response, error, network_failure = _verify_token_with_retry(
+        credentials.credentials
+    )
+
+    if user_response:
+        return user_response
+
+    if network_failure:
+        raise HTTPException(status_code=503, detail=error)
+
+    raise HTTPException(status_code=401, detail=error)
 
 
 def verify_cookie_auth(request: Request):
@@ -91,17 +92,15 @@ def verify_cookie_auth(request: Request):
     if not access_token:
         raise HTTPException(status_code=401, detail="Not authenticated")
 
-    try:
-        user_response = supabase.auth.get_user(access_token)
-        user = user_response.user
+    user_response, error, network_failure = _verify_token_with_retry(access_token)
 
-        if not user:
-            raise HTTPException(status_code=401, detail="Invalid token")
-
+    if user_response:
         return user_response
 
-    except Exception as e:
-        raise HTTPException(status_code=401, detail=str(e))
+    if network_failure:
+        raise HTTPException(status_code=503, detail=error)
+
+    raise HTTPException(status_code=401, detail=error)
 
 
 def get_access_token(
@@ -129,7 +128,7 @@ def get_access_token(
 
     raise HTTPException(
         status_code=401,
-        detail="No access token found (no cookie or Authorization header)"
+        detail="No access token found (no cookie or Authorization header)",
     )
 
 
@@ -140,40 +139,51 @@ def verify_auth(
     """
     Verify authentication from either cookie or Authorization header.
     Prioritizes cookie-based auth, falls back to header-based auth.
-    Includes retry logic for network/SSL timeout errors.
+    Includes retry logic for network timeout errors.
     """
     cookie_error = None
     header_error = None
+    saw_network_failure = False
 
     # First try cookie with retry
     access_token = request.cookies.get(COOKIE_NAME_ACCESS)
     if access_token:
-        user_response, error = _verify_token_with_retry(access_token)
+        user_response, error, network_failure = _verify_token_with_retry(access_token)
         if user_response:
             return user_response
+
         cookie_error = error
+        saw_network_failure = saw_network_failure or network_failure
         logger.warning(f"Cookie auth failed: {cookie_error}")
 
     # Then try Authorization header with retry
     if credentials:
-        user_response, error = _verify_token_with_retry(credentials.credentials)
+        user_response, error, network_failure = _verify_token_with_retry(
+            credentials.credentials
+        )
         if user_response:
             return user_response
+
         header_error = error
+        saw_network_failure = saw_network_failure or network_failure
         logger.warning(f"Header auth failed: {header_error}")
 
     # Build detailed error message with clear distinction
     if not access_token and not credentials:
         detail = "No credentials provided (no cookie or header)"
+        status_code = 401
+    elif saw_network_failure:
+        detail = cookie_error or header_error or "Authentication service unavailable"
+        status_code = 503
     elif cookie_error:
-        if "Network timeout" in cookie_error:
-            detail = f"Authentication service unavailable: {cookie_error}"
-        else:
-            detail = f"Token expired or invalid: {cookie_error}"
+        detail = f"Token expired or invalid: {cookie_error}"
+        status_code = 401
     elif header_error:
         detail = f"Header auth failed: {header_error}"
+        status_code = 401
     else:
         detail = "Not authenticated"
+        status_code = 401
 
     logger.warning(f"Auth failed for {request.method} {request.url.path}: {detail}")
-    raise HTTPException(status_code=401, detail=detail)
+    raise HTTPException(status_code=status_code, detail=detail)
