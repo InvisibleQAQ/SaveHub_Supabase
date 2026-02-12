@@ -1,7 +1,7 @@
 """Agentic-RAG 服务主入口。"""
 
 import logging
-from typing import Any, AsyncGenerator, Dict, List
+from typing import Any, AsyncGenerator, Dict, List, Optional
 
 from supabase import Client
 
@@ -44,11 +44,13 @@ class AgenticRagService:
         embedding_config: Dict[str, str],
         supabase: Client,
         user_id: str,
+        agentic_rag_settings: Optional[Dict[str, Any]] = None,
     ):
         self.chat_config = chat_config
         self.embedding_config = embedding_config
         self.supabase = supabase
         self.user_id = user_id
+        self.agentic_rag_settings = agentic_rag_settings or {}
 
         self.chat_client = ChatClient(
             api_key=chat_config["api_key"],
@@ -65,6 +67,9 @@ class AgenticRagService:
             supabase=supabase,
             user_id=user_id,
             embedding_client=self.embedding_client,
+            source_content_max_chars=int(
+                self.agentic_rag_settings.get("agentic_rag_source_content_max_chars", 700)
+            ),
         )
         self.graph = build_agentic_rag_graph(self.tools, self.chat_client)
 
@@ -265,6 +270,7 @@ class AgenticRagService:
             max_tool_retry=max_tool_retry,
             answer_max_tokens=answer_max_tokens,
             stream_output=True,
+            agentic_rag_settings=self.agentic_rag_settings,
         )
 
         try:
@@ -322,17 +328,30 @@ class AgenticRagService:
                 return
 
             final_answer_prompt = str(final_state.get("final_answer_prompt") or "").strip()
-            fallback_final_answer = str(final_state.get("final_answer") or "").strip() or NO_KB_ANSWER
+            fallback_final_answer = (
+                str(final_state.get("final_answer") or "").strip()
+                or str(final_state.get("no_kb_answer") or "").strip()
+                or NO_KB_ANSWER
+            )
+            aggregation_system_prompt = str(
+                final_state.get("aggregation_system_prompt")
+                or self.agentic_rag_settings.get("agentic_rag_aggregation_system_prompt")
+                or AGGREGATION_SYSTEM_PROMPT
+            )
+            aggregation_temperature = float(
+                final_state.get("aggregation_temperature")
+                or self.agentic_rag_settings.get("agentic_rag_aggregation_temperature", 0.2)
+            )
 
             if final_answer_prompt:
                 streamed_chunks: List[str] = []
                 try:
                     async for chunk in self.chat_client.stream(
                         messages=[
-                            {"role": "system", "content": AGGREGATION_SYSTEM_PROMPT},
+                            {"role": "system", "content": aggregation_system_prompt},
                             {"role": "user", "content": final_answer_prompt},
                         ],
-                        temperature=0.2,
+                        temperature=aggregation_temperature,
                         max_tokens=max(500, int(answer_max_tokens) + 400),
                     ):
                         if not chunk:

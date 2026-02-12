@@ -22,10 +22,12 @@ class AgenticRagTools:
         supabase: Client,
         user_id: str,
         embedding_client: Optional[EmbeddingClient] = None,
+        source_content_max_chars: int = 700,
     ):
         self.supabase = supabase
         self.user_id = user_id
         self.embedding_client = embedding_client
+        self.source_content_max_chars = max(100, int(source_content_max_chars))
 
     def search_embeddings_tool(
         self,
@@ -89,8 +91,7 @@ class AgenticRagTools:
 
         return self.search_embeddings_tool(query=seed_query, top_k=safe_top_k, min_score=min_score)
 
-    @staticmethod
-    def _normalize_hit(hit: Dict[str, Any]) -> Dict[str, Any]:
+    def _normalize_hit(self, hit: Dict[str, Any]) -> Dict[str, Any]:
         """统一来源结构，兼容 article/repository。"""
         is_article = bool(hit.get("article_id"))
         source_type = "article" if is_article else "repository"
@@ -107,7 +108,7 @@ class AgenticRagTools:
             "article_id": str(hit.get("article_id") or "") or None,
             "repository_id": str(hit.get("repository_id") or "") or None,
             "chunk_index": int(hit.get("chunk_index") or 0),
-            "content": (hit.get("content") or "")[:700],
+            "content": (hit.get("content") or "")[: self.source_content_max_chars],
             "score": float(hit.get("score") or 0.0),
             "source_type": source_type,
             "title": title,
@@ -190,6 +191,8 @@ class AgenticRagTools:
             deduped[embedding_id] = row
 
         normalized = [self._normalize_expand_row(hit) for hit in deduped.values()]
+        for item in normalized:
+            item["content"] = (item.get("content") or "")[: self.source_content_max_chars]
         normalized.sort(key=lambda item: (int(item.get("chunk_index") or 0), -(float(item.get("score") or 0.0))))
         return normalized[:safe_limit]
 

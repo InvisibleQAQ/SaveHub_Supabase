@@ -16,6 +16,7 @@ from app.dependencies import COOKIE_NAME_ACCESS, verify_auth
 from app.schemas.agentic_rag_chat import AgenticRagChatRequest
 from app.services.ai import ConfigError, get_required_ai_configs
 from app.services.agentic_rag_service import AgenticRagService
+from app.services.db.settings import SettingsService
 from app.supabase_client import get_supabase_client
 
 logger = logging.getLogger(__name__)
@@ -38,6 +39,7 @@ SSE_V2_EVENTS = {
 async def _sse_generator(
     service: AgenticRagService,
     request: AgenticRagChatRequest,
+    rag_settings: dict,
 ) -> AsyncGenerator[str, None]:
     """SSE v2 事件生成器。"""
     messages = [{"role": m.role, "content": m.content} for m in request.messages]
@@ -48,13 +50,42 @@ async def _sse_generator(
 
         async for event in service.stream_chat(
             messages=messages,
-            top_k=request.top_k,
-            min_score=request.min_score,
-            max_split_questions=request.max_split_questions,
-            max_tool_rounds_per_question=request.max_tool_rounds_per_question,
-            max_expand_calls_per_question=request.max_expand_calls_per_question,
-            retry_tool_on_failure=request.retry_tool_on_failure,
-            max_tool_retry=request.max_tool_retry,
+            top_k=request.top_k if request.top_k is not None else int(rag_settings.get("agentic_rag_top_k", 8)),
+            min_score=(
+                request.min_score
+                if request.min_score is not None
+                else float(rag_settings.get("agentic_rag_min_score", 0.35))
+            ),
+            max_split_questions=(
+                request.max_split_questions
+                if request.max_split_questions is not None
+                else int(rag_settings.get("agentic_rag_max_split_questions", 3))
+            ),
+            max_tool_rounds_per_question=(
+                request.max_tool_rounds_per_question
+                if request.max_tool_rounds_per_question is not None
+                else int(rag_settings.get("agentic_rag_max_tool_rounds_per_question", 3))
+            ),
+            max_expand_calls_per_question=(
+                request.max_expand_calls_per_question
+                if request.max_expand_calls_per_question is not None
+                else int(rag_settings.get("agentic_rag_max_expand_calls_per_question", 2))
+            ),
+            retry_tool_on_failure=(
+                request.retry_tool_on_failure
+                if request.retry_tool_on_failure is not None
+                else bool(rag_settings.get("agentic_rag_retry_tool_on_failure", True))
+            ),
+            max_tool_retry=(
+                request.max_tool_retry
+                if request.max_tool_retry is not None
+                else int(rag_settings.get("agentic_rag_max_tool_retry", 1))
+            ),
+            answer_max_tokens=(
+                request.answer_max_tokens
+                if request.answer_max_tokens is not None
+                else int(rag_settings.get("agentic_rag_answer_max_tokens", 900))
+            ),
         ):
             event_name = event.get("event")
             if event_name not in SSE_V2_EVENTS:
@@ -116,10 +147,13 @@ async def agentic_rag_chat_stream(
         embedding_config=embedding_config,
         supabase=supabase,
         user_id=user_id,
+        agentic_rag_settings=SettingsService(supabase, user_id).load_settings() or {},
     )
 
+    rag_settings = service.agentic_rag_settings
+
     return StreamingResponse(
-        _sse_generator(service, chat_request),
+        _sse_generator(service, chat_request, rag_settings),
         media_type="text/event-stream",
         headers={
             "Cache-Control": "no-cache, no-transform",

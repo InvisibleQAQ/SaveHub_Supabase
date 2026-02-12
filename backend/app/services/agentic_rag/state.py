@@ -3,6 +3,14 @@
 from hashlib import md5
 from typing import Any, Dict, List, Optional, TypedDict
 
+from app.services.agentic_rag.prompts import (
+    AGGREGATION_SYSTEM_PROMPT,
+    ANSWER_GENERATION_SYSTEM_PROMPT,
+    CLARIFICATION_PROMPT,
+    NO_KB_ANSWER,
+    QUERY_ANALYSIS_SYSTEM_PROMPT,
+)
+
 
 class AgenticRagState(TypedDict, total=False):
     """LangGraph 运行时状态。"""
@@ -17,6 +25,32 @@ class AgenticRagState(TypedDict, total=False):
     max_tool_retry: int
     answer_max_tokens: int
     stream_output: bool
+
+    history_summary_temperature: float
+    history_summary_max_tokens: int
+    query_analysis_temperature: float
+    query_analysis_max_tokens: int
+    answer_generation_temperature: float
+    aggregation_temperature: float
+
+    expand_context_window_size: int
+    expand_context_top_k_min: int
+    expand_context_min_score_delta: float
+    retry_search_min_score_delta: float
+    seed_source_limit: int
+
+    finalize_min_sources: int
+    finalize_min_high_confidence: int
+    evidence_max_sources: int
+    evidence_snippet_max_chars: int
+
+    query_analysis_system_prompt: str
+    clarification_prompt: str
+    answer_generation_system_prompt: str
+    aggregation_system_prompt: str
+    no_kb_answer: str
+    history_summary_system_prompt: str
+    history_summary_user_prompt_template: str
 
     conversation_summary: str
     last_user_query: str
@@ -61,8 +95,11 @@ def create_initial_state(
     max_tool_retry: int,
     answer_max_tokens: int,
     stream_output: bool = True,
+    agentic_rag_settings: Optional[Dict[str, Any]] = None,
 ) -> AgenticRagState:
     """创建图初始状态。"""
+    rag_settings = agentic_rag_settings or {}
+
     return {
         "messages": messages,
         "top_k": top_k,
@@ -74,6 +111,67 @@ def create_initial_state(
         "max_tool_retry": max_tool_retry,
         "answer_max_tokens": answer_max_tokens,
         "stream_output": stream_output,
+        "history_summary_temperature": float(
+            rag_settings.get("agentic_rag_history_summary_temperature", 0.1)
+        ),
+        "history_summary_max_tokens": int(
+            rag_settings.get("agentic_rag_history_summary_max_tokens", 160)
+        ),
+        "query_analysis_temperature": float(
+            rag_settings.get("agentic_rag_query_analysis_temperature", 0.1)
+        ),
+        "query_analysis_max_tokens": int(
+            rag_settings.get("agentic_rag_query_analysis_max_tokens", 320)
+        ),
+        "answer_generation_temperature": float(
+            rag_settings.get("agentic_rag_answer_generation_temperature", 0.2)
+        ),
+        "aggregation_temperature": float(
+            rag_settings.get("agentic_rag_aggregation_temperature", 0.2)
+        ),
+        "expand_context_window_size": int(
+            rag_settings.get("agentic_rag_expand_context_window_size", 2)
+        ),
+        "expand_context_top_k_min": int(
+            rag_settings.get("agentic_rag_expand_context_top_k_min", 3)
+        ),
+        "expand_context_min_score_delta": float(
+            rag_settings.get("agentic_rag_expand_context_min_score_delta", -0.1)
+        ),
+        "retry_search_min_score_delta": float(
+            rag_settings.get("agentic_rag_retry_search_min_score_delta", -0.08)
+        ),
+        "seed_source_limit": int(rag_settings.get("agentic_rag_seed_source_limit", 8)),
+        "finalize_min_sources": int(rag_settings.get("agentic_rag_finalize_min_sources", 4)),
+        "finalize_min_high_confidence": int(
+            rag_settings.get("agentic_rag_finalize_min_high_confidence", 1)
+        ),
+        "evidence_max_sources": int(rag_settings.get("agentic_rag_evidence_max_sources", 12)),
+        "evidence_snippet_max_chars": int(
+            rag_settings.get("agentic_rag_evidence_snippet_max_chars", 380)
+        ),
+        "query_analysis_system_prompt": str(
+            rag_settings.get("agentic_rag_query_analysis_system_prompt")
+            or QUERY_ANALYSIS_SYSTEM_PROMPT
+        ),
+        "clarification_prompt": str(
+            rag_settings.get("agentic_rag_clarification_prompt") or CLARIFICATION_PROMPT
+        ),
+        "answer_generation_system_prompt": str(
+            rag_settings.get("agentic_rag_answer_generation_system_prompt")
+            or ANSWER_GENERATION_SYSTEM_PROMPT
+        ),
+        "aggregation_system_prompt": str(
+            rag_settings.get("agentic_rag_aggregation_system_prompt") or AGGREGATION_SYSTEM_PROMPT
+        ),
+        "no_kb_answer": str(rag_settings.get("agentic_rag_no_kb_answer") or NO_KB_ANSWER),
+        "history_summary_system_prompt": str(
+            rag_settings.get("agentic_rag_history_summary_system_prompt") or "你是精炼总结助手。"
+        ),
+        "history_summary_user_prompt_template": str(
+            rag_settings.get("agentic_rag_history_summary_user_prompt_template")
+            or "你是对话摘要助手。请把以下历史对话压缩为 1-2 句中文摘要，保留主题、关键实体和未解决问题。只输出摘要正文。"
+        ),
         "conversation_summary": "",
         "last_user_query": "",
         "original_query": "",

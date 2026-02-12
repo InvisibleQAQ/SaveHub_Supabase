@@ -5,13 +5,7 @@ import logging
 import re
 from typing import Any, Dict, List
 
-from app.services.agentic_rag.prompts import (
-    AGGREGATION_SYSTEM_PROMPT,
-    ANSWER_GENERATION_SYSTEM_PROMPT,
-    CLARIFICATION_PROMPT,
-    NO_KB_ANSWER,
-    QUERY_ANALYSIS_SYSTEM_PROMPT,
-)
+from app.services.agentic_rag.prompts import CLARIFICATION_PROMPT, NO_KB_ANSWER
 from app.services.agentic_rag.state import (
     AgenticRagState,
     append_event,
@@ -59,9 +53,12 @@ def summarize_history_node_factory(chat_client: ChatClient):
             return state
 
         history_text = "\n".join(lines)
+        summary_template = (
+            str(state.get("history_summary_user_prompt_template") or "").strip()
+            or "你是对话摘要助手。请把以下历史对话压缩为 1-2 句中文摘要，保留主题、关键实体和未解决问题。只输出摘要正文。"
+        )
         prompt = (
-            "你是对话摘要助手。请把以下历史对话压缩为 1-2 句中文摘要，"
-            "保留主题、关键实体和未解决问题。只输出摘要正文。\n\n"
+            f"{summary_template}\n\n"
             f"对话历史：\n{history_text}"
         )
 
@@ -69,11 +66,17 @@ def summarize_history_node_factory(chat_client: ChatClient):
             summary = run_async_in_thread(
                 chat_client.complete(
                     messages=[
-                        {"role": "system", "content": "你是精炼总结助手。"},
+                        {
+                            "role": "system",
+                            "content": str(
+                                state.get("history_summary_system_prompt")
+                                or "你是精炼总结助手。"
+                            ),
+                        },
                         {"role": "user", "content": prompt},
                     ],
-                    temperature=0.1,
-                    max_tokens=160,
+                    temperature=float(state.get("history_summary_temperature", 0.1)),
+                    max_tokens=int(state.get("history_summary_max_tokens", 160)),
                 )
             )
             state["conversation_summary"] = str(summary or "").strip()
@@ -103,7 +106,9 @@ def rewrite_and_split_node_factory(chat_client: ChatClient):
 
         if not original_query:
             state["clarification_required"] = True
-            state["clarification_message"] = CLARIFICATION_PROMPT
+            state["clarification_message"] = str(
+                state.get("clarification_prompt") or CLARIFICATION_PROMPT
+            )
             append_event(
                 state,
                 "clarification_required",
@@ -118,6 +123,11 @@ def rewrite_and_split_node_factory(chat_client: ChatClient):
             original_query=original_query,
             conversation_summary=summary,
             max_split=max_split,
+            system_prompt=str(
+                state.get("query_analysis_system_prompt") or ""
+            ),
+            temperature=float(state.get("query_analysis_temperature", 0.1)),
+            max_tokens=int(state.get("query_analysis_max_tokens", 320)),
         )
 
         questions = analysis_payload.get("questions") or []
@@ -129,7 +139,9 @@ def rewrite_and_split_node_factory(chat_client: ChatClient):
         if not is_clear:
             state["clarification_required"] = True
             state["clarification_message"] = (
-                clarification_needed if len(clarification_needed) >= 6 else CLARIFICATION_PROMPT
+                clarification_needed
+                if len(clarification_needed) >= 6
+                else str(state.get("clarification_prompt") or CLARIFICATION_PROMPT)
             )
             state["rewritten_queries"] = []
             state["pending_questions"] = []
@@ -180,7 +192,7 @@ def clarification_gate_node(state: AgenticRagState) -> AgenticRagState:
     original_query = state.get("original_query", "")
     if len(original_query.strip()) < 2:
         state["clarification_required"] = True
-        state["clarification_message"] = CLARIFICATION_PROMPT
+        state["clarification_message"] = str(state.get("clarification_prompt") or CLARIFICATION_PROMPT)
         append_event(
             state,
             "clarification_required",
@@ -242,7 +254,8 @@ def agent_reason_node(state: AgenticRagState) -> AgenticRagState:
         return state
 
     current_sources = state.get("current_sources", [])
-    seed_ids = [src.get("id") for src in current_sources if src.get("id")][:8]
+    seed_source_limit = max(1, int(state.get("seed_source_limit", 8)))
+    seed_ids = [src.get("id") for src in current_sources if src.get("id")][:seed_source_limit]
 
     need_more_context = len(current_sources) < max(2, int(state.get("top_k", 8) // 2))
     can_expand = state.get("current_expand_calls", 0) < state.get("max_expand_calls_per_question", 2)
@@ -259,16 +272,27 @@ def agent_reason_node(state: AgenticRagState) -> AgenticRagState:
         tool_args = {
             "seed_source_ids": seed_ids,
             "seed_query": current_question,
-            "window_size": 2,
-            "top_k": max(3, int(state.get("top_k", 8) // 2)),
-            "min_score": max(0.0, float(state.get("min_score", 0.35)) - 0.1),
+            "window_size": max(0, int(state.get("expand_context_window_size", 2))),
+            "top_k": max(
+                int(state.get("expand_context_top_k_min", 3)),
+                int(state.get("top_k", 8) // 2),
+            ),
+            "min_score": max(
+                0.0,
+                float(state.get("min_score", 0.35))
+                + float(state.get("expand_context_min_score_delta", -0.1)),
+            ),
         }
     else:
         tool_name = "search_embeddings"
         tool_args = {
             "query": current_question,
             "top_k": max(5, int(state.get("top_k", 8))),
-            "min_score": max(0.0, float(state.get("min_score", 0.35)) - 0.08),
+            "min_score": max(
+                0.0,
+                float(state.get("min_score", 0.35))
+                + float(state.get("retry_search_min_score_delta", -0.08)),
+            ),
         }
 
     state["current_tool_name"] = tool_name
@@ -376,8 +400,8 @@ def judge_enough_node(state: AgenticRagState) -> AgenticRagState:
     high_confidence = [src for src in current_sources if float(src.get("score") or 0.0) >= min_score]
 
     state["enough_for_finalize"] = (
-        len(high_confidence) >= 1
-        or len(current_sources) >= 4
+        len(high_confidence) >= max(1, int(state.get("finalize_min_high_confidence", 1)))
+        or len(current_sources) >= max(1, int(state.get("finalize_min_sources", 4)))
         or current_tool_round >= max_tool_rounds
         or current_expand_calls >= max_expand_calls
     )
@@ -415,7 +439,7 @@ def finalize_answer_node_factory(chat_client: ChatClient):
         )
 
         if not sources:
-            answer = NO_KB_ANSWER
+            answer = str(state.get("no_kb_answer") or NO_KB_ANSWER)
         else:
             evidence_lines: List[str] = []
             sorted_sources = sorted(
@@ -423,11 +447,14 @@ def finalize_answer_node_factory(chat_client: ChatClient):
                 key=lambda item: (-(float(item.get("score") or 0.0)), int(item.get("index") or 0)),
             )
 
-            for src in sorted_sources[:12]:
+            evidence_max_sources = max(1, int(state.get("evidence_max_sources", 12)))
+            snippet_max_chars = max(80, int(state.get("evidence_snippet_max_chars", 380)))
+
+            for src in sorted_sources[:evidence_max_sources]:
                 ref_index = src.get("index")
                 title = src.get("title") or "未命名来源"
                 snippet = str(src.get("content") or "").strip().replace("\n", " ")
-                snippet = snippet[:380]
+                snippet = snippet[:snippet_max_chars]
                 evidence_lines.append(f"[ref:{ref_index}] 标题: {title} | 证据: {snippet}")
 
             answer = _generate_answer_with_evidence(
@@ -435,6 +462,11 @@ def finalize_answer_node_factory(chat_client: ChatClient):
                 question=question,
                 evidence_lines=evidence_lines,
                 max_tokens=int(state.get("answer_max_tokens", 800)),
+                system_prompt=str(
+                    state.get("answer_generation_system_prompt") or ""
+                ),
+                temperature=float(state.get("answer_generation_temperature", 0.2)),
+                no_kb_answer=str(state.get("no_kb_answer") or NO_KB_ANSWER),
             )
 
             valid_refs = {
@@ -444,7 +476,7 @@ def finalize_answer_node_factory(chat_client: ChatClient):
             }
             answer = _ensure_valid_refs(answer, valid_refs)
             if not answer.strip():
-                answer = NO_KB_ANSWER
+                answer = str(state.get("no_kb_answer") or NO_KB_ANSWER)
             if valid_refs and not REF_PATTERN.search(answer):
                 smallest = min(valid_refs)
                 answer = f"{answer.rstrip()}[ref:{smallest}]"
@@ -497,11 +529,15 @@ def aggregate_answers_node_factory(chat_client: ChatClient):
         )
 
         if not question_answers:
-            state["final_answer"] = NO_KB_ANSWER
+            state["final_answer"] = str(state.get("no_kb_answer") or NO_KB_ANSWER)
             return state
 
         if len(question_answers) == 1:
-            single_answer = str(question_answers[0].get("answer") or NO_KB_ANSWER)
+            single_answer = str(
+                question_answers[0].get("answer")
+                or state.get("no_kb_answer")
+                or NO_KB_ANSWER
+            )
             state["final_answer"] = single_answer
 
             if state.get("stream_output", True):
@@ -526,7 +562,10 @@ def aggregate_answers_node_factory(chat_client: ChatClient):
             "请合并为最终回答。"
         )
 
-        fallback_answer = _fallback_concat(question_answers)
+        fallback_answer = _fallback_concat(
+            question_answers,
+            str(state.get("no_kb_answer") or NO_KB_ANSWER),
+        )
 
         if state.get("stream_output", True):
             state["final_answer_prompt"] = user_prompt
@@ -537,10 +576,15 @@ def aggregate_answers_node_factory(chat_client: ChatClient):
             aggregated = run_async_in_thread(
                 chat_client.complete(
                     messages=[
-                        {"role": "system", "content": AGGREGATION_SYSTEM_PROMPT},
+                        {
+                            "role": "system",
+                            "content": str(
+                                state.get("aggregation_system_prompt") or ""
+                            ),
+                        },
                         {"role": "user", "content": user_prompt},
                     ],
-                    temperature=0.2,
+                    temperature=float(state.get("aggregation_temperature", 0.2)),
                     max_tokens=max(500, int(state.get("answer_max_tokens", 800)) + 400),
                 )
             )
@@ -551,7 +595,7 @@ def aggregate_answers_node_factory(chat_client: ChatClient):
             state["final_answer"] = fallback_answer
 
         if not state["final_answer"].strip():
-            state["final_answer"] = NO_KB_ANSWER
+            state["final_answer"] = str(state.get("no_kb_answer") or NO_KB_ANSWER)
         return state
 
     return aggregate_answers_node
@@ -562,6 +606,9 @@ def _analyze_query_with_llm(
     original_query: str,
     conversation_summary: str,
     max_split: int,
+    system_prompt: str,
+    temperature: float,
+    max_tokens: int,
 ) -> Dict[str, Any]:
     payload = {
         "is_clear": True,
@@ -580,11 +627,11 @@ def _analyze_query_with_llm(
         response_text = run_async_in_thread(
             chat_client.complete(
                 messages=[
-                    {"role": "system", "content": QUERY_ANALYSIS_SYSTEM_PROMPT},
+                    {"role": "system", "content": system_prompt},
                     {"role": "user", "content": user_prompt},
                 ],
-                temperature=0.1,
-                max_tokens=320,
+                temperature=temperature,
+                max_tokens=max_tokens,
             )
         )
 
@@ -611,9 +658,12 @@ def _generate_answer_with_evidence(
     question: str,
     evidence_lines: List[str],
     max_tokens: int,
+    system_prompt: str,
+    temperature: float,
+    no_kb_answer: str,
 ) -> str:
     if not evidence_lines:
-        return NO_KB_ANSWER
+        return no_kb_answer
 
     evidence_text = "\n".join(evidence_lines)
     user_prompt = (
@@ -627,17 +677,17 @@ def _generate_answer_with_evidence(
         result = run_async_in_thread(
             chat_client.complete(
                 messages=[
-                    {"role": "system", "content": ANSWER_GENERATION_SYSTEM_PROMPT},
+                    {"role": "system", "content": system_prompt},
                     {"role": "user", "content": user_prompt},
                 ],
-                temperature=0.2,
+                temperature=temperature,
                 max_tokens=max(320, max_tokens),
             )
         )
         return str(result or "").strip()
     except Exception as exc:  # pragma: no cover
         logger.warning("answer generation failed: %s", exc)
-        return NO_KB_ANSWER
+        return no_kb_answer
 
 
 def _safe_parse_json(text: str) -> Dict[str, Any] | None:
@@ -699,7 +749,7 @@ def _ensure_valid_refs(answer: str, valid_refs: set[int]) -> str:
     return cleaned.strip()
 
 
-def _fallback_concat(question_answers: List[Dict[str, Any]]) -> str:
+def _fallback_concat(question_answers: List[Dict[str, Any]], no_kb_answer: str) -> str:
     parts = [str(item.get("answer") or "").strip() for item in question_answers if item.get("answer")]
     text = "\n\n".join([part for part in parts if part]).strip()
-    return text or NO_KB_ANSWER
+    return text or no_kb_answer

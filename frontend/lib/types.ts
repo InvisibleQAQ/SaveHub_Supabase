@@ -97,6 +97,42 @@ export interface RSSReaderState {
     showThumbnails: boolean
     sidebarPinned: boolean
     githubToken?: string
+
+    agenticRagTopK: number
+    agenticRagMinScore: number
+    agenticRagMaxSplitQuestions: number
+    agenticRagMaxToolRoundsPerQuestion: number
+    agenticRagMaxExpandCallsPerQuestion: number
+    agenticRagRetryToolOnFailure: boolean
+    agenticRagMaxToolRetry: number
+    agenticRagAnswerMaxTokens: number
+
+    agenticRagHistorySummaryTemperature: number
+    agenticRagHistorySummaryMaxTokens: number
+    agenticRagQueryAnalysisTemperature: number
+    agenticRagQueryAnalysisMaxTokens: number
+    agenticRagAnswerGenerationTemperature: number
+    agenticRagAggregationTemperature: number
+
+    agenticRagExpandContextWindowSize: number
+    agenticRagExpandContextTopKMin: number
+    agenticRagExpandContextMinScoreDelta: number
+    agenticRagRetrySearchMinScoreDelta: number
+    agenticRagSeedSourceLimit: number
+
+    agenticRagFinalizeMinSources: number
+    agenticRagFinalizeMinHighConfidence: number
+    agenticRagEvidenceMaxSources: number
+    agenticRagEvidenceSnippetMaxChars: number
+    agenticRagSourceContentMaxChars: number
+
+    agenticRagQueryAnalysisSystemPrompt: string
+    agenticRagClarificationPrompt: string
+    agenticRagAnswerGenerationSystemPrompt: string
+    agenticRagAggregationSystemPrompt: string
+    agenticRagNoKbAnswer: string
+    agenticRagHistorySummarySystemPrompt: string
+    agenticRagHistorySummaryUserPromptTemplate: string
   }
 }
 
