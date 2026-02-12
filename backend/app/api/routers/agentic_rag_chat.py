@@ -4,6 +4,7 @@ Agentic-RAG Chat API 路由。
 提供基于 Agentic-RAG 的智能问答接口，支持 SSE v2 流式响应。
 """
 
+import asyncio
 import json
 import logging
 from typing import AsyncGenerator
@@ -22,6 +23,7 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/agentic-rag", tags=["agentic-rag"])
 
 SSE_V2_EVENTS = {
+    "progress",
     "rewrite",
     "clarification_required",
     "tool_call",
@@ -32,6 +34,7 @@ SSE_V2_EVENTS = {
     "error",
 }
 
+
 async def _sse_generator(
     service: AgenticRagService,
     request: AgenticRagChatRequest,
@@ -40,6 +43,9 @@ async def _sse_generator(
     messages = [{"role": m.role, "content": m.content} for m in request.messages]
 
     try:
+        # 发送首包注释，帮助某些代理/浏览器尽快建立并刷新流式通道
+        yield ": stream-open\n\n"
+
         async for event in service.stream_chat(
             messages=messages,
             top_k=request.top_k,
@@ -54,8 +60,11 @@ async def _sse_generator(
             if event_name not in SSE_V2_EVENTS:
                 continue
 
-            yield f"event: {event_name}\n"
-            yield f"data: {json.dumps(event.get('data', {}), ensure_ascii=False)}\n\n"
+            payload = json.dumps(event.get("data", {}), ensure_ascii=False)
+            yield f"event: {event_name}\ndata: {payload}\n\n"
+
+            # 主动让出事件循环，降低在部分运行环境下的流式聚合概率
+            await asyncio.sleep(0)
     except Exception as e:
         logger.error(f"Agentic-RAG SSE stream error: {e}")
         yield "event: error\n"
@@ -72,6 +81,7 @@ async def agentic_rag_chat_stream(
     Agentic-RAG 流式问答接口（SSE v2）。
 
     SSE 事件类型：
+    - progress
     - rewrite
     - clarification_required
     - tool_call
@@ -112,8 +122,10 @@ async def agentic_rag_chat_stream(
         _sse_generator(service, chat_request),
         media_type="text/event-stream",
         headers={
-            "Cache-Control": "no-cache",
+            "Cache-Control": "no-cache, no-transform",
+            "Pragma": "no-cache",
             "Connection": "keep-alive",
             "X-Accel-Buffering": "no",
+            "Content-Encoding": "identity",
         },
     )

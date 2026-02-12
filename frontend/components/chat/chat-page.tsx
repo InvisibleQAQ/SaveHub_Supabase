@@ -65,7 +65,7 @@ function appendStageLog(
       message,
       timestamp: Date.now(),
     },
-  ].slice(-8)
+  ]
 }
 
 function toNumber(value: unknown, fallback = 0): number {

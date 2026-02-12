@@ -146,7 +146,11 @@ export const agenticRagApi = {
 
     const response = await fetchWithAuth(`${API_BASE}/api/agentic-rag/stream`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: {
+        "Content-Type": "application/json",
+        Accept: "text/event-stream",
+        "Cache-Control": "no-cache",
+      },
       body: JSON.stringify({ messages, ...options }),
       signal,
     })

@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useState } from "react"
+import { useEffect, useRef, useState } from "react"
 import {
   ChevronDown,
   ChevronRight,
@@ -106,10 +106,35 @@ export function ChatStatus({
   isRunning = true,
 }: ChatStatusProps) {
   const [isTimelineOpen, setIsTimelineOpen] = useState(!defaultCollapsed)
+  const timelineRef = useRef<HTMLDivElement>(null)
+  const shouldStickToBottomRef = useRef(true)
 
   useEffect(() => {
     setIsTimelineOpen(!defaultCollapsed)
   }, [defaultCollapsed])
+
+  useEffect(() => {
+    if (isTimelineOpen) {
+      shouldStickToBottomRef.current = true
+    }
+  }, [isTimelineOpen])
+
+  useEffect(() => {
+    const timeline = timelineRef.current
+    if (!timeline || !isTimelineOpen || !shouldStickToBottomRef.current) {
+      return
+    }
+
+    timeline.scrollTop = timeline.scrollHeight
+  }, [stageLogs.length, isTimelineOpen])
+
+  const handleTimelineScroll = () => {
+    const timeline = timelineRef.current
+    if (!timeline) return
+
+    const distanceToBottom = timeline.scrollHeight - timeline.scrollTop - timeline.clientHeight
+    shouldStickToBottomRef.current = distanceToBottom <= 24
+  }
 
   return (
     <div className="space-y-3 rounded-2xl border border-border/70 bg-card/80 p-4 shadow-sm backdrop-blur-sm">
@@ -173,30 +198,37 @@ export function ChatStatus({
             </span>
           </button>
 
-          {isTimelineOpen &&
-            stageLogs.map((log, index) => {
-              const isLast = index === stageLogs.length - 1
+          {isTimelineOpen && (
+            <div
+              ref={timelineRef}
+              onScroll={handleTimelineScroll}
+              className="max-h-[24rem] space-y-2 overflow-y-auto pr-1"
+            >
+              {stageLogs.map((log, index) => {
+                const isLast = index === stageLogs.length - 1
 
-              return (
-                <div key={log.id} className="relative pl-7">
-                  {!isLast && (
-                    <span className="absolute left-[9px] top-5 h-[calc(100%-10px)] w-px bg-border/60" />
-                  )}
+                return (
+                  <div key={log.id} className="relative pl-7">
+                    {!isLast && (
+                      <span className="absolute left-[9px] top-5 h-[calc(100%-10px)] w-px bg-border/60" />
+                    )}
 
-                  <span className="absolute left-0 top-0.5 inline-flex h-[18px] w-[18px] items-center justify-center rounded-full border border-border/70 bg-card">
-                    <TimelineStageIcon stage={log.stage} />
-                  </span>
+                    <span className="absolute left-0 top-0.5 inline-flex h-[18px] w-[18px] items-center justify-center rounded-full border border-border/70 bg-card">
+                      <TimelineStageIcon stage={log.stage} />
+                    </span>
 
-                  <div className="space-y-0.5">
-                    <div className="flex items-center justify-between gap-3 text-[11px] leading-none">
-                      <span className="font-medium text-foreground/90">{stageLabel(log.stage)}</span>
-                      <span className="text-muted-foreground">{formatTimelineTime(log.timestamp)}</span>
+                    <div className="space-y-0.5">
+                      <div className="flex items-center justify-between gap-3 text-[11px] leading-none">
+                        <span className="font-medium text-foreground/90">{stageLabel(log.stage)}</span>
+                        <span className="text-muted-foreground">{formatTimelineTime(log.timestamp)}</span>
+                      </div>
+                      <div className="text-xs text-muted-foreground">{log.message}</div>
                     </div>
-                    <div className="text-xs text-muted-foreground">{log.message}</div>
                   </div>
-                </div>
-              )
-            })}
+                )
+              })}
+            </div>
+          )}
         </div>
       )}
     </div>
