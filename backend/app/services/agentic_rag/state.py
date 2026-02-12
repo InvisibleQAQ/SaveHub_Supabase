@@ -16,6 +16,7 @@ class AgenticRagState(TypedDict, total=False):
     retry_tool_on_failure: bool
     max_tool_retry: int
     answer_max_tokens: int
+    stream_output: bool
 
     conversation_summary: str
     last_user_query: str
@@ -43,6 +44,7 @@ class AgenticRagState(TypedDict, total=False):
     source_index_map: Dict[str, int]
     all_sources: List[Dict[str, Any]]
     final_answer: str
+    final_answer_prompt: str
 
     events: List[Dict[str, Any]]
     error: Optional[str]
@@ -58,6 +60,7 @@ def create_initial_state(
     retry_tool_on_failure: bool,
     max_tool_retry: int,
     answer_max_tokens: int,
+    stream_output: bool = True,
 ) -> AgenticRagState:
     """创建图初始状态。"""
     return {
@@ -70,6 +73,7 @@ def create_initial_state(
         "retry_tool_on_failure": retry_tool_on_failure,
         "max_tool_retry": max_tool_retry,
         "answer_max_tokens": answer_max_tokens,
+        "stream_output": stream_output,
         "conversation_summary": "",
         "last_user_query": "",
         "original_query": "",
@@ -92,6 +96,7 @@ def create_initial_state(
         "source_index_map": {},
         "all_sources": [],
         "final_answer": "",
+        "final_answer_prompt": "",
         "events": [],
         "error": None,
     }

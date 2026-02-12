@@ -476,6 +476,7 @@ def aggregate_answers_node_factory(chat_client: ChatClient):
 
     def aggregate_answers_node(state: AgenticRagState) -> AgenticRagState:
         question_answers = state.get("question_answers", [])
+        state["final_answer_prompt"] = ""
 
         append_event(
             state,
@@ -500,7 +501,16 @@ def aggregate_answers_node_factory(chat_client: ChatClient):
             return state
 
         if len(question_answers) == 1:
-            state["final_answer"] = str(question_answers[0].get("answer") or NO_KB_ANSWER)
+            single_answer = str(question_answers[0].get("answer") or NO_KB_ANSWER)
+            state["final_answer"] = single_answer
+
+            if state.get("stream_output", True):
+                user_prompt = (
+                    f"原始问题：{state.get('original_query', '')}\n\n"
+                    f"子问题回答：\n{single_answer}\n\n"
+                    "请在不引入外部事实的前提下，整理为最终回答。"
+                )
+                state["final_answer_prompt"] = user_prompt
             return state
 
         answer_lines: List[str] = []
@@ -516,6 +526,13 @@ def aggregate_answers_node_factory(chat_client: ChatClient):
             "请合并为最终回答。"
         )
 
+        fallback_answer = _fallback_concat(question_answers)
+
+        if state.get("stream_output", True):
+            state["final_answer_prompt"] = user_prompt
+            state["final_answer"] = fallback_answer
+            return state
+
         try:
             aggregated = run_async_in_thread(
                 chat_client.complete(
@@ -528,10 +545,10 @@ def aggregate_answers_node_factory(chat_client: ChatClient):
                 )
             )
             aggregated_text = str(aggregated or "").strip()
-            state["final_answer"] = aggregated_text or _fallback_concat(question_answers)
+            state["final_answer"] = aggregated_text or fallback_answer
         except Exception as exc:  # pragma: no cover
             logger.warning("aggregate answers failed: %s", exc)
-            state["final_answer"] = _fallback_concat(question_answers)
+            state["final_answer"] = fallback_answer
 
         if not state["final_answer"].strip():
             state["final_answer"] = NO_KB_ANSWER

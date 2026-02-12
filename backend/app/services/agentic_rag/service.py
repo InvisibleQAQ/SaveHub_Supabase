@@ -6,7 +6,7 @@ from typing import Any, AsyncGenerator, Dict, List
 from supabase import Client
 
 from app.services.agentic_rag.graph import build_agentic_rag_graph
-from app.services.agentic_rag.prompts import NO_KB_ANSWER
+from app.services.agentic_rag.prompts import AGGREGATION_SYSTEM_PROMPT, NO_KB_ANSWER
 from app.services.agentic_rag.state import AgenticRagState, create_initial_state
 from app.services.agentic_rag.tools import AgenticRagTools
 from app.services.ai import ChatClient, EmbeddingClient
@@ -264,6 +264,7 @@ class AgenticRagService:
             retry_tool_on_failure=retry_tool_on_failure,
             max_tool_retry=max_tool_retry,
             answer_max_tokens=answer_max_tokens,
+            stream_output=True,
         )
 
         try:
@@ -320,12 +321,47 @@ class AgenticRagService:
                     yield done_event
                 return
 
-            final_answer = str(final_state.get("final_answer") or "").strip() or NO_KB_ANSWER
-            content_event = self._normalize_v2_event(
-                {"event": "content", "data": {"delta": final_answer}}
-            )
-            if content_event:
-                yield content_event
+            final_answer_prompt = str(final_state.get("final_answer_prompt") or "").strip()
+            fallback_final_answer = str(final_state.get("final_answer") or "").strip() or NO_KB_ANSWER
+
+            if final_answer_prompt:
+                streamed_chunks: List[str] = []
+                try:
+                    async for chunk in self.chat_client.stream(
+                        messages=[
+                            {"role": "system", "content": AGGREGATION_SYSTEM_PROMPT},
+                            {"role": "user", "content": final_answer_prompt},
+                        ],
+                        temperature=0.2,
+                        max_tokens=max(500, int(answer_max_tokens) + 400),
+                    ):
+                        if not chunk:
+                            continue
+
+                        streamed_chunks.append(chunk)
+                        content_event = self._normalize_v2_event(
+                            {"event": "content", "data": {"delta": chunk}}
+                        )
+                        if content_event:
+                            yield content_event
+                except Exception as exc:  # pragma: no cover
+                    logger.warning("final answer stream failed, fallback to cached answer: %s", exc)
+
+                streamed_answer = "".join(streamed_chunks).strip()
+                if streamed_answer:
+                    final_state["final_answer"] = streamed_answer
+                else:
+                    content_event = self._normalize_v2_event(
+                        {"event": "content", "data": {"delta": fallback_final_answer}}
+                    )
+                    if content_event:
+                        yield content_event
+            else:
+                content_event = self._normalize_v2_event(
+                    {"event": "content", "data": {"delta": fallback_final_answer}}
+                )
+                if content_event:
+                    yield content_event
 
             done_event = self._normalize_v2_event(
                 {
