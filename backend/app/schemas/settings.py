@@ -19,7 +19,7 @@ class SettingsBase(BaseModel):
     sidebar_pinned: bool = False
     github_token: Optional[str] = None
 
-    agentic_rag_top_k: int = 8
+    agentic_rag_top_k: int = 10
     agentic_rag_min_score: float = 0.35
     agentic_rag_max_split_questions: int = 3
     agentic_rag_max_tool_rounds_per_question: int = 3
@@ -36,12 +36,12 @@ class SettingsBase(BaseModel):
     agentic_rag_aggregation_temperature: float = 0.2
 
     agentic_rag_expand_context_window_size: int = 2
-    agentic_rag_expand_context_top_k_min: int = 3
+    agentic_rag_expand_context_top_k_min: int = 4
     agentic_rag_expand_context_min_score_delta: float = -0.1
-    agentic_rag_retry_search_min_score_delta: float = -0.08
+    agentic_rag_retry_search_min_score_delta: float = -0.15
     agentic_rag_seed_source_limit: int = 8
 
-    agentic_rag_finalize_min_sources: int = 4
+    agentic_rag_finalize_min_sources: int = 5
     agentic_rag_finalize_min_high_confidence: int = 1
     agentic_rag_evidence_max_sources: int = 12
     agentic_rag_evidence_snippet_max_chars: int = 380

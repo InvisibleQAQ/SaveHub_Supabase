@@ -2,6 +2,7 @@
 
 import asyncio
 import logging
+import re
 import threading
 from uuid import UUID
 from typing import Any, Dict, List, Optional
@@ -17,6 +18,35 @@ logger = logging.getLogger(__name__)
 class AgenticRagTools:
     """Agentic-RAG 工具集合。"""
 
+    QUERY_TERM_PATTERN = re.compile(r"[a-z0-9][a-z0-9._-]{1,}|[\u4e00-\u9fff]{2,}")
+    QUERY_STOP_TERMS = {
+        "the",
+        "and",
+        "with",
+        "for",
+        "from",
+        "what",
+        "which",
+        "when",
+        "where",
+        "how",
+        "why",
+        "is",
+        "are",
+        "to",
+        "of",
+        "in",
+        "on",
+        "at",
+        "this",
+        "that",
+        "请问",
+        "一下",
+        "哪些",
+        "什么",
+        "一下子",
+    }
+
     def __init__(
         self,
         supabase: Client,
@@ -28,6 +58,12 @@ class AgenticRagTools:
         self.user_id = user_id
         self.embedding_client = embedding_client
         self.source_content_max_chars = max(100, int(source_content_max_chars))
+        self.semantic_fetch_multiplier = 5
+        self.semantic_fetch_cap = 72
+        self.semantic_backoff_step = 0.1
+        self.semantic_backoff_rounds = 2
+        self.semantic_backoff_floor = 0.05
+        self.keyword_candidate_limit = 36
 
     def search_embeddings_tool(
         self,
@@ -44,24 +80,101 @@ class AgenticRagTools:
             return []
 
         safe_top_k = max(1, int(top_k))
-        fetch_count = min(48, max(safe_top_k * 3, safe_top_k))
+        fetch_count = min(
+            self.semantic_fetch_cap,
+            max(safe_top_k * self.semantic_fetch_multiplier, safe_top_k + 12),
+        )
 
         try:
             query_embedding = run_async_in_thread(self.embedding_client.embed(query))
-            hits = search_all_embeddings(
-                supabase=self.supabase,
+            semantic_hits = self._search_semantic_with_backoff(
                 query_embedding=query_embedding,
-                user_id=self.user_id,
                 top_k=fetch_count,
                 min_score=min_score,
+                target_hits=max(safe_top_k * 2, safe_top_k + 2),
+            )
+            normalized_semantic = [self._normalize_hit(hit) for hit in semantic_hits]
+
+            keyword_hits = self._search_keyword_candidates(
+                query=query,
+                limit=max(safe_top_k * 3, min(fetch_count, self.keyword_candidate_limit)),
             )
 
-            normalized = [self._normalize_hit(hit) for hit in hits]
-            reranked = self._diversify_sources(normalized, top_k=safe_top_k)
+            merged_sources = self._merge_recall_sources(
+                semantic_sources=normalized_semantic,
+                keyword_sources=keyword_hits,
+                query=query,
+            )
+
+            reranked = self._diversify_sources(
+                merged_sources,
+                top_k=safe_top_k,
+                prefer_breadth=self._prefer_breadth_query(query),
+            )
             return reranked
         except Exception as exc:
             logger.error("search_embeddings_tool failed: %s", exc)
             raise
+
+    def _search_semantic_with_backoff(
+        self,
+        query_embedding: List[float],
+        top_k: int,
+        min_score: float,
+        target_hits: int,
+    ) -> List[Dict[str, Any]]:
+        """语义检索（自适应放宽阈值，优先提升召回）。"""
+        thresholds: List[float] = []
+        current_threshold = max(0.0, float(min_score))
+        thresholds.append(current_threshold)
+
+        for _ in range(max(0, int(self.semantic_backoff_rounds))):
+            current_threshold = max(
+                float(self.semantic_backoff_floor),
+                current_threshold - float(self.semantic_backoff_step),
+            )
+            if current_threshold >= thresholds[-1]:
+                continue
+            thresholds.append(current_threshold)
+
+        merged_hits: Dict[str, Dict[str, Any]] = {}
+        safe_target_hits = max(1, int(target_hits))
+
+        for threshold in thresholds:
+            round_hits = search_all_embeddings(
+                supabase=self.supabase,
+                query_embedding=query_embedding,
+                user_id=self.user_id,
+                top_k=top_k,
+                min_score=threshold,
+            )
+
+            for hit in round_hits:
+                hit_id = str(hit.get("id") or "").strip()
+                if not hit_id:
+                    hit_id = (
+                        f"{hit.get('article_id') or ''}:"
+                        f"{hit.get('repository_id') or ''}:"
+                        f"{hit.get('chunk_index') or 0}:"
+                        f"{len(merged_hits)}"
+                    )
+
+                existing = merged_hits.get(hit_id)
+                if existing is None:
+                    merged_hits[hit_id] = hit
+                    continue
+
+                if float(hit.get("score") or 0.0) > float(existing.get("score") or 0.0):
+                    merged_hits[hit_id] = hit
+
+            if len(merged_hits) >= safe_target_hits:
+                break
+
+        ordered_hits = list(merged_hits.values())
+        ordered_hits.sort(
+            key=lambda item: (-(float(item.get("score") or 0.0)), int(item.get("chunk_index") or 0))
+        )
+        return ordered_hits
 
     def expand_context_tool(
         self,
@@ -216,7 +329,11 @@ class AgenticRagTools:
             url = article_info.get("url")
         else:
             source_type = "repository"
-            title = repository_info.get("name") or "未知仓库"
+            title = (
+                repository_info.get("name")
+                or repository_info.get("full_name")
+                or "未知仓库"
+            )
             url = repository_info.get("html_url")
 
         return {
@@ -260,7 +377,12 @@ class AgenticRagTools:
             return f"repository:{repository_id}"
         return f"embedding:{source.get('id') or ''}"
 
-    def _diversify_sources(self, sources: List[Dict[str, Any]], top_k: int) -> List[Dict[str, Any]]:
+    def _diversify_sources(
+        self,
+        sources: List[Dict[str, Any]],
+        top_k: int,
+        prefer_breadth: bool = False,
+    ) -> List[Dict[str, Any]]:
         """在高分前提下增加来源多样性，减少同源重复。"""
         if not sources:
             return []
@@ -271,7 +393,7 @@ class AgenticRagTools:
             key=lambda item: (-(float(item.get("score") or 0.0)), int(item.get("chunk_index") or 0)),
         )
 
-        per_family_limit = 2 if safe_top_k >= 6 else 1
+        per_family_limit = 1 if prefer_breadth else (2 if safe_top_k >= 6 else 1)
         family_count: Dict[str, int] = {}
         selected: List[Dict[str, Any]] = []
 
@@ -295,6 +417,278 @@ class AgenticRagTools:
                     break
 
         return selected[:safe_top_k]
+
+    def _search_keyword_candidates(self, query: str, limit: int) -> List[Dict[str, Any]]:
+        """关键词兜底召回（content + repository metadata）。"""
+        terms = self._extract_query_terms(query)
+        if not terms:
+            return []
+
+        safe_limit = max(1, int(limit))
+        rows: List[Dict[str, Any]] = []
+
+        rows.extend(self._search_content_keyword_rows(terms=terms, limit=safe_limit))
+        rows.extend(self._search_repository_keyword_rows(terms=terms, limit=safe_limit))
+
+        deduped_rows: Dict[str, Dict[str, Any]] = {}
+        for row in rows:
+            source_id = str(row.get("id") or "").strip()
+            if not source_id:
+                continue
+            deduped_rows[source_id] = row
+
+        normalized = [self._normalize_expand_row(row) for row in deduped_rows.values()]
+        for item in normalized:
+            item["content"] = (item.get("content") or "")[: self.source_content_max_chars]
+            item["score"] = self._keyword_match_score(item, terms)
+
+        normalized.sort(
+            key=lambda item: (-(float(item.get("score") or 0.0)), int(item.get("chunk_index") or 0))
+        )
+        return normalized[:safe_limit]
+
+    def _search_content_keyword_rows(self, terms: List[str], limit: int) -> List[Dict[str, Any]]:
+        """基于 embedding chunk 内容做关键词召回。"""
+        clauses: List[str] = []
+        for term in terms[:4]:
+            escaped = self._escape_ilike_term(term)
+            if escaped:
+                clauses.append(f"content.ilike.%{escaped}%")
+
+        if not clauses:
+            return []
+
+        try:
+            result = (
+                self.supabase.table("all_embeddings")
+                .select(
+                    "id, article_id, repository_id, chunk_index, content, "
+                    "articles(title, url), "
+                    "repositories(name, full_name, html_url, owner_login, owner_avatar_url, stargazers_count, language, description)"
+                )
+                .eq("user_id", self.user_id)
+                .or_(",".join(clauses))
+                .limit(limit)
+                .execute()
+            )
+            return result.data or []
+        except Exception as exc:
+            logger.warning("keyword content recall query failed: %s", exc)
+            return []
+
+    def _search_repository_keyword_rows(self, terms: List[str], limit: int) -> List[Dict[str, Any]]:
+        """基于仓库 metadata 先召回 repo，再映射到 embeddings。"""
+        clauses: List[str] = []
+        for term in terms[:4]:
+            escaped = self._escape_ilike_term(term)
+            if not escaped:
+                continue
+            clauses.extend(
+                [
+                    f"name.ilike.%{escaped}%",
+                    f"full_name.ilike.%{escaped}%",
+                    f"description.ilike.%{escaped}%",
+                ]
+            )
+
+        if not clauses:
+            return []
+
+        try:
+            repository_rows = (
+                self.supabase.table("repositories")
+                .select("id")
+                .eq("user_id", self.user_id)
+                .or_(",".join(clauses))
+                .limit(max(10, limit))
+                .execute()
+            ).data or []
+        except Exception as exc:
+            logger.warning("keyword repository recall query failed: %s", exc)
+            return []
+
+        repository_ids = [str(row.get("id") or "").strip() for row in repository_rows if row.get("id")]
+        repository_ids = [item for item in repository_ids if item]
+        if not repository_ids:
+            return []
+
+        try:
+            result = (
+                self.supabase.table("all_embeddings")
+                .select(
+                    "id, article_id, repository_id, chunk_index, content, "
+                    "articles(title, url), "
+                    "repositories(name, full_name, html_url, owner_login, owner_avatar_url, stargazers_count, language, description)"
+                )
+                .eq("user_id", self.user_id)
+                .in_("repository_id", repository_ids)
+                .order("chunk_index")
+                .limit(max(limit, len(repository_ids) * 2))
+                .execute()
+            )
+            return result.data or []
+        except Exception as exc:
+            logger.warning("keyword repository to embedding mapping failed: %s", exc)
+            return []
+
+    def _merge_recall_sources(
+        self,
+        semantic_sources: List[Dict[str, Any]],
+        keyword_sources: List[Dict[str, Any]],
+        query: str,
+    ) -> List[Dict[str, Any]]:
+        """融合语义召回与关键词召回，统一去重后排序。"""
+        terms = self._extract_query_terms(query)
+        merged: Dict[str, Dict[str, Any]] = {}
+
+        def _source_key(source: Dict[str, Any]) -> str:
+            source_id = str(source.get("id") or "").strip()
+            if source_id:
+                return f"id:{source_id}"
+
+            article_id = str(source.get("article_id") or "").strip()
+            if article_id:
+                return f"article:{article_id}:{source.get('chunk_index') or 0}"
+
+            repository_id = str(source.get("repository_id") or "").strip()
+            if repository_id:
+                return f"repository:{repository_id}:{source.get('chunk_index') or 0}"
+
+            content = str(source.get("content") or "").strip()
+            return f"content:{content[:120]}" if content else ""
+
+        def _ingest(source: Dict[str, Any]) -> None:
+            source_key = _source_key(source)
+            if not source_key:
+                return
+
+            candidate = dict(source)
+            if terms:
+                candidate["score"] = self._keyword_match_score(candidate, terms)
+
+            existing = merged.get(source_key)
+            if existing is None:
+                merged[source_key] = candidate
+                return
+
+            existing_score = float(existing.get("score") or 0.0)
+            candidate_score = float(candidate.get("score") or 0.0)
+
+            if candidate_score >= existing_score:
+                preferred, fallback = candidate, existing
+            else:
+                preferred, fallback = existing, candidate
+
+            merged_source = dict(preferred)
+            for field in (
+                "title",
+                "url",
+                "description",
+                "language",
+                "owner_login",
+                "owner_avatar_url",
+                "stargazers_count",
+                "article_id",
+                "repository_id",
+                "source_type",
+            ):
+                if not merged_source.get(field):
+                    merged_source[field] = fallback.get(field)
+
+            if len(str(fallback.get("content") or "")) > len(str(merged_source.get("content") or "")):
+                merged_source["content"] = (fallback.get("content") or "")[: self.source_content_max_chars]
+
+            merged[source_key] = merged_source
+
+        for source in semantic_sources:
+            _ingest(source)
+
+        for source in keyword_sources:
+            _ingest(source)
+
+        merged_list = list(merged.values())
+        merged_list.sort(
+            key=lambda item: (-(float(item.get("score") or 0.0)), int(item.get("chunk_index") or 0))
+        )
+        return merged_list
+
+    def _keyword_match_score(self, source: Dict[str, Any], terms: List[str]) -> float:
+        """根据关键词命中情况给来源打分（用于召回排序，不替代语义分数）。"""
+        base_score = float(source.get("score") or 0.0)
+        if not terms:
+            return base_score
+
+        title = str(source.get("title") or "").lower()
+        content = str(source.get("content") or "").lower()
+        description = str(source.get("description") or "").lower()
+        text = f"{title}\n{description}\n{content}"
+
+        matched_terms = [term for term in terms if term and term in text]
+        if not matched_terms:
+            return base_score
+
+        score = 0.36 + 0.08 * min(3, len(matched_terms))
+        if any(term in title for term in matched_terms):
+            score += 0.1
+        if source.get("source_type") == "repository":
+            score += 0.04
+        if len(terms) <= 2:
+            score += 0.04
+
+        return min(0.9, max(base_score, score))
+
+    def _prefer_breadth_query(self, query: str) -> bool:
+        """判断是否更偏向“广覆盖召回”策略。"""
+        normalized = str(query or "").strip().lower()
+        if not normalized:
+            return False
+
+        if any(
+            keyword in normalized
+            for keyword in (
+                "有哪些",
+                "有什么",
+                "推荐",
+                "项目",
+                "仓库",
+                "repo",
+                "repository",
+                "列表",
+                "list",
+                "合集",
+            )
+        ):
+            return True
+
+        terms = self._extract_query_terms(normalized)
+        return len(normalized) <= 24 and 1 <= len(terms) <= 3
+
+    @classmethod
+    def _extract_query_terms(cls, query: str) -> List[str]:
+        """提取查询中的关键词（兼容中英文）。"""
+        normalized = str(query or "").strip().lower()
+        if not normalized:
+            return []
+
+        terms: List[str] = []
+        for raw in cls.QUERY_TERM_PATTERN.findall(normalized):
+            term = raw.strip("._-")
+            if len(term) < 2:
+                continue
+            if term in cls.QUERY_STOP_TERMS:
+                continue
+            if term in terms:
+                continue
+
+            terms.append(term)
+            if len(terms) >= 6:
+                break
+
+        return terms
+
+    @staticmethod
+    def _escape_ilike_term(term: str) -> str:
+        return str(term or "").replace("%", "\\%").replace("_", "\\_").strip()
 
 
 def run_async_in_thread(coro):

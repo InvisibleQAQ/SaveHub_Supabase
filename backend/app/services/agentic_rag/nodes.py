@@ -257,14 +257,14 @@ def agent_reason_node(state: AgenticRagState) -> AgenticRagState:
     seed_source_limit = max(1, int(state.get("seed_source_limit", 8)))
     seed_ids = [src.get("id") for src in current_sources if src.get("id")][:seed_source_limit]
 
-    need_more_context = len(current_sources) < max(2, int(state.get("top_k", 8) // 2))
+    need_more_context = len(current_sources) < max(2, int(state.get("top_k", 10) // 2))
     can_expand = state.get("current_expand_calls", 0) < state.get("max_expand_calls_per_question", 2)
 
     if tool_round == 0:
         tool_name = "search_embeddings"
         tool_args = {
             "query": current_question,
-            "top_k": state.get("top_k", 8),
+            "top_k": state.get("top_k", 10),
             "min_score": state.get("min_score", 0.35),
         }
     elif need_more_context and can_expand and seed_ids:
@@ -275,7 +275,7 @@ def agent_reason_node(state: AgenticRagState) -> AgenticRagState:
             "window_size": max(0, int(state.get("expand_context_window_size", 2))),
             "top_k": max(
                 int(state.get("expand_context_top_k_min", 3)),
-                int(state.get("top_k", 8) // 2),
+                int(state.get("top_k", 10) // 2),
             ),
             "min_score": max(
                 0.0,
@@ -287,7 +287,7 @@ def agent_reason_node(state: AgenticRagState) -> AgenticRagState:
         tool_name = "search_embeddings"
         tool_args = {
             "query": current_question,
-            "top_k": max(5, int(state.get("top_k", 8))),
+            "top_k": max(6, int(state.get("top_k", 10))),
             "min_score": max(
                 0.0,
                 float(state.get("min_score", 0.35))
@@ -397,11 +397,22 @@ def judge_enough_node(state: AgenticRagState) -> AgenticRagState:
     current_expand_calls = int(state.get("current_expand_calls", 0))
 
     min_score = float(state.get("min_score", 0.35))
+    finalize_min_sources = max(1, int(state.get("finalize_min_sources", 4)))
+    finalize_min_high_confidence = max(1, int(state.get("finalize_min_high_confidence", 1)))
+    min_sources_for_high_confidence = max(
+        2,
+        min(finalize_min_sources, max(2, int(state.get("top_k", 10) // 3))),
+    )
     high_confidence = [src for src in current_sources if float(src.get("score") or 0.0) >= min_score]
 
+    high_confidence_ready = (
+        len(high_confidence) >= finalize_min_high_confidence
+        and len(current_sources) >= min_sources_for_high_confidence
+    )
+
     state["enough_for_finalize"] = (
-        len(high_confidence) >= max(1, int(state.get("finalize_min_high_confidence", 1)))
-        or len(current_sources) >= max(1, int(state.get("finalize_min_sources", 4)))
+        high_confidence_ready
+        or len(current_sources) >= finalize_min_sources
         or current_tool_round >= max_tool_rounds
         or current_expand_calls >= max_expand_calls
     )

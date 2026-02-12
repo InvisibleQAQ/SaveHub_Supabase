@@ -50,7 +50,7 @@ async def _sse_generator(
 
         async for event in service.stream_chat(
             messages=messages,
-            top_k=request.top_k if request.top_k is not None else int(rag_settings.get("agentic_rag_top_k", 8)),
+            top_k=request.top_k if request.top_k is not None else int(rag_settings.get("agentic_rag_top_k", 10)),
             min_score=(
                 request.min_score
                 if request.min_score is not None

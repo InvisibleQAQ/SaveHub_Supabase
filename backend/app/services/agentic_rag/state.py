@@ -133,16 +133,16 @@ def create_initial_state(
             rag_settings.get("agentic_rag_expand_context_window_size", 2)
         ),
         "expand_context_top_k_min": int(
-            rag_settings.get("agentic_rag_expand_context_top_k_min", 3)
+            rag_settings.get("agentic_rag_expand_context_top_k_min", 4)
         ),
         "expand_context_min_score_delta": float(
             rag_settings.get("agentic_rag_expand_context_min_score_delta", -0.1)
         ),
         "retry_search_min_score_delta": float(
-            rag_settings.get("agentic_rag_retry_search_min_score_delta", -0.08)
+            rag_settings.get("agentic_rag_retry_search_min_score_delta", -0.15)
         ),
         "seed_source_limit": int(rag_settings.get("agentic_rag_seed_source_limit", 8)),
-        "finalize_min_sources": int(rag_settings.get("agentic_rag_finalize_min_sources", 4)),
+        "finalize_min_sources": int(rag_settings.get("agentic_rag_finalize_min_sources", 5)),
         "finalize_min_high_confidence": int(
             rag_settings.get("agentic_rag_finalize_min_high_confidence", 1)
         ),

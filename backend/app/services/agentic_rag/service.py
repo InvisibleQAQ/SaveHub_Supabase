@@ -249,7 +249,7 @@ class AgenticRagService:
     async def stream_chat(
         self,
         messages: List[Dict[str, str]],
-        top_k: int = 8,
+        top_k: int = 10,
         min_score: float = 0.35,
         max_split_questions: int = 3,
         max_tool_rounds_per_question: int = 3,

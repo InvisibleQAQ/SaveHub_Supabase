@@ -17,7 +17,7 @@ const defaultSettings = {
   showThumbnails: true,
   sidebarPinned: false,
 
-  agenticRagTopK: 8,
+  agenticRagTopK: 10,
   agenticRagMinScore: 0.35,
   agenticRagMaxSplitQuestions: 3,
   agenticRagMaxToolRoundsPerQuestion: 3,
@@ -34,12 +34,12 @@ const defaultSettings = {
   agenticRagAggregationTemperature: 0.2,
 
   agenticRagExpandContextWindowSize: 2,
-  agenticRagExpandContextTopKMin: 3,
+  agenticRagExpandContextTopKMin: 4,
   agenticRagExpandContextMinScoreDelta: -0.1,
-  agenticRagRetrySearchMinScoreDelta: -0.08,
+  agenticRagRetrySearchMinScoreDelta: -0.15,
   agenticRagSeedSourceLimit: 8,
 
-  agenticRagFinalizeMinSources: 4,
+  agenticRagFinalizeMinSources: 5,
   agenticRagFinalizeMinHighConfidence: 1,
   agenticRagEvidenceMaxSources: 12,
   agenticRagEvidenceSnippetMaxChars: 380,

@@ -28,34 +28,34 @@ type PresetConfig = {
 
 const PRESET_CONFIGS: Record<PresetKey, PresetConfig> = {
   fast: {
-    agenticRagTopK: 6,
-    agenticRagMinScore: 0.45,
-    agenticRagMaxSplitQuestions: 2,
-    agenticRagMaxToolRoundsPerQuestion: 2,
-    agenticRagMaxExpandCallsPerQuestion: 1,
-    agenticRagRetryToolOnFailure: true,
-    agenticRagMaxToolRetry: 1,
-    agenticRagAnswerMaxTokens: 700,
-  },
-  balanced: {
     agenticRagTopK: 8,
-    agenticRagMinScore: 0.35,
-    agenticRagMaxSplitQuestions: 3,
+    agenticRagMinScore: 0.38,
+    agenticRagMaxSplitQuestions: 2,
     agenticRagMaxToolRoundsPerQuestion: 3,
     agenticRagMaxExpandCallsPerQuestion: 2,
     agenticRagRetryToolOnFailure: true,
     agenticRagMaxToolRetry: 1,
-    agenticRagAnswerMaxTokens: 900,
+    agenticRagAnswerMaxTokens: 800,
   },
-  deep: {
+  balanced: {
     agenticRagTopK: 12,
-    agenticRagMinScore: 0.25,
-    agenticRagMaxSplitQuestions: 4,
-    agenticRagMaxToolRoundsPerQuestion: 5,
+    agenticRagMinScore: 0.3,
+    agenticRagMaxSplitQuestions: 3,
+    agenticRagMaxToolRoundsPerQuestion: 4,
     agenticRagMaxExpandCallsPerQuestion: 3,
     agenticRagRetryToolOnFailure: true,
     agenticRagMaxToolRetry: 2,
-    agenticRagAnswerMaxTokens: 1300,
+    agenticRagAnswerMaxTokens: 1100,
+  },
+  deep: {
+    agenticRagTopK: 16,
+    agenticRagMinScore: 0.2,
+    agenticRagMaxSplitQuestions: 5,
+    agenticRagMaxToolRoundsPerQuestion: 6,
+    agenticRagMaxExpandCallsPerQuestion: 4,
+    agenticRagRetryToolOnFailure: true,
+    agenticRagMaxToolRetry: 3,
+    agenticRagAnswerMaxTokens: 1500,
   },
 }
 

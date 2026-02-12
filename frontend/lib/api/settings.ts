@@ -34,7 +34,7 @@ function transformSettings(raw: Record<string, unknown>): SettingsResponse {
     sidebarPinned: (raw.sidebar_pinned as boolean) ?? false,
     githubToken: raw.github_token as string | undefined,
 
-    agenticRagTopK: (raw.agentic_rag_top_k as number) ?? 8,
+    agenticRagTopK: (raw.agentic_rag_top_k as number) ?? 10,
     agenticRagMinScore: (raw.agentic_rag_min_score as number) ?? 0.35,
     agenticRagMaxSplitQuestions: (raw.agentic_rag_max_split_questions as number) ?? 3,
     agenticRagMaxToolRoundsPerQuestion:
@@ -62,16 +62,16 @@ function transformSettings(raw: Record<string, unknown>): SettingsResponse {
     agenticRagExpandContextWindowSize:
       (raw.agentic_rag_expand_context_window_size as number) ?? 2,
     agenticRagExpandContextTopKMin:
-      (raw.agentic_rag_expand_context_top_k_min as number) ?? 3,
+      (raw.agentic_rag_expand_context_top_k_min as number) ?? 4,
     agenticRagExpandContextMinScoreDelta:
       (raw.agentic_rag_expand_context_min_score_delta as number) ?? -0.1,
     agenticRagRetrySearchMinScoreDelta:
-      (raw.agentic_rag_retry_search_min_score_delta as number) ?? -0.08,
+      (raw.agentic_rag_retry_search_min_score_delta as number) ?? -0.15,
     agenticRagSeedSourceLimit:
       (raw.agentic_rag_seed_source_limit as number) ?? 8,
 
     agenticRagFinalizeMinSources:
-      (raw.agentic_rag_finalize_min_sources as number) ?? 4,
+      (raw.agentic_rag_finalize_min_sources as number) ?? 5,
     agenticRagFinalizeMinHighConfidence:
       (raw.agentic_rag_finalize_min_high_confidence as number) ?? 1,
     agenticRagEvidenceMaxSources:
