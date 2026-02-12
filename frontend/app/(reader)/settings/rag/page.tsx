@@ -11,6 +11,53 @@ import { Textarea } from "@/components/ui/textarea"
 import { Button } from "@/components/ui/button"
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible"
 import { useRSSStore } from "@/lib/store"
+import { cn } from "@/lib/utils"
+
+type PresetKey = "fast" | "balanced" | "deep"
+
+type PresetConfig = {
+  agenticRagTopK: number
+  agenticRagMinScore: number
+  agenticRagMaxSplitQuestions: number
+  agenticRagMaxToolRoundsPerQuestion: number
+  agenticRagMaxExpandCallsPerQuestion: number
+  agenticRagRetryToolOnFailure: boolean
+  agenticRagMaxToolRetry: number
+  agenticRagAnswerMaxTokens: number
+}
+
+const PRESET_CONFIGS: Record<PresetKey, PresetConfig> = {
+  fast: {
+    agenticRagTopK: 6,
+    agenticRagMinScore: 0.45,
+    agenticRagMaxSplitQuestions: 2,
+    agenticRagMaxToolRoundsPerQuestion: 2,
+    agenticRagMaxExpandCallsPerQuestion: 1,
+    agenticRagRetryToolOnFailure: true,
+    agenticRagMaxToolRetry: 1,
+    agenticRagAnswerMaxTokens: 700,
+  },
+  balanced: {
+    agenticRagTopK: 8,
+    agenticRagMinScore: 0.35,
+    agenticRagMaxSplitQuestions: 3,
+    agenticRagMaxToolRoundsPerQuestion: 3,
+    agenticRagMaxExpandCallsPerQuestion: 2,
+    agenticRagRetryToolOnFailure: true,
+    agenticRagMaxToolRetry: 1,
+    agenticRagAnswerMaxTokens: 900,
+  },
+  deep: {
+    agenticRagTopK: 12,
+    agenticRagMinScore: 0.25,
+    agenticRagMaxSplitQuestions: 4,
+    agenticRagMaxToolRoundsPerQuestion: 5,
+    agenticRagMaxExpandCallsPerQuestion: 3,
+    agenticRagRetryToolOnFailure: true,
+    agenticRagMaxToolRetry: 2,
+    agenticRagAnswerMaxTokens: 1300,
+  },
+}
 
 type Ranges = {
   min: number
@@ -109,25 +156,40 @@ function PresetCard({
   icon,
   title,
   subtitle,
+  selected,
   onApply,
 }: {
   icon: React.ReactNode
   title: string
   subtitle: string
+  selected: boolean
   onApply: () => void
 }) {
   return (
     <button
       type="button"
       onClick={onApply}
-      className="w-full rounded-md border p-3 text-left hover:bg-muted/40 transition-colors"
+      aria-pressed={selected}
+      className={cn(
+        "w-full rounded-md border p-3 text-left transition-all duration-150 ease-out will-change-transform motion-safe:active:scale-[0.98]",
+        selected
+          ? "border-primary/60 bg-primary/5 ring-1 ring-primary/30 shadow-sm"
+          : "hover:bg-muted/40 hover:border-primary/20"
+      )}
     >
-      <div className="flex items-start gap-3">
-        <div className="mt-0.5 text-muted-foreground">{icon}</div>
-        <div>
-          <div className="font-medium">{title}</div>
-          <div className="text-xs text-muted-foreground mt-1">{subtitle}</div>
+      <div className="flex items-start justify-between gap-3">
+        <div className="flex items-start gap-3">
+          <div className={cn("mt-0.5 text-muted-foreground", selected && "text-primary")}>{icon}</div>
+          <div>
+            <div className={cn("font-medium", selected && "text-primary")}>{title}</div>
+            <div className={cn("mt-1 text-xs text-muted-foreground", selected && "text-primary/80")}>{subtitle}</div>
+          </div>
         </div>
+        {selected && (
+          <span className="rounded-full border border-primary/30 bg-primary/10 px-2 py-0.5 text-[10px] font-medium text-primary">
+            已选中
+          </span>
+        )}
       </div>
     </button>
   )
@@ -142,43 +204,46 @@ export default function RagSettingsPage() {
     [settings.agenticRagMinScore]
   )
 
+  const isCurrentPreset = (preset: PresetConfig) => {
+    const scoreTolerance = 0.0001
+    return (
+      settings.agenticRagTopK === preset.agenticRagTopK &&
+      Math.abs(settings.agenticRagMinScore - preset.agenticRagMinScore) < scoreTolerance &&
+      settings.agenticRagMaxSplitQuestions === preset.agenticRagMaxSplitQuestions &&
+      settings.agenticRagMaxToolRoundsPerQuestion === preset.agenticRagMaxToolRoundsPerQuestion &&
+      settings.agenticRagMaxExpandCallsPerQuestion === preset.agenticRagMaxExpandCallsPerQuestion &&
+      settings.agenticRagRetryToolOnFailure === preset.agenticRagRetryToolOnFailure &&
+      settings.agenticRagMaxToolRetry === preset.agenticRagMaxToolRetry &&
+      settings.agenticRagAnswerMaxTokens === preset.agenticRagAnswerMaxTokens
+    )
+  }
+
+  const activePreset = useMemo<PresetKey | null>(() => {
+    if (isCurrentPreset(PRESET_CONFIGS.fast)) return "fast"
+    if (isCurrentPreset(PRESET_CONFIGS.balanced)) return "balanced"
+    if (isCurrentPreset(PRESET_CONFIGS.deep)) return "deep"
+    return null
+  }, [
+    settings.agenticRagTopK,
+    settings.agenticRagMinScore,
+    settings.agenticRagMaxSplitQuestions,
+    settings.agenticRagMaxToolRoundsPerQuestion,
+    settings.agenticRagMaxExpandCallsPerQuestion,
+    settings.agenticRagRetryToolOnFailure,
+    settings.agenticRagMaxToolRetry,
+    settings.agenticRagAnswerMaxTokens,
+  ])
+
   const applyFastPreset = () => {
-    updateSettings({
-      agenticRagTopK: 6,
-      agenticRagMinScore: 0.45,
-      agenticRagMaxSplitQuestions: 2,
-      agenticRagMaxToolRoundsPerQuestion: 2,
-      agenticRagMaxExpandCallsPerQuestion: 1,
-      agenticRagRetryToolOnFailure: true,
-      agenticRagMaxToolRetry: 1,
-      agenticRagAnswerMaxTokens: 700,
-    })
+    updateSettings(PRESET_CONFIGS.fast)
   }
 
   const applyBalancedPreset = () => {
-    updateSettings({
-      agenticRagTopK: 8,
-      agenticRagMinScore: 0.35,
-      agenticRagMaxSplitQuestions: 3,
-      agenticRagMaxToolRoundsPerQuestion: 3,
-      agenticRagMaxExpandCallsPerQuestion: 2,
-      agenticRagRetryToolOnFailure: true,
-      agenticRagMaxToolRetry: 1,
-      agenticRagAnswerMaxTokens: 900,
-    })
+    updateSettings(PRESET_CONFIGS.balanced)
   }
 
   const applyDeepPreset = () => {
-    updateSettings({
-      agenticRagTopK: 12,
-      agenticRagMinScore: 0.25,
-      agenticRagMaxSplitQuestions: 4,
-      agenticRagMaxToolRoundsPerQuestion: 5,
-      agenticRagMaxExpandCallsPerQuestion: 3,
-      agenticRagRetryToolOnFailure: true,
-      agenticRagMaxToolRetry: 2,
-      agenticRagAnswerMaxTokens: 1300,
-    })
+    updateSettings(PRESET_CONFIGS.deep)
   }
 
   return (
@@ -205,21 +270,27 @@ export default function RagSettingsPage() {
             icon={<Rocket className="h-4 w-4" />}
             title="快速"
             subtitle="响应更快，成本更低，但可能漏掉部分边缘信息"
+            selected={activePreset === "fast"}
             onApply={applyFastPreset}
           />
           <PresetCard
             icon={<ShieldCheck className="h-4 w-4" />}
             title="平衡（推荐）"
             subtitle="速度与质量均衡，适合大多数日常问答"
+            selected={activePreset === "balanced"}
             onApply={applyBalancedPreset}
           />
           <PresetCard
             icon={<Gauge className="h-4 w-4" />}
             title="深入"
             subtitle="检索更广、回答更长，但速度更慢，消耗更高"
+            selected={activePreset === "deep"}
             onApply={applyDeepPreset}
           />
         </div>
+        <p className="text-xs text-muted-foreground">
+          {activePreset ? "已匹配到当前预设，可继续微调核心参数" : "当前为自定义参数组合（未命中预设）"}
+        </p>
       </div>
 
       <Separator />
@@ -644,4 +715,3 @@ export default function RagSettingsPage() {
     </div>
   )
 }
-
