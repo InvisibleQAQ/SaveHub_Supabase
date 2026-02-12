@@ -16,6 +16,8 @@ export interface ChatMessage {
 export interface RetrievedSource {
   id: string
   index: number
+  article_id?: string
+  repository_id?: string
   content: string
   score: number
   source_type: "article" | "repository"
