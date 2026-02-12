@@ -17,6 +17,14 @@ from app.services.ai import ChatClient
 logger = logging.getLogger(__name__)
 
 REF_PATTERN = re.compile(r"\[ref:(\d+)\]")
+NO_KB_FALLBACK_KEYWORDS = (
+    "知识库暂无相关信息",
+    "暂无相关信息",
+    "没有相关信息",
+    "未找到相关信息",
+    "未检索到相关信息",
+    "无法从知识库",
+)
 
 
 def summarize_history_node_factory(chat_client: ChatClient):
@@ -439,6 +447,7 @@ def finalize_answer_node_factory(chat_client: ChatClient):
         question = state.get("current_question") or ""
         sources = state.get("current_sources", [])
         question_index = int(state.get("current_question_index", 0)) + 1
+        no_kb_answer = str(state.get("no_kb_answer") or NO_KB_ANSWER)
 
         append_event(
             state,
@@ -450,7 +459,7 @@ def finalize_answer_node_factory(chat_client: ChatClient):
         )
 
         if not sources:
-            answer = str(state.get("no_kb_answer") or NO_KB_ANSWER)
+            answer = no_kb_answer
         else:
             evidence_lines: List[str] = []
             sorted_sources = sorted(
@@ -477,8 +486,16 @@ def finalize_answer_node_factory(chat_client: ChatClient):
                     state.get("answer_generation_system_prompt") or ""
                 ),
                 temperature=float(state.get("answer_generation_temperature", 0.2)),
-                no_kb_answer=str(state.get("no_kb_answer") or NO_KB_ANSWER),
+                no_kb_answer=no_kb_answer,
             )
+
+            if _should_force_recall_fallback(answer, no_kb_answer):
+                answer = _build_recall_fallback_answer(
+                    question=question,
+                    sources=sources,
+                    snippet_max_chars=snippet_max_chars,
+                    no_kb_answer=no_kb_answer,
+                )
 
             valid_refs = {
                 int(src.get("index"))
@@ -487,8 +504,8 @@ def finalize_answer_node_factory(chat_client: ChatClient):
             }
             answer = _ensure_valid_refs(answer, valid_refs)
             if not answer.strip():
-                answer = str(state.get("no_kb_answer") or NO_KB_ANSWER)
-            if valid_refs and not REF_PATTERN.search(answer):
+                answer = no_kb_answer
+            if valid_refs and not REF_PATTERN.search(answer) and not _is_no_kb_like(answer, no_kb_answer):
                 smallest = min(valid_refs)
                 answer = f"{answer.rstrip()}[ref:{smallest}]"
 
@@ -519,6 +536,7 @@ def aggregate_answers_node_factory(chat_client: ChatClient):
 
     def aggregate_answers_node(state: AgenticRagState) -> AgenticRagState:
         question_answers = state.get("question_answers", [])
+        no_kb_answer = str(state.get("no_kb_answer") or NO_KB_ANSWER)
         state["final_answer_prompt"] = ""
 
         append_event(
@@ -540,15 +558,24 @@ def aggregate_answers_node_factory(chat_client: ChatClient):
         )
 
         if not question_answers:
-            state["final_answer"] = str(state.get("no_kb_answer") or NO_KB_ANSWER)
+            state["final_answer"] = no_kb_answer
             return state
 
         if len(question_answers) == 1:
             single_answer = str(
                 question_answers[0].get("answer")
-                or state.get("no_kb_answer")
-                or NO_KB_ANSWER
+                or no_kb_answer
             )
+
+            if _is_no_kb_like(single_answer, no_kb_answer):
+                single_answer = _build_recall_fallback_answer(
+                    question=str(state.get("original_query") or ""),
+                    sources=state.get("all_sources", []),
+                    snippet_max_chars=int(state.get("evidence_snippet_max_chars", 380)),
+                    no_kb_answer=no_kb_answer,
+                    max_items=8,
+                )
+
             state["final_answer"] = single_answer
 
             if state.get("stream_output", True):
@@ -556,6 +583,7 @@ def aggregate_answers_node_factory(chat_client: ChatClient):
                     f"原始问题：{state.get('original_query', '')}\n\n"
                     f"子问题回答：\n{single_answer}\n\n"
                     "请在不引入外部事实的前提下，整理为最终回答。"
+                    "若输入中存在任何 [ref:N] 证据，禁止输出“知识库暂无相关信息”。"
                 )
                 state["final_answer_prompt"] = user_prompt
             return state
@@ -570,13 +598,20 @@ def aggregate_answers_node_factory(chat_client: ChatClient):
         user_prompt = (
             f"原始问题：{state.get('original_query', '')}\n\n"
             f"子问题回答：\n{merged_answers}\n\n"
-            "请合并为最终回答。"
+            "请合并为最终回答。若输入中存在任何 [ref:N] 证据，"
+            "禁止输出“知识库暂无相关信息”，而应整理为候选结论并保留引用。"
         )
 
-        fallback_answer = _fallback_concat(
-            question_answers,
-            str(state.get("no_kb_answer") or NO_KB_ANSWER),
-        )
+        fallback_answer = _fallback_concat(question_answers, no_kb_answer)
+
+        if _is_no_kb_like(fallback_answer, no_kb_answer):
+            fallback_answer = _build_recall_fallback_answer(
+                question=str(state.get("original_query") or ""),
+                sources=state.get("all_sources", []),
+                snippet_max_chars=int(state.get("evidence_snippet_max_chars", 380)),
+                no_kb_answer=no_kb_answer,
+                max_items=8,
+            )
 
         if state.get("stream_output", True):
             state["final_answer_prompt"] = user_prompt
@@ -600,13 +635,16 @@ def aggregate_answers_node_factory(chat_client: ChatClient):
                 )
             )
             aggregated_text = str(aggregated or "").strip()
-            state["final_answer"] = aggregated_text or fallback_answer
+            if _is_no_kb_like(aggregated_text, no_kb_answer) and not _is_no_kb_like(fallback_answer, no_kb_answer):
+                state["final_answer"] = fallback_answer
+            else:
+                state["final_answer"] = aggregated_text or fallback_answer
         except Exception as exc:  # pragma: no cover
             logger.warning("aggregate answers failed: %s", exc)
             state["final_answer"] = fallback_answer
 
         if not state["final_answer"].strip():
-            state["final_answer"] = str(state.get("no_kb_answer") or NO_KB_ANSWER)
+            state["final_answer"] = no_kb_answer
         return state
 
     return aggregate_answers_node
@@ -681,7 +719,8 @@ def _generate_answer_with_evidence(
         f"用户问题：{question}\n\n"
         "检索证据（只可使用这些证据）：\n"
         f"{evidence_text}\n\n"
-        "请输出最终回答。"
+        "请输出最终回答。若证据中存在可引用信息，禁止输出“知识库暂无相关信息”，"
+        "应先给出带 [ref:N] 的候选结论并明确可能存在噪声。"
     )
 
     try:
@@ -761,6 +800,140 @@ def _ensure_valid_refs(answer: str, valid_refs: set[int]) -> str:
 
 
 def _fallback_concat(question_answers: List[Dict[str, Any]], no_kb_answer: str) -> str:
-    parts = [str(item.get("answer") or "").strip() for item in question_answers if item.get("answer")]
+    parts = [
+        str(item.get("answer") or "").strip()
+        for item in question_answers
+        if item.get("answer") and not _is_no_kb_like(str(item.get("answer") or ""), no_kb_answer)
+    ]
     text = "\n\n".join([part for part in parts if part]).strip()
+    if text:
+        return text
+
+    fallback_sources = _collect_sources_from_question_answers(question_answers)
+    if fallback_sources:
+        return _build_recall_fallback_answer(
+            question="",
+            sources=fallback_sources,
+            snippet_max_chars=220,
+            no_kb_answer=no_kb_answer,
+            max_items=8,
+        )
+
     return text or no_kb_answer
+
+
+def _normalize_answer_text(text: str) -> str:
+    normalized = str(text or "").strip().lower()
+    normalized = re.sub(r"[\s\n\t\r。！？，、；：,.!?;:]", "", normalized)
+    return normalized
+
+
+def _is_no_kb_like(answer: str, no_kb_answer: str) -> bool:
+    text = str(answer or "").strip()
+    if not text:
+        return True
+
+    normalized = _normalize_answer_text(text)
+    explicit_candidates = {
+        _normalize_answer_text(no_kb_answer),
+        _normalize_answer_text(NO_KB_ANSWER),
+        _normalize_answer_text("知识库暂无相关信息"),
+    }
+    if normalized in explicit_candidates:
+        return True
+
+    if REF_PATTERN.search(text):
+        return False
+
+    return any(keyword in text for keyword in NO_KB_FALLBACK_KEYWORDS)
+
+
+def _should_force_recall_fallback(answer: str, no_kb_answer: str) -> bool:
+    text = str(answer or "").strip()
+    if not text:
+        return True
+    return _is_no_kb_like(text, no_kb_answer)
+
+
+def _build_recall_fallback_answer(
+    question: str,
+    sources: List[Dict[str, Any]],
+    snippet_max_chars: int,
+    no_kb_answer: str,
+    max_items: int = 6,
+) -> str:
+    if not sources:
+        return no_kb_answer
+
+    safe_snippet_chars = max(80, int(snippet_max_chars))
+    safe_max_items = max(1, int(max_items))
+
+    ordered_sources = sorted(
+        sources,
+        key=lambda item: (-(float(item.get("score") or 0.0)), int(item.get("index") or 0)),
+    )
+
+    selected_lines: List[str] = []
+    selected_keys: set[str] = set()
+    for source in ordered_sources:
+        source_key = str(
+            source.get("source_key")
+            or source.get("id")
+            or f"{source.get('article_id') or ''}:{source.get('repository_id') or ''}:{source.get('chunk_index') or 0}"
+        ).strip()
+        if source_key and source_key in selected_keys:
+            continue
+
+        ref_text = str(source.get("index") or "").strip()
+        if not ref_text.isdigit():
+            continue
+
+        title = str(source.get("title") or "未命名来源").strip()
+        snippet = str(source.get("content") or "").strip().replace("\n", " ")
+        if snippet:
+            snippet = snippet[:safe_snippet_chars]
+
+        if snippet:
+            line = f"- {title}：{snippet}[ref:{int(ref_text)}]"
+        else:
+            line = f"- {title}[ref:{int(ref_text)}]"
+
+        selected_lines.append(line)
+        if source_key:
+            selected_keys.add(source_key)
+        if len(selected_lines) >= safe_max_items:
+            break
+
+    if not selected_lines:
+        return no_kb_answer
+
+    question_text = str(question or "").strip()
+    if question_text:
+        header = f"针对“{question_text}”，检索到以下候选线索（召回优先，可能含噪声）："
+    else:
+        header = "检索到以下候选线索（召回优先，可能含噪声）："
+
+    return f"{header}\n" + "\n".join(selected_lines)
+
+
+def _collect_sources_from_question_answers(question_answers: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    merged: Dict[str, Dict[str, Any]] = {}
+    for item in question_answers:
+        for source in item.get("sources") or []:
+            key = str(
+                source.get("source_key")
+                or source.get("id")
+                or f"{source.get('article_id') or ''}:{source.get('repository_id') or ''}:{source.get('chunk_index') or 0}"
+            ).strip()
+            if not key:
+                continue
+
+            existing = merged.get(key)
+            if existing is None:
+                merged[key] = dict(source)
+                continue
+
+            if float(source.get("score") or 0.0) > float(existing.get("score") or 0.0):
+                merged[key] = dict(source)
+
+    return list(merged.values())

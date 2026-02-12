@@ -54,7 +54,7 @@ async def _sse_generator(
             min_score=(
                 request.min_score
                 if request.min_score is not None
-                else float(rag_settings.get("agentic_rag_min_score", 0.35))
+                else float(rag_settings.get("agentic_rag_min_score", 0.22))
             ),
             max_split_questions=(
                 request.max_split_questions

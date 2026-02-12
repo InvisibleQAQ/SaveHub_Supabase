@@ -61,9 +61,9 @@ class AgenticRagTools:
         self.semantic_fetch_multiplier = 5
         self.semantic_fetch_cap = 72
         self.semantic_backoff_step = 0.1
-        self.semantic_backoff_rounds = 2
-        self.semantic_backoff_floor = 0.05
-        self.keyword_candidate_limit = 36
+        self.semantic_backoff_rounds = 3
+        self.semantic_backoff_floor = 0.0
+        self.keyword_candidate_limit = 60
 
     def search_embeddings_tool(
         self,

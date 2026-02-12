@@ -35,7 +35,7 @@ function transformSettings(raw: Record<string, unknown>): SettingsResponse {
     githubToken: raw.github_token as string | undefined,
 
     agenticRagTopK: (raw.agentic_rag_top_k as number) ?? 10,
-    agenticRagMinScore: (raw.agentic_rag_min_score as number) ?? 0.35,
+    agenticRagMinScore: (raw.agentic_rag_min_score as number) ?? 0.22,
     agenticRagMaxSplitQuestions: (raw.agentic_rag_max_split_questions as number) ?? 3,
     agenticRagMaxToolRoundsPerQuestion:
       (raw.agentic_rag_max_tool_rounds_per_question as number) ?? 3,

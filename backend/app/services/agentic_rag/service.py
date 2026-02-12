@@ -34,6 +34,15 @@ STAGE_LOG_EVENTS = {
     "done",
 }
 
+NO_KB_FALLBACK_KEYWORDS = (
+    "知识库暂无相关信息",
+    "暂无相关信息",
+    "没有相关信息",
+    "未找到相关信息",
+    "未检索到相关信息",
+    "无法从知识库",
+)
+
 
 class AgenticRagService:
     """Agentic-RAG 服务。"""
@@ -72,6 +81,75 @@ class AgenticRagService:
             ),
         )
         self.graph = build_agentic_rag_graph(self.tools, self.chat_client)
+
+    @staticmethod
+    def _normalize_answer_text(text: str) -> str:
+        normalized = str(text or "").strip().lower()
+        for char in (" ", "\n", "\t", "\r", "。", "！", "？", "，", "、", "；", "：", ",", ".", "!", "?", ";", ":"):
+            normalized = normalized.replace(char, "")
+        return normalized
+
+    @staticmethod
+    def _is_no_kb_like(answer: str, no_kb_answer: str) -> bool:
+        text = str(answer or "").strip()
+        if not text:
+            return True
+
+        normalized = AgenticRagService._normalize_answer_text(text)
+        explicit_candidates = {
+            AgenticRagService._normalize_answer_text(no_kb_answer),
+            AgenticRagService._normalize_answer_text(NO_KB_ANSWER),
+            AgenticRagService._normalize_answer_text("知识库暂无相关信息"),
+        }
+        if normalized in explicit_candidates:
+            return True
+
+        if "[ref:" in text:
+            return False
+
+        return any(keyword in text for keyword in NO_KB_FALLBACK_KEYWORDS)
+
+    @staticmethod
+    def _build_recall_summary_from_sources(sources: List[Dict[str, Any]], max_items: int = 8) -> str:
+        if not sources:
+            return ""
+
+        ordered = sorted(
+            sources,
+            key=lambda item: (-(float(item.get("score") or 0.0)), int(item.get("index") or 0)),
+        )
+
+        lines: List[str] = []
+        used_keys: set[str] = set()
+        for src in ordered:
+            ref = src.get("index")
+            if ref is None or not str(ref).isdigit():
+                continue
+
+            source_key = str(
+                src.get("source_key")
+                or src.get("id")
+                or f"{src.get('article_id') or ''}:{src.get('repository_id') or ''}:{src.get('chunk_index') or 0}"
+            ).strip()
+            if source_key and source_key in used_keys:
+                continue
+
+            title = str(src.get("title") or "未命名来源").strip()
+            snippet = str(src.get("content") or "").strip().replace("\n", " ")[:220]
+            if snippet:
+                lines.append(f"- {title}：{snippet}[ref:{int(ref)}]")
+            else:
+                lines.append(f"- {title}[ref:{int(ref)}]")
+
+            if source_key:
+                used_keys.add(source_key)
+            if len(lines) >= max(1, int(max_items)):
+                break
+
+        if not lines:
+            return ""
+
+        return "检索到以下候选线索（召回优先，可能含噪声）：\n" + "\n".join(lines)
 
     @staticmethod
     def _build_tool_call_message(data: Dict[str, Any]) -> str:
@@ -368,16 +446,53 @@ class AgenticRagService:
 
                 streamed_answer = "".join(streamed_chunks).strip()
                 if streamed_answer:
+                    if AgenticRagService._is_no_kb_like(streamed_answer, str(final_state.get("no_kb_answer") or NO_KB_ANSWER)):
+                        recall_summary = AgenticRagService._build_recall_summary_from_sources(
+                            final_state.get("all_sources", []),
+                            max_items=8,
+                        )
+                        if recall_summary:
+                            patch_delta = f"\n\n{recall_summary}"
+                            content_event = self._normalize_v2_event(
+                                {"event": "content", "data": {"delta": patch_delta}}
+                            )
+                            if content_event:
+                                yield content_event
+                            streamed_answer = f"{streamed_answer}{patch_delta}".strip()
                     final_state["final_answer"] = streamed_answer
                 else:
+                    fallback_to_emit = fallback_final_answer
+                    if AgenticRagService._is_no_kb_like(
+                        fallback_to_emit,
+                        str(final_state.get("no_kb_answer") or NO_KB_ANSWER),
+                    ):
+                        recall_summary = AgenticRagService._build_recall_summary_from_sources(
+                            final_state.get("all_sources", []),
+                            max_items=8,
+                        )
+                        if recall_summary:
+                            fallback_to_emit = recall_summary
+
                     content_event = self._normalize_v2_event(
-                        {"event": "content", "data": {"delta": fallback_final_answer}}
+                        {"event": "content", "data": {"delta": fallback_to_emit}}
                     )
                     if content_event:
                         yield content_event
             else:
+                fallback_to_emit = fallback_final_answer
+                if AgenticRagService._is_no_kb_like(
+                    fallback_to_emit,
+                    str(final_state.get("no_kb_answer") or NO_KB_ANSWER),
+                ):
+                    recall_summary = AgenticRagService._build_recall_summary_from_sources(
+                        final_state.get("all_sources", []),
+                        max_items=8,
+                    )
+                    if recall_summary:
+                        fallback_to_emit = recall_summary
+
                 content_event = self._normalize_v2_event(
-                    {"event": "content", "data": {"delta": fallback_final_answer}}
+                    {"event": "content", "data": {"delta": fallback_to_emit}}
                 )
                 if content_event:
                     yield content_event

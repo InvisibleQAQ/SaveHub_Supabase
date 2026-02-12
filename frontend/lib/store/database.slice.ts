@@ -18,7 +18,7 @@ const defaultSettings = {
   sidebarPinned: false,
 
   agenticRagTopK: 10,
-  agenticRagMinScore: 0.35,
+  agenticRagMinScore: 0.22,
   agenticRagMaxSplitQuestions: 3,
   agenticRagMaxToolRoundsPerQuestion: 3,
   agenticRagMaxExpandCallsPerQuestion: 2,
@@ -76,7 +76,7 @@ const defaultSettings = {
 输出规则：
 1. 每个关键结论后必须带引用标记 [ref:N]（N 来自证据编号）。
 2. 不允许引用不存在的编号。
-3. 若证据不足以回答，必须明确说“知识库暂无相关信息”。
+3. 召回优先：若有任何可引用证据，先输出带 [ref:N] 的候选结论并提示可能含噪声；仅在完全无证据时输出“知识库暂无相关信息”。
 4. 回答用中文，简洁且信息完整。`,
   agenticRagAggregationSystemPrompt: `你是多子问题答案聚合助手。
 
@@ -86,7 +86,7 @@ const defaultSettings = {
 1. 只使用输入答案里的事实，不新增外部知识。
 2. 保留并复用原有 [ref:N] 引用。
 3. 若不同答案重复，进行合并；若冲突，保留冲突并说明。
-4. 若所有子答案都缺乏信息，输出“知识库暂无相关信息”。`,
+4. 若存在任一子答案含有效 [ref:N] 证据，禁止输出“知识库暂无相关信息”；仅在全部子答案都无证据时输出。`,
   agenticRagNoKbAnswer: "知识库暂无相关信息。",
   agenticRagHistorySummarySystemPrompt: "你是精炼总结助手。",
   agenticRagHistorySummaryUserPromptTemplate:
