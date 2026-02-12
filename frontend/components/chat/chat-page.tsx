@@ -400,6 +400,16 @@ export function ChatPage() {
     }))
   }
 
+  const statusText = state.currentStatus || (state.stageLogs.length > 0 ? "回答完成，可展开查看流程" : null)
+  const shouldShowStatus = Boolean(statusText)
+  const lastMessageIndex = state.messages.length - 1
+  const statusBeforeAssistantIndex =
+    shouldShowStatus &&
+    lastMessageIndex >= 0 &&
+    state.messages[lastMessageIndex]?.role === "assistant"
+      ? lastMessageIndex
+      : -1
+
   return (
     <div className="flex-1 flex flex-col h-full overflow-hidden bg-gradient-to-b from-background to-muted/20">
       {/* Header */}
@@ -459,19 +469,33 @@ export function ChatPage() {
             </div>
           ) : (
             state.messages.map((msg, i) => (
-              <ChatMessage
-                key={i}
-                message={msg}
-                sources={msg.role === "assistant" ? state.messageSources[i] : undefined}
-              />
+              <div key={i}>
+                {statusBeforeAssistantIndex === i && statusText && (
+                  <div className="pt-1">
+                    <ChatStatus
+                      status={statusText}
+                      stages={state.stages}
+                      stageLogs={state.stageLogs}
+                      defaultCollapsed={!state.isLoading}
+                      isRunning={state.isLoading}
+                    />
+                  </div>
+                )}
+                <ChatMessage
+                  message={msg}
+                  sources={msg.role === "assistant" ? state.messageSources[i] : undefined}
+                />
+              </div>
             ))
           )}
-          {state.currentStatus && (
+          {shouldShowStatus && statusBeforeAssistantIndex === -1 && statusText && (
             <div className="pt-1">
               <ChatStatus
-                status={state.currentStatus}
+                status={statusText}
                 stages={state.stages}
                 stageLogs={state.stageLogs}
+                defaultCollapsed={!state.isLoading}
+                isRunning={state.isLoading}
               />
             </div>
           )}
