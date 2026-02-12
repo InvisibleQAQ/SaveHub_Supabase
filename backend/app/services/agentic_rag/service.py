@@ -1,6 +1,8 @@
 """Agentic-RAG 服务主入口。"""
 
+import copy
 import logging
+from datetime import datetime
 from typing import Any, AsyncGenerator, Dict, List, Optional
 
 from supabase import Client
@@ -9,6 +11,7 @@ from app.services.agentic_rag.graph import build_agentic_rag_graph
 from app.services.agentic_rag.prompts import AGGREGATION_SYSTEM_PROMPT, NO_KB_ANSWER
 from app.services.agentic_rag.state import AgenticRagState, create_initial_state
 from app.services.agentic_rag.tools import AgenticRagTools
+from app.services.agentic_rag.debug_markdown import write_agentic_rag_trace_markdown
 from app.services.ai import ChatClient, EmbeddingClient
 
 logger = logging.getLogger(__name__)
@@ -324,6 +327,22 @@ class AgenticRagService:
             data.get("message"),
         )
 
+    @staticmethod
+    def _parse_bool(value: Any, default: bool) -> bool:
+        if value is None:
+            return default
+        if isinstance(value, bool):
+            return value
+        if isinstance(value, (int, float)):
+            return bool(value)
+        if isinstance(value, str):
+            normalized = value.strip().lower()
+            if normalized in {"1", "true", "yes", "y", "on"}:
+                return True
+            if normalized in {"0", "false", "no", "n", "off"}:
+                return False
+        return default
+
     async def stream_chat(
         self,
         messages: List[Dict[str, str]],
@@ -337,6 +356,30 @@ class AgenticRagService:
         answer_max_tokens: int = 900,
     ) -> AsyncGenerator[Dict[str, Any], None]:
         """运行 LangGraph 并输出阶段事件。"""
+        started_at = datetime.utcnow()
+        raw_events: List[Dict[str, Any]] = []
+        sse_events: List[Dict[str, Any]] = []
+        error_message: str | None = None
+
+        debug_trace_enabled = AgenticRagService._parse_bool(
+            self.agentic_rag_settings.get("agentic_rag_debug_trace_markdown_enabled"),
+            True,
+        )
+        debug_trace_output_dir = str(
+            self.agentic_rag_settings.get("agentic_rag_debug_trace_markdown_dir") or ""
+        ).strip() or None
+
+        request_params = {
+            "top_k": top_k,
+            "min_score": min_score,
+            "max_split_questions": max_split_questions,
+            "max_tool_rounds_per_question": max_tool_rounds_per_question,
+            "max_expand_calls_per_question": max_expand_calls_per_question,
+            "retry_tool_on_failure": retry_tool_on_failure,
+            "max_tool_retry": max_tool_retry,
+            "answer_max_tokens": answer_max_tokens,
+        }
+
         state: AgenticRagState = create_initial_state(
             messages=messages,
             top_k=top_k,
@@ -350,6 +393,7 @@ class AgenticRagService:
             stream_output=True,
             agentic_rag_settings=self.agentic_rag_settings,
         )
+        final_state: AgenticRagState = state
 
         try:
             start_progress_event = self._normalize_v2_event(
@@ -362,10 +406,19 @@ class AgenticRagService:
                 }
             )
             if start_progress_event:
+                raw_events.append(
+                    {
+                        "event": "progress",
+                        "data": {
+                            "stage": "rewrite",
+                            "message": "收到问题，正在分析意图并重写拆分",
+                        },
+                    }
+                )
+                sse_events.append(copy.deepcopy(start_progress_event))
                 self._log_stage_event(start_progress_event)
                 yield start_progress_event
 
-            final_state: AgenticRagState = state
             emitted_event_count = 0
 
             try:
@@ -384,9 +437,11 @@ class AgenticRagService:
                 while emitted_event_count < len(events):
                     event = events[emitted_event_count]
                     emitted_event_count += 1
+                    raw_events.append(copy.deepcopy(event))
 
                     normalized = self._normalize_v2_event(event)
                     if normalized:
+                        sse_events.append(copy.deepcopy(normalized))
                         self._log_stage_event(normalized)
                         yield normalized
 
@@ -401,6 +456,16 @@ class AgenticRagService:
                     }
                 )
                 if done_event:
+                    raw_events.append(
+                        {
+                            "event": "done",
+                            "data": {
+                                "message": "clarification_required",
+                                "sources": final_state.get("all_sources", []),
+                            },
+                        }
+                    )
+                    sse_events.append(copy.deepcopy(done_event))
                     self._log_stage_event(done_event)
                     yield done_event
                 return
@@ -436,15 +501,37 @@ class AgenticRagService:
                             continue
 
                         streamed_chunks.append(chunk)
+                        raw_events.append(
+                            {
+                                "event": "content",
+                                "data": {"delta": chunk},
+                            }
+                        )
                         content_event = self._normalize_v2_event(
                             {"event": "content", "data": {"delta": chunk}}
                         )
                         if content_event:
+                            sse_events.append(copy.deepcopy(content_event))
                             yield content_event
                 except Exception as exc:  # pragma: no cover
                     logger.warning("final answer stream failed, fallback to cached answer: %s", exc)
+                    error_message = str(exc)
 
                 streamed_answer = "".join(streamed_chunks).strip()
+                raw_events.append(
+                    {
+                        "event": "llm_call",
+                        "data": {
+                            "stage": "aggregation_stream",
+                            "system_prompt": aggregation_system_prompt,
+                            "user_prompt": final_answer_prompt,
+                            "temperature": aggregation_temperature,
+                            "max_tokens": max(500, int(answer_max_tokens) + 400),
+                            "response": streamed_answer,
+                            "error": "",
+                        },
+                    }
+                )
                 if streamed_answer:
                     if AgenticRagService._is_no_kb_like(streamed_answer, str(final_state.get("no_kb_answer") or NO_KB_ANSWER)):
                         recall_summary = AgenticRagService._build_recall_summary_from_sources(
@@ -453,10 +540,17 @@ class AgenticRagService:
                         )
                         if recall_summary:
                             patch_delta = f"\n\n{recall_summary}"
+                            raw_events.append(
+                                {
+                                    "event": "content",
+                                    "data": {"delta": patch_delta},
+                                }
+                            )
                             content_event = self._normalize_v2_event(
                                 {"event": "content", "data": {"delta": patch_delta}}
                             )
                             if content_event:
+                                sse_events.append(copy.deepcopy(content_event))
                                 yield content_event
                             streamed_answer = f"{streamed_answer}{patch_delta}".strip()
                     final_state["final_answer"] = streamed_answer
@@ -477,6 +571,13 @@ class AgenticRagService:
                         {"event": "content", "data": {"delta": fallback_to_emit}}
                     )
                     if content_event:
+                        raw_events.append(
+                            {
+                                "event": "content",
+                                "data": {"delta": fallback_to_emit},
+                            }
+                        )
+                        sse_events.append(copy.deepcopy(content_event))
                         yield content_event
             else:
                 fallback_to_emit = fallback_final_answer
@@ -495,6 +596,13 @@ class AgenticRagService:
                     {"event": "content", "data": {"delta": fallback_to_emit}}
                 )
                 if content_event:
+                    raw_events.append(
+                        {
+                            "event": "content",
+                            "data": {"delta": fallback_to_emit},
+                        }
+                    )
+                    sse_events.append(copy.deepcopy(content_event))
                     yield content_event
 
             done_event = self._normalize_v2_event(
@@ -507,13 +615,49 @@ class AgenticRagService:
                 }
             )
             if done_event:
+                raw_events.append(
+                    {
+                        "event": "done",
+                        "data": {
+                            "message": "completed",
+                            "sources": final_state.get("all_sources", []),
+                        },
+                    }
+                )
+                sse_events.append(copy.deepcopy(done_event))
                 self._log_stage_event(done_event)
                 yield done_event
         except Exception as exc:
             logger.error("AgenticRagService stream_chat failed: %s", exc)
-            yield {
+            error_message = str(exc)
+            error_event = {
                 "event": "error",
                 "data": {
                     "message": str(exc),
                 },
             }
+            raw_events.append(copy.deepcopy(error_event))
+            sse_events.append(copy.deepcopy(error_event))
+            yield error_event
+        finally:
+            if not debug_trace_enabled:
+                return
+
+            try:
+                output_path = write_agentic_rag_trace_markdown(
+                    user_id=self.user_id,
+                    chat_model=str(self.chat_config.get("model") or ""),
+                    embedding_model=str(self.embedding_config.get("model") or ""),
+                    messages=messages,
+                    request_params=request_params,
+                    raw_events=raw_events,
+                    sse_events=sse_events,
+                    final_state=final_state,
+                    started_at=started_at,
+                    finished_at=datetime.utcnow(),
+                    output_dir=debug_trace_output_dir,
+                    error_message=error_message,
+                )
+                logger.info("agentic_rag_trace_markdown_written path=%s", output_path)
+            except Exception as trace_exc:  # pragma: no cover
+                logger.warning("agentic rag trace markdown write failed: %s", trace_exc)

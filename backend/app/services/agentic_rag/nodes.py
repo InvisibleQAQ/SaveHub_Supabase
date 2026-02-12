@@ -27,6 +27,39 @@ NO_KB_FALLBACK_KEYWORDS = (
 )
 
 
+def _append_llm_call_event(
+    state: AgenticRagState,
+    *,
+    stage: str,
+    system_prompt: str,
+    user_prompt: str,
+    temperature: float,
+    max_tokens: int,
+    response: str = "",
+    error: str = "",
+    question_index: int | None = None,
+    question: str = "",
+    skipped: bool = False,
+    skip_reason: str = "",
+) -> None:
+    data: Dict[str, Any] = {
+        "stage": stage,
+        "system_prompt": system_prompt,
+        "user_prompt": user_prompt,
+        "temperature": temperature,
+        "max_tokens": max_tokens,
+        "response": response,
+        "error": error,
+        "skipped": bool(skipped),
+        "skip_reason": skip_reason,
+    }
+    if question:
+        data["question"] = question
+    if question_index is not None:
+        data["question_index"] = question_index
+    append_event(state, "llm_call", data)
+
+
 def summarize_history_node_factory(chat_client: ChatClient):
     """构建会话摘要节点。"""
 
@@ -36,17 +69,41 @@ def summarize_history_node_factory(chat_client: ChatClient):
             state["error"] = "messages is empty"
             return state
 
+        history_system_prompt = str(state.get("history_summary_system_prompt") or "你是精炼总结助手。")
+        history_temperature = float(state.get("history_summary_temperature", 0.1))
+        history_max_tokens = int(state.get("history_summary_max_tokens", 160))
+
         user_messages = [m for m in messages if m.get("role") == "user" and m.get("content")]
         last_user_query = str(user_messages[-1].get("content") if user_messages else "").strip()
         state["last_user_query"] = last_user_query
 
         if len(messages) < 4:
             state["conversation_summary"] = ""
+            _append_llm_call_event(
+                state,
+                stage="history_summary",
+                system_prompt=history_system_prompt,
+                user_prompt="",
+                temperature=history_temperature,
+                max_tokens=history_max_tokens,
+                skipped=True,
+                skip_reason="insufficient_messages",
+            )
             return state
 
         history_for_summary = messages[:-1][-6:]
         if not history_for_summary:
             state["conversation_summary"] = ""
+            _append_llm_call_event(
+                state,
+                stage="history_summary",
+                system_prompt=history_system_prompt,
+                user_prompt="",
+                temperature=history_temperature,
+                max_tokens=history_max_tokens,
+                skipped=True,
+                skip_reason="no_history_for_summary",
+            )
             return state
 
         lines: List[str] = []
@@ -58,6 +115,16 @@ def summarize_history_node_factory(chat_client: ChatClient):
 
         if not lines:
             state["conversation_summary"] = ""
+            _append_llm_call_event(
+                state,
+                stage="history_summary",
+                system_prompt=history_system_prompt,
+                user_prompt="",
+                temperature=history_temperature,
+                max_tokens=history_max_tokens,
+                skipped=True,
+                skip_reason="empty_history_lines",
+            )
             return state
 
         history_text = "\n".join(lines)
@@ -76,21 +143,37 @@ def summarize_history_node_factory(chat_client: ChatClient):
                     messages=[
                         {
                             "role": "system",
-                            "content": str(
-                                state.get("history_summary_system_prompt")
-                                or "你是精炼总结助手。"
-                            ),
+                            "content": history_system_prompt,
                         },
                         {"role": "user", "content": prompt},
                     ],
-                    temperature=float(state.get("history_summary_temperature", 0.1)),
-                    max_tokens=int(state.get("history_summary_max_tokens", 160)),
+                    temperature=history_temperature,
+                    max_tokens=history_max_tokens,
                 )
             )
-            state["conversation_summary"] = str(summary or "").strip()
+            summary_text = str(summary or "").strip()
+            state["conversation_summary"] = summary_text
+            _append_llm_call_event(
+                state,
+                stage="history_summary",
+                system_prompt=history_system_prompt,
+                user_prompt=prompt,
+                temperature=history_temperature,
+                max_tokens=history_max_tokens,
+                response=summary_text,
+            )
         except Exception as exc:  # pragma: no cover
             logger.warning("history summarization failed: %s", exc)
             state["conversation_summary"] = ""
+            _append_llm_call_event(
+                state,
+                stage="history_summary",
+                system_prompt=history_system_prompt,
+                user_prompt=prompt,
+                temperature=history_temperature,
+                max_tokens=history_max_tokens,
+                error=str(exc),
+            )
 
         return state
 
@@ -127,6 +210,7 @@ def rewrite_and_split_node_factory(chat_client: ChatClient):
         max_split = max(1, int(state.get("max_split_questions", 3)))
 
         analysis_payload = _analyze_query_with_llm(
+            state=state,
             chat_client=chat_client,
             original_query=original_query,
             conversation_summary=summary,
@@ -478,8 +562,10 @@ def finalize_answer_node_factory(chat_client: ChatClient):
                 evidence_lines.append(f"[ref:{ref_index}] 标题: {title} | 证据: {snippet}")
 
             answer = _generate_answer_with_evidence(
+                state=state,
                 chat_client=chat_client,
                 question=question,
+                question_index=int(state.get("current_question_index", 0)),
                 evidence_lines=evidence_lines,
                 max_tokens=int(state.get("answer_max_tokens", 800)),
                 system_prompt=str(
@@ -604,6 +690,10 @@ def aggregate_answers_node_factory(chat_client: ChatClient):
 
         fallback_answer = _fallback_concat(question_answers, no_kb_answer)
 
+        aggregation_system_prompt = str(state.get("aggregation_system_prompt") or "")
+        aggregation_temperature = float(state.get("aggregation_temperature", 0.2))
+        aggregation_max_tokens = max(500, int(state.get("answer_max_tokens", 800)) + 400)
+
         if _is_no_kb_like(fallback_answer, no_kb_answer):
             fallback_answer = _build_recall_fallback_answer(
                 question=str(state.get("original_query") or ""),
@@ -616,6 +706,16 @@ def aggregate_answers_node_factory(chat_client: ChatClient):
         if state.get("stream_output", True):
             state["final_answer_prompt"] = user_prompt
             state["final_answer"] = fallback_answer
+            _append_llm_call_event(
+                state,
+                stage="aggregation_stream_prepare",
+                system_prompt=aggregation_system_prompt,
+                user_prompt=user_prompt,
+                temperature=aggregation_temperature,
+                max_tokens=aggregation_max_tokens,
+                skipped=True,
+                skip_reason="handled_in_service_stream",
+            )
             return state
 
         try:
@@ -624,17 +724,24 @@ def aggregate_answers_node_factory(chat_client: ChatClient):
                     messages=[
                         {
                             "role": "system",
-                            "content": str(
-                                state.get("aggregation_system_prompt") or ""
-                            ),
+                            "content": aggregation_system_prompt,
                         },
                         {"role": "user", "content": user_prompt},
                     ],
-                    temperature=float(state.get("aggregation_temperature", 0.2)),
-                    max_tokens=max(500, int(state.get("answer_max_tokens", 800)) + 400),
+                    temperature=aggregation_temperature,
+                    max_tokens=aggregation_max_tokens,
                 )
             )
             aggregated_text = str(aggregated or "").strip()
+            _append_llm_call_event(
+                state,
+                stage="aggregation",
+                system_prompt=aggregation_system_prompt,
+                user_prompt=user_prompt,
+                temperature=aggregation_temperature,
+                max_tokens=aggregation_max_tokens,
+                response=aggregated_text,
+            )
             if _is_no_kb_like(aggregated_text, no_kb_answer) and not _is_no_kb_like(fallback_answer, no_kb_answer):
                 state["final_answer"] = fallback_answer
             else:
@@ -642,6 +749,15 @@ def aggregate_answers_node_factory(chat_client: ChatClient):
         except Exception as exc:  # pragma: no cover
             logger.warning("aggregate answers failed: %s", exc)
             state["final_answer"] = fallback_answer
+            _append_llm_call_event(
+                state,
+                stage="aggregation",
+                system_prompt=aggregation_system_prompt,
+                user_prompt=user_prompt,
+                temperature=aggregation_temperature,
+                max_tokens=aggregation_max_tokens,
+                error=str(exc),
+            )
 
         if not state["final_answer"].strip():
             state["final_answer"] = no_kb_answer
@@ -651,6 +767,7 @@ def aggregate_answers_node_factory(chat_client: ChatClient):
 
 
 def _analyze_query_with_llm(
+    state: AgenticRagState,
     chat_client: ChatClient,
     original_query: str,
     conversation_summary: str,
@@ -684,7 +801,18 @@ def _analyze_query_with_llm(
             )
         )
 
-        parsed = _safe_parse_json(str(response_text or ""))
+        response_str = str(response_text or "")
+        _append_llm_call_event(
+            state,
+            stage="query_analysis",
+            system_prompt=system_prompt,
+            user_prompt=user_prompt,
+            temperature=temperature,
+            max_tokens=max_tokens,
+            response=response_str,
+        )
+
+        parsed = _safe_parse_json(response_str)
         if not isinstance(parsed, dict):
             return payload
 
@@ -699,12 +827,23 @@ def _analyze_query_with_llm(
         return payload
     except Exception as exc:  # pragma: no cover
         logger.warning("query analysis with llm failed: %s", exc)
+        _append_llm_call_event(
+            state,
+            stage="query_analysis",
+            system_prompt=system_prompt,
+            user_prompt=user_prompt,
+            temperature=temperature,
+            max_tokens=max_tokens,
+            error=str(exc),
+        )
         return payload
 
 
 def _generate_answer_with_evidence(
+    state: AgenticRagState,
     chat_client: ChatClient,
     question: str,
+    question_index: int,
     evidence_lines: List[str],
     max_tokens: int,
     system_prompt: str,
@@ -712,6 +851,18 @@ def _generate_answer_with_evidence(
     no_kb_answer: str,
 ) -> str:
     if not evidence_lines:
+        _append_llm_call_event(
+            state,
+            stage="answer_generation",
+            system_prompt=system_prompt,
+            user_prompt="",
+            temperature=temperature,
+            max_tokens=max(320, max_tokens),
+            question=question,
+            question_index=question_index,
+            skipped=True,
+            skip_reason="no_evidence",
+        )
         return no_kb_answer
 
     evidence_text = "\n".join(evidence_lines)
@@ -734,9 +885,32 @@ def _generate_answer_with_evidence(
                 max_tokens=max(320, max_tokens),
             )
         )
-        return str(result or "").strip()
+        answer_text = str(result or "").strip()
+        _append_llm_call_event(
+            state,
+            stage="answer_generation",
+            system_prompt=system_prompt,
+            user_prompt=user_prompt,
+            temperature=temperature,
+            max_tokens=max(320, max_tokens),
+            question=question,
+            question_index=question_index,
+            response=answer_text,
+        )
+        return answer_text
     except Exception as exc:  # pragma: no cover
         logger.warning("answer generation failed: %s", exc)
+        _append_llm_call_event(
+            state,
+            stage="answer_generation",
+            system_prompt=system_prompt,
+            user_prompt=user_prompt,
+            temperature=temperature,
+            max_tokens=max(320, max_tokens),
+            question=question,
+            question_index=question_index,
+            error=str(exc),
+        )
         return no_kb_answer
 
 
