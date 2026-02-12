@@ -378,7 +378,7 @@ def run_tools_node_factory(tools: AgenticRagTools):
                 "tool_name": tool_name,
                 "retry": retry_attempt,
                 "error": tool_error,
-                "result_count": len(indexed_sources),
+                "result_count": len(state.get("current_sources", [])),
                 "sources": indexed_sources[:8],
             },
         )

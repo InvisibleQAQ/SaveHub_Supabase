@@ -239,25 +239,30 @@ def register_sources_with_index(
 
 def build_source_key(source: Dict[str, Any]) -> str:
     """构建全局去重 key，优先使用 source 类型 + 业务主键 + chunk。"""
+    source_id = str(source.get("id") or "").strip()
+    if source_id:
+        return f"embedding:{source_id}"
+
     chunk_index = source.get("chunk_index")
     if chunk_index is None:
         chunk_index = 0
 
+    content = str(source.get("content") or "").strip()
+    content_digest = ""
+    if content:
+        content_digest = md5(content[:200].encode("utf-8")).hexdigest()[:16]
+
     article_id = source.get("article_id")
     if article_id:
-        return f"article:{article_id}:{chunk_index}"
+        suffix = f":{content_digest}" if content_digest else ""
+        return f"article:{article_id}:{chunk_index}{suffix}"
 
     repository_id = source.get("repository_id")
     if repository_id:
-        return f"repo:{repository_id}:{chunk_index}"
+        suffix = f":{content_digest}" if content_digest else ""
+        return f"repo:{repository_id}:{chunk_index}{suffix}"
 
-    source_id = source.get("id")
-    if source_id:
-        return f"embedding:{source_id}"
-
-    content = str(source.get("content") or "").strip()
-    if content:
-        digest = md5(content[:200].encode("utf-8")).hexdigest()[:16]
-        return f"content:{digest}"
+    if content_digest:
+        return f"content:{content_digest}"
 
     return ""

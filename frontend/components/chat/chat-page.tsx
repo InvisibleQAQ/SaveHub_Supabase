@@ -98,12 +98,19 @@ function mergeSources(
 ): RetrievedSource[] {
   const sourceMap = new Map<string, RetrievedSource>()
 
+  const buildSourceKey = (source: RetrievedSource) => {
+    if (source.id) return `id:${source.id}`
+    if (source.source_type === "article") return `article:${source.title}:${source.index}`
+    if (source.source_type === "repository") return `repo:${source.title}:${source.index}`
+    return `idx:${source.index}`
+  }
+
   for (const source of existing) {
-    sourceMap.set(source.id, source)
+    sourceMap.set(buildSourceKey(source), source)
   }
 
   for (const source of incoming) {
-    sourceMap.set(source.id, source)
+    sourceMap.set(buildSourceKey(source), source)
   }
 
   return Array.from(sourceMap.values()).sort((a, b) => a.index - b.index)
