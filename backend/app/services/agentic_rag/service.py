@@ -75,12 +75,42 @@ class AgenticRagService:
             model=embedding_config["model"],
         )
 
+        source_content_max_chars = AgenticRagService._parse_int(
+            self.agentic_rag_settings.get("agentic_rag_source_content_max_chars"),
+            default=700,
+            min_value=120,
+            max_value=4000,
+        )
+        parent_chunk_span = AgenticRagService._parse_int(
+            self.agentic_rag_settings.get("agentic_rag_parent_chunk_span"),
+            default=4,
+            min_value=1,
+            max_value=12,
+        )
+        parent_chunk_limit = AgenticRagService._parse_int(
+            self.agentic_rag_settings.get("agentic_rag_parent_chunk_top_k"),
+            default=2,
+            min_value=1,
+            max_value=6,
+        )
+        parent_content_max_chars = AgenticRagService._parse_int(
+            self.agentic_rag_settings.get("agentic_rag_parent_content_max_chars"),
+            default=2200,
+            min_value=source_content_max_chars,
+            max_value=12000,
+        )
+
         self.tools = AgenticRagTools(
             supabase=supabase,
             user_id=user_id,
             embedding_client=self.embedding_client,
-            source_content_max_chars=int(
-                self.agentic_rag_settings.get("agentic_rag_source_content_max_chars", 700)
+            source_content_max_chars=source_content_max_chars,
+            parent_chunk_span=parent_chunk_span,
+            parent_chunk_limit=parent_chunk_limit,
+            parent_content_max_chars=parent_content_max_chars,
+            hydrate_repository_full_text=AgenticRagService._parse_bool(
+                self.agentic_rag_settings.get("agentic_rag_hydrate_repository_full_text"),
+                False,
             ),
         )
         self.graph = build_agentic_rag_graph(self.tools, self.chat_client)
@@ -167,6 +197,11 @@ class AgenticRagService:
                 return f"第 {question_index} 个子问题初检结果不足，正在二次检索并扩展上下文（目标 {top_k} 条）"
             return f"第 {question_index} 个子问题初检结果不足，正在二次检索并扩展上下文"
 
+        if tool_name == "retrieve_parent_chunks":
+            parent_ids = args.get("parent_ids") or []
+            parent_count = len(parent_ids) if isinstance(parent_ids, list) else 1
+            return f"第 {question_index} 个子问题命中子块，正在回溯父块上下文（{max(1, parent_count)} 个）"
+
         query = str(args.get("query") or "").strip()
         query_display = (query[:28] + "…") if len(query) > 28 else query
         if query_display:
@@ -180,7 +215,13 @@ class AgenticRagService:
         tool_name = str(data.get("tool_name") or "")
         result_count = int(data.get("result_count", 0) or 0)
 
-        tool_display_name = "二次检索" if tool_name == "expand_context" else "初次检索"
+        if tool_name == "expand_context":
+            tool_display_name = "二次检索"
+        elif tool_name == "retrieve_parent_chunks":
+            tool_display_name = "父块补全"
+        else:
+            tool_display_name = "初次检索"
+
         if result_count > 0:
             return f"第 {question_index} 个子问题{tool_display_name}完成，命中 {result_count} 条证据"
         return f"第 {question_index} 个子问题{tool_display_name}完成，未命中有效证据"
@@ -328,6 +369,24 @@ class AgenticRagService:
         )
 
     @staticmethod
+    def _parse_int(
+        value: Any,
+        default: int,
+        min_value: int | None = None,
+        max_value: int | None = None,
+    ) -> int:
+        try:
+            parsed = int(value)
+        except Exception:
+            parsed = int(default)
+
+        if min_value is not None:
+            parsed = max(min_value, parsed)
+        if max_value is not None:
+            parsed = min(max_value, parsed)
+        return parsed
+
+    @staticmethod
     def _parse_bool(value: Any, default: bool) -> bool:
         if value is None:
             return default
@@ -351,6 +410,9 @@ class AgenticRagService:
         max_split_questions: int = 3,
         max_tool_rounds_per_question: int = 3,
         max_expand_calls_per_question: int = 2,
+        max_parent_chunks_per_question: int = 2,
+        parent_chunk_top_k: int = 2,
+        parent_chunk_span: int = 4,
         retry_tool_on_failure: bool = True,
         max_tool_retry: int = 1,
         answer_max_tokens: int = 900,
@@ -366,6 +428,25 @@ class AgenticRagService:
         except Exception:
             normalized_max_split_questions = 3
 
+        normalized_max_parent_chunks = AgenticRagService._parse_int(
+            max_parent_chunks_per_question,
+            default=2,
+            min_value=0,
+            max_value=6,
+        )
+        normalized_parent_chunk_top_k = AgenticRagService._parse_int(
+            parent_chunk_top_k,
+            default=2,
+            min_value=1,
+            max_value=6,
+        )
+        normalized_parent_chunk_span = AgenticRagService._parse_int(
+            parent_chunk_span,
+            default=4,
+            min_value=1,
+            max_value=12,
+        )
+
         debug_trace_enabled = AgenticRagService._parse_bool(
             self.agentic_rag_settings.get("agentic_rag_debug_trace_markdown_enabled"),
             True,
@@ -380,6 +461,9 @@ class AgenticRagService:
             "max_split_questions": normalized_max_split_questions,
             "max_tool_rounds_per_question": max_tool_rounds_per_question,
             "max_expand_calls_per_question": max_expand_calls_per_question,
+            "max_parent_chunks_per_question": normalized_max_parent_chunks,
+            "parent_chunk_top_k": normalized_parent_chunk_top_k,
+            "parent_chunk_span": normalized_parent_chunk_span,
             "retry_tool_on_failure": retry_tool_on_failure,
             "max_tool_retry": max_tool_retry,
             "answer_max_tokens": answer_max_tokens,
@@ -392,6 +476,9 @@ class AgenticRagService:
             max_split_questions=normalized_max_split_questions,
             max_tool_rounds_per_question=max_tool_rounds_per_question,
             max_expand_calls_per_question=max_expand_calls_per_question,
+            max_parent_chunks_per_question=normalized_max_parent_chunks,
+            parent_chunk_top_k=normalized_parent_chunk_top_k,
+            parent_chunk_span=normalized_parent_chunk_span,
             retry_tool_on_failure=retry_tool_on_failure,
             max_tool_retry=max_tool_retry,
             answer_max_tokens=answer_max_tokens,

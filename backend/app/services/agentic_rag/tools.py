@@ -53,11 +53,22 @@ class AgenticRagTools:
         user_id: str,
         embedding_client: Optional[EmbeddingClient] = None,
         source_content_max_chars: int = 700,
+        parent_chunk_span: int = 4,
+        parent_chunk_limit: int = 2,
+        parent_content_max_chars: int = 2200,
+        hydrate_repository_full_text: bool = False,
     ):
         self.supabase = supabase
         self.user_id = user_id
         self.embedding_client = embedding_client
         self.source_content_max_chars = max(100, int(source_content_max_chars))
+        self.parent_chunk_span = max(1, int(parent_chunk_span))
+        self.parent_chunk_limit = max(1, int(parent_chunk_limit))
+        self.parent_content_max_chars = max(
+            self.source_content_max_chars,
+            int(parent_content_max_chars),
+        )
+        self.hydrate_repository_full_text = bool(hydrate_repository_full_text)
         self.semantic_fetch_multiplier = 5
         self.semantic_fetch_cap = 72
         self.semantic_backoff_step = 0.1
@@ -130,8 +141,12 @@ class AgenticRagTools:
                 prefer_breadth=self._prefer_breadth_query(query),
                 prefer_repository=prefer_repository_query,
             )
-            hydrated = self._hydrate_repository_full_text(reranked)
-            return hydrated
+
+            selected_sources = reranked
+            if self.hydrate_repository_full_text:
+                selected_sources = self._hydrate_repository_full_text(selected_sources)
+
+            return self._annotate_parent_metadata(selected_sources)
         except Exception as exc:
             logger.error("search_embeddings_tool failed: %s", exc)
             raise
@@ -252,12 +267,209 @@ class AgenticRagTools:
         )
 
         if neighborhood_hits:
-            return self._diversify_sources(neighborhood_hits, top_k=safe_top_k)
+            diversified = self._diversify_sources(neighborhood_hits, top_k=safe_top_k)
+            return self._annotate_parent_metadata(diversified)
 
         if not seed_query.strip():
             return []
 
         return self.search_embeddings_tool(query=seed_query, top_k=safe_top_k, min_score=min_score)
+
+    def retrieve_parent_chunks_tool(
+        self,
+        parent_ids: Optional[List[str]] = None,
+        limit: int = 2,
+    ) -> List[Dict[str, Any]]:
+        """按 parent_id 回溯更大上下文块（模拟 parent-child 检索）。"""
+        if isinstance(parent_ids, str):
+            raw_parent_ids: List[str] = [parent_ids]
+        else:
+            raw_parent_ids = list(parent_ids or [])
+
+        unique_parent_ids: List[str] = []
+        seen_parent_ids: set[str] = set()
+        for item in raw_parent_ids:
+            parent_id = str(item or "").strip()
+            if not parent_id or parent_id in seen_parent_ids:
+                continue
+
+            seen_parent_ids.add(parent_id)
+            unique_parent_ids.append(parent_id)
+
+        if not unique_parent_ids:
+            return []
+
+        safe_limit = max(1, int(limit))
+        target_parent_ids = unique_parent_ids[: min(safe_limit, self.parent_chunk_limit)]
+
+        parent_specs: List[Dict[str, Any]] = []
+        for parent_id in target_parent_ids:
+            spec = self._parse_parent_id(parent_id)
+            if spec:
+                parent_specs.append(spec)
+
+        if not parent_specs:
+            return []
+
+        parent_sources: List[Dict[str, Any]] = []
+        for spec in parent_specs:
+            rows = self._fetch_parent_rows(spec)
+            if not rows:
+                continue
+
+            parent_source = self._build_parent_source(spec, rows)
+            if parent_source:
+                parent_sources.append(parent_source)
+
+        if not parent_sources:
+            return []
+
+        diversified = self._diversify_sources(
+            parent_sources,
+            top_k=min(len(parent_sources), max(1, int(limit))),
+        )
+        return self._annotate_parent_metadata(diversified, force_parent=True)
+
+    def _annotate_parent_metadata(
+        self,
+        sources: List[Dict[str, Any]],
+        force_parent: bool = False,
+    ) -> List[Dict[str, Any]]:
+        """为来源补充 parent_id 及父块范围信息。"""
+        if not sources:
+            return []
+
+        normalized: List[Dict[str, Any]] = []
+        for source in sources:
+            normalized_source = dict(source)
+            source_type = self._source_type_of(normalized_source)
+
+            source_id = ""
+            if source_type == "article":
+                source_id = str(normalized_source.get("article_id") or "").strip()
+            elif source_type == "repository":
+                source_id = str(normalized_source.get("repository_id") or "").strip()
+
+            chunk_index = int(normalized_source.get("chunk_index") or 0)
+            if source_type and source_id:
+                parent_start = (chunk_index // self.parent_chunk_span) * self.parent_chunk_span
+                parent_end = parent_start + self.parent_chunk_span - 1
+                default_parent_id = f"{source_type}:{source_id}:{parent_start}:{parent_end}"
+
+                normalized_source["parent_id"] = str(
+                    normalized_source.get("parent_id") or default_parent_id
+                )
+                normalized_source["parent_start_chunk"] = int(
+                    normalized_source.get("parent_start_chunk", parent_start)
+                )
+                normalized_source["parent_end_chunk"] = int(
+                    normalized_source.get("parent_end_chunk", parent_end)
+                )
+
+            normalized_source["is_parent"] = bool(normalized_source.get("is_parent")) or force_parent
+            normalized.append(normalized_source)
+
+        return normalized
+
+    def _parse_parent_id(self, parent_id: str) -> Optional[Dict[str, Any]]:
+        """解析 parent_id（格式：source_type:source_id:start:end）。"""
+        parts = str(parent_id or "").strip().split(":")
+        if len(parts) != 4:
+            return None
+
+        source_type = parts[0].strip().lower()
+        source_id = parts[1].strip()
+        if source_type not in {"article", "repository"}:
+            return None
+        if not source_id:
+            return None
+
+        try:
+            start_chunk = max(0, int(parts[2]))
+            end_chunk = max(start_chunk, int(parts[3]))
+        except Exception:
+            return None
+
+        return {
+            "parent_id": f"{source_type}:{source_id}:{start_chunk}:{end_chunk}",
+            "source_type": source_type,
+            "source_id": source_id,
+            "start_chunk": start_chunk,
+            "end_chunk": end_chunk,
+        }
+
+    def _fetch_parent_rows(self, parent_spec: Dict[str, Any]) -> List[Dict[str, Any]]:
+        """查询 parent_id 对应块区间。"""
+        source_type = str(parent_spec.get("source_type") or "")
+        source_id = str(parent_spec.get("source_id") or "")
+        start_chunk = int(parent_spec.get("start_chunk") or 0)
+        end_chunk = int(parent_spec.get("end_chunk") or start_chunk)
+
+        source_field = "article_id" if source_type == "article" else "repository_id"
+        safe_limit = max(1, end_chunk - start_chunk + 1)
+
+        try:
+            result = (
+                self.supabase.table("all_embeddings")
+                .select(
+                    "id, article_id, repository_id, chunk_index, content, "
+                    "articles(title, url), "
+                    "repositories(name, full_name, html_url, owner_login, owner_avatar_url, stargazers_count, language, description)"
+                )
+                .eq("user_id", self.user_id)
+                .eq(source_field, source_id)
+                .gte("chunk_index", start_chunk)
+                .lte("chunk_index", end_chunk)
+                .order("chunk_index")
+                .limit(safe_limit)
+                .execute()
+            )
+            return result.data or []
+        except Exception as exc:
+            logger.warning(
+                "retrieve_parent_chunks_tool query failed: %s (%s=%s, %s-%s)",
+                exc,
+                source_field,
+                source_id,
+                start_chunk,
+                end_chunk,
+            )
+            return []
+
+    def _build_parent_source(
+        self,
+        parent_spec: Dict[str, Any],
+        rows: List[Dict[str, Any]],
+    ) -> Optional[Dict[str, Any]]:
+        """把多个 child chunk 合并为一个 parent context source。"""
+        if not rows:
+            return None
+
+        normalized_rows = [self._normalize_expand_row(row) for row in rows]
+        if not normalized_rows:
+            return None
+
+        ordered_rows = sorted(normalized_rows, key=lambda item: int(item.get("chunk_index") or 0))
+        representative = dict(ordered_rows[0])
+        raw_ordered_rows = sorted(rows, key=lambda item: int(item.get("chunk_index") or 0))
+        combined_content = "\n".join(
+            str(item.get("content") or "").strip() for item in raw_ordered_rows if item.get("content")
+        ).strip()
+        if not combined_content:
+            return None
+
+        parent_id = str(parent_spec.get("parent_id") or "").strip()
+        representative["id"] = f"parent:{parent_id}" if parent_id else str(representative.get("id") or "")
+        representative["chunk_index"] = int(parent_spec.get("start_chunk") or 0)
+        representative["content"] = combined_content[: self.parent_content_max_chars]
+        representative["score"] = max(0.52, float(representative.get("score") or 0.0))
+        representative["parent_id"] = parent_id
+        representative["parent_start_chunk"] = int(parent_spec.get("start_chunk") or 0)
+        representative["parent_end_chunk"] = int(parent_spec.get("end_chunk") or 0)
+        representative["parent_chunk_count"] = len(ordered_rows)
+        representative["is_parent"] = True
+
+        return representative
 
     def _normalize_hit(self, hit: Dict[str, Any]) -> Dict[str, Any]:
         """统一来源结构，兼容 article/repository。"""

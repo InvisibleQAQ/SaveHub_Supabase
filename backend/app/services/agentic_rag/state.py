@@ -31,10 +31,14 @@ class AgenticRagState(TypedDict, total=False):
     max_split_questions: int
     max_tool_rounds_per_question: int
     max_expand_calls_per_question: int
+    max_parent_chunks_per_question: int
     retry_tool_on_failure: bool
     max_tool_retry: int
     answer_max_tokens: int
     stream_output: bool
+
+    parent_chunk_top_k: int
+    parent_chunk_span: int
 
     history_summary_temperature: float
     history_summary_max_tokens: int
@@ -77,6 +81,7 @@ class AgenticRagState(TypedDict, total=False):
 
     current_tool_round: int
     current_expand_calls: int
+    current_parent_calls: int
     current_tool_name: Optional[str]
     current_tool_args: Dict[str, Any]
     current_tool_retry: int
@@ -101,6 +106,9 @@ def create_initial_state(
     max_split_questions: int,
     max_tool_rounds_per_question: int,
     max_expand_calls_per_question: int,
+    max_parent_chunks_per_question: int,
+    parent_chunk_top_k: int,
+    parent_chunk_span: int,
     retry_tool_on_failure: bool,
     max_tool_retry: int,
     answer_max_tokens: int,
@@ -118,10 +126,13 @@ def create_initial_state(
         "max_split_questions": normalized_max_split_questions,
         "max_tool_rounds_per_question": max_tool_rounds_per_question,
         "max_expand_calls_per_question": max_expand_calls_per_question,
+        "max_parent_chunks_per_question": max(0, int(max_parent_chunks_per_question)),
         "retry_tool_on_failure": retry_tool_on_failure,
         "max_tool_retry": max_tool_retry,
         "answer_max_tokens": answer_max_tokens,
         "stream_output": stream_output,
+        "parent_chunk_top_k": max(1, int(parent_chunk_top_k)),
+        "parent_chunk_span": max(1, int(parent_chunk_span)),
         "history_summary_temperature": float(
             rag_settings.get("agentic_rag_history_summary_temperature", 0.1)
         ),
@@ -195,6 +206,7 @@ def create_initial_state(
         "analysis_reason": "",
         "current_tool_round": 0,
         "current_expand_calls": 0,
+        "current_parent_calls": 0,
         "current_tool_name": None,
         "current_tool_args": {},
         "current_tool_retry": 0,

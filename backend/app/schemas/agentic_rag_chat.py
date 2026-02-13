@@ -31,6 +31,24 @@ class AgenticRagChatRequest(BaseModel):
         le=6,
         description="每个子问题最多上下文扩展次数",
     )
+    max_parent_chunks_per_question: int | None = Field(
+        default=None,
+        ge=0,
+        le=6,
+        description="每个子问题最多父块补全次数",
+    )
+    parent_chunk_top_k: int | None = Field(
+        default=None,
+        ge=1,
+        le=6,
+        description="单次父块补全最多回溯父块数量",
+    )
+    parent_chunk_span: int | None = Field(
+        default=None,
+        ge=1,
+        le=12,
+        description="动态父块覆盖的子块窗口大小",
+    )
     retry_tool_on_failure: bool | None = Field(default=None, description="工具失败时是否重试")
     max_tool_retry: int | None = Field(default=None, ge=0, le=3, description="工具最大重试次数")
     answer_max_tokens: int | None = Field(

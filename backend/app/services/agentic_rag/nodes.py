@@ -452,6 +452,7 @@ def dispatch_questions_node(state: AgenticRagState) -> AgenticRagState:
     state["current_question_index"] = state.get("current_question_index", -1) + 1
     state["current_tool_round"] = 0
     state["current_expand_calls"] = 0
+    state["current_parent_calls"] = 0
     state["current_tool_retry"] = 0
     state["current_seed_source_ids"] = []
     state["current_sources"] = []
@@ -495,6 +496,24 @@ def agent_reason_node(state: AgenticRagState) -> AgenticRagState:
     seed_source_limit = max(1, int(state.get("seed_source_limit", 8)))
     seed_ids = [src.get("id") for src in current_sources if src.get("id")][:seed_source_limit]
 
+    max_parent_calls = max(0, int(state.get("max_parent_chunks_per_question", 2)))
+    current_parent_calls = int(state.get("current_parent_calls", 0))
+    parent_chunk_top_k = max(1, int(state.get("parent_chunk_top_k", 2)))
+    parent_candidates: List[str] = []
+    seen_parent_ids: set[str] = set()
+    for source in current_sources:
+        if source.get("is_parent"):
+            continue
+
+        parent_id = str(source.get("parent_id") or "").strip()
+        if not parent_id or parent_id in seen_parent_ids:
+            continue
+
+        seen_parent_ids.add(parent_id)
+        parent_candidates.append(parent_id)
+        if len(parent_candidates) >= parent_chunk_top_k:
+            break
+
     need_more_context = len(current_sources) < max(2, int(state.get("top_k", 10) // 2))
     can_expand = state.get("current_expand_calls", 0) < state.get("max_expand_calls_per_question", 2)
 
@@ -504,6 +523,14 @@ def agent_reason_node(state: AgenticRagState) -> AgenticRagState:
             "query": current_question,
             "top_k": state.get("top_k", 10),
             "min_score": state.get("min_score", 0.35),
+        }
+    elif max_parent_calls > 0 and current_parent_calls < max_parent_calls and parent_candidates:
+        remaining_parent_calls = max_parent_calls - current_parent_calls
+        parent_limit = min(parent_chunk_top_k, remaining_parent_calls)
+        tool_name = "retrieve_parent_chunks"
+        tool_args = {
+            "parent_ids": parent_candidates[:parent_limit],
+            "limit": parent_limit,
         }
     elif need_more_context and can_expand and seed_ids:
         tool_name = "expand_context"
@@ -568,6 +595,9 @@ def run_tools_node_factory(tools: AgenticRagTools):
             try:
                 if tool_name == "search_embeddings":
                     sources = tools.search_embeddings_tool(**tool_args)
+                elif tool_name == "retrieve_parent_chunks":
+                    sources = tools.retrieve_parent_chunks_tool(**tool_args)
+                    state["current_parent_calls"] = int(state.get("current_parent_calls", 0)) + 1
                 elif tool_name == "expand_context":
                     max_expand_calls = state.get("max_expand_calls_per_question", 2)
                     if state.get("current_expand_calls", 0) < max_expand_calls:
@@ -634,6 +664,9 @@ def judge_enough_node(state: AgenticRagState) -> AgenticRagState:
     max_expand_calls = int(state.get("max_expand_calls_per_question", 2))
     current_expand_calls = int(state.get("current_expand_calls", 0))
 
+    max_parent_calls = max(0, int(state.get("max_parent_chunks_per_question", 2)))
+    current_parent_calls = int(state.get("current_parent_calls", 0))
+
     min_score = float(state.get("min_score", 0.35))
     finalize_min_sources = max(1, int(state.get("finalize_min_sources", 4)))
     finalize_min_high_confidence = max(1, int(state.get("finalize_min_high_confidence", 1)))
@@ -653,6 +686,11 @@ def judge_enough_node(state: AgenticRagState) -> AgenticRagState:
         or len(current_sources) >= finalize_min_sources
         or current_tool_round >= max_tool_rounds
         or current_expand_calls >= max_expand_calls
+        or (
+            max_parent_calls > 0
+            and current_parent_calls >= max_parent_calls
+            and len(current_sources) >= max(1, finalize_min_high_confidence)
+        )
     )
 
     if state["enough_for_finalize"] and current_tool_round >= max_tool_rounds:

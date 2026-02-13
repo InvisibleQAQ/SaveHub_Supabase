@@ -28,6 +28,10 @@ export interface RetrievedSource {
   stargazers_count?: number
   language?: string
   description?: string
+  parent_id?: string
+  parent_start_chunk?: number
+  parent_end_chunk?: number
+  is_parent?: boolean
 }
 
 export type AgenticStreamEventType =
@@ -112,6 +116,9 @@ export interface AgenticRagRequestOptions {
   max_split_questions?: number
   max_tool_rounds_per_question?: number
   max_expand_calls_per_question?: number
+  max_parent_chunks_per_question?: number
+  parent_chunk_top_k?: number
+  parent_chunk_span?: number
   retry_tool_on_failure?: boolean
   max_tool_retry?: number
 }

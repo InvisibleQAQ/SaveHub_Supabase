@@ -89,7 +89,9 @@ function stageKeyFromProgress(stage?: string): keyof AgentStageProgress | null {
 }
 
 function stageFromToolName(toolName?: string): AgentStageLogStage {
-  return toolName === "expand_context" ? "expandContext" : "toolCall"
+  return toolName === "expand_context" || toolName === "retrieve_parent_chunks"
+    ? "expandContext"
+    : "toolCall"
 }
 
 function mergeSources(
@@ -209,10 +211,15 @@ export function ChatPage() {
             }
 
             case "tool_call": {
-              const isExpandContext = event.data.tool_name === "expand_context"
-              const defaultToolCallText = isExpandContext
-                ? `第 ${formatQuestionIndex(event.data.question_index)} 个子问题进入二次检索`
-                : `正在检索第 ${formatQuestionIndex(event.data.question_index)} 个子问题`
+              const isExpandContext =
+                event.data.tool_name === "expand_context" ||
+                event.data.tool_name === "retrieve_parent_chunks"
+              const defaultToolCallText =
+                event.data.tool_name === "retrieve_parent_chunks"
+                  ? `第 ${formatQuestionIndex(event.data.question_index)} 个子问题进入父块回溯补全`
+                  : isExpandContext
+                    ? `第 ${formatQuestionIndex(event.data.question_index)} 个子问题进入二次检索`
+                    : `正在检索第 ${formatQuestionIndex(event.data.question_index)} 个子问题`
               const toolCallText = event.data.display_text || defaultToolCallText
 
               setState((prev) => ({
@@ -237,9 +244,11 @@ export function ChatPage() {
               sources = mergeSources(sources, eventSources)
 
               const fallbackResultText =
-                event.data.tool_name === "expand_context"
-                  ? `第 ${formatQuestionIndex(event.data.question_index)} 个子问题二次检索返回 ${toNumber(event.data.result_count)} 条结果`
-                  : `第 ${formatQuestionIndex(event.data.question_index)} 个子问题检索返回 ${toNumber(event.data.result_count)} 条结果`
+                event.data.tool_name === "retrieve_parent_chunks"
+                  ? `第 ${formatQuestionIndex(event.data.question_index)} 个子问题父块补全返回 ${toNumber(event.data.result_count)} 条结果`
+                  : event.data.tool_name === "expand_context"
+                    ? `第 ${formatQuestionIndex(event.data.question_index)} 个子问题二次检索返回 ${toNumber(event.data.result_count)} 条结果`
+                    : `第 ${formatQuestionIndex(event.data.question_index)} 个子问题检索返回 ${toNumber(event.data.result_count)} 条结果`
               const toolResultText = event.data.display_text || fallbackResultText
 
               setState((prev) => ({
@@ -252,7 +261,8 @@ export function ChatPage() {
                       ? "completed"
                       : prev.stages.toolCall,
                   expandContext:
-                    event.data.tool_name === "expand_context"
+                    event.data.tool_name === "expand_context" ||
+                    event.data.tool_name === "retrieve_parent_chunks"
                       ? "completed"
                       : prev.stages.expandContext,
                 },

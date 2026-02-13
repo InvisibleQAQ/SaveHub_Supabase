@@ -39,6 +39,12 @@ data: <json_string>
 
 Agent 正在调用工具。
 
+`tool_name` 可能值：
+
+- `search_embeddings`（子块检索）
+- `retrieve_parent_chunks`（父块回溯补全）
+- `expand_context`（邻域/二次扩展）
+
 ```json
 {
   "question_index": 0,
@@ -67,7 +73,9 @@ Agent 正在调用工具。
       "score": 0.88,
       "source_type": "article",
       "title": "...",
-      "url": "..."
+      "url": "...",
+      "parent_id": "article:<id>:0:3",
+      "is_parent": false
     }
   ]
 }
@@ -134,4 +142,3 @@ Agent 正在调用工具。
 - `done`
 - `error`
 - `clarification_required`
-

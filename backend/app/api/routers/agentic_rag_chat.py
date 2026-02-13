@@ -71,6 +71,21 @@ async def _sse_generator(
                 if request.max_expand_calls_per_question is not None
                 else int(rag_settings.get("agentic_rag_max_expand_calls_per_question", 2))
             ),
+            max_parent_chunks_per_question=(
+                request.max_parent_chunks_per_question
+                if request.max_parent_chunks_per_question is not None
+                else int(rag_settings.get("agentic_rag_max_parent_chunks_per_question", 2))
+            ),
+            parent_chunk_top_k=(
+                request.parent_chunk_top_k
+                if request.parent_chunk_top_k is not None
+                else int(rag_settings.get("agentic_rag_parent_chunk_top_k", 2))
+            ),
+            parent_chunk_span=(
+                request.parent_chunk_span
+                if request.parent_chunk_span is not None
+                else int(rag_settings.get("agentic_rag_parent_chunk_span", 4))
+            ),
             retry_tool_on_failure=(
                 request.retry_tool_on_failure
                 if request.retry_tool_on_failure is not None
