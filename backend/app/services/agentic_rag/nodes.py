@@ -26,6 +26,77 @@ NO_KB_FALLBACK_KEYWORDS = (
     "无法从知识库",
 )
 
+MULTI_INTENT_HINTS = (
+    "以及",
+    "并且",
+    "同时",
+    "分别",
+    "对比",
+    "比较",
+    "区别",
+    "优缺点",
+    "还是",
+    "vs",
+    "versus",
+)
+
+REWRITE_NOISE_PHRASES = (
+    "请问",
+    "我想",
+    "想了解",
+    "帮我",
+    "帮忙",
+    "可以",
+    "能不能",
+    "有没有",
+    "有吗",
+    "给我",
+    "推荐",
+    "介绍",
+    "讲讲",
+    "看看",
+    "一下",
+    "一下子",
+)
+
+QUERY_STOP_TERMS = {
+    "the",
+    "and",
+    "with",
+    "for",
+    "from",
+    "what",
+    "which",
+    "when",
+    "where",
+    "how",
+    "why",
+    "is",
+    "are",
+    "to",
+    "of",
+    "in",
+    "on",
+    "at",
+    "this",
+    "that",
+    "请问",
+    "有没有",
+    "有吗",
+    "哪些",
+    "什么",
+    "一下",
+    "相关",
+    "方面",
+    "关于",
+    "推荐",
+    "介绍",
+}
+
+QUERY_TERM_PATTERN = re.compile(r"[a-z0-9][a-z0-9._/-]{1,}|[\u4e00-\u9fff]{2,}", re.IGNORECASE)
+YEAR_PATTERN = re.compile(r"(?:19|20)\d{2}年?")
+EXAMPLE_PARENS_PATTERN = re.compile(r"[（(](?:如|例如|比如|such as)[^）)]{0,100}[）)]", re.IGNORECASE)
+
 
 def _append_llm_call_event(
     state: AgenticRagState,
@@ -208,6 +279,54 @@ def rewrite_and_split_node_factory(chat_client: ChatClient):
             return state
 
         max_split = max(1, int(state.get("max_split_questions", 3)))
+        analysis_system_prompt = str(state.get("query_analysis_system_prompt") or "")
+        analysis_temperature = float(state.get("query_analysis_temperature", 0.1))
+        analysis_max_tokens = int(state.get("query_analysis_max_tokens", 320))
+
+        allow_split = _should_split_query(original_query)
+        prefer_keyword_mode = _prefer_keyword_first_rewrite(original_query, summary)
+
+        if prefer_keyword_mode:
+            keyword_query = _build_keyword_focused_query(original_query)
+            state["rewritten_queries"] = [keyword_query]
+            state["pending_questions"] = [keyword_query]
+            state["clarification_required"] = False
+            state["clarification_message"] = None
+            state["analysis_reason"] = "keyword_mode"
+
+            _append_llm_call_event(
+                state,
+                stage="query_analysis",
+                system_prompt=analysis_system_prompt,
+                user_prompt=(
+                    f"conversation_summary:\n{summary or '无'}\n\n"
+                    f"current_query:\n{original_query}\n\n"
+                    f"max_split_questions={max_split}"
+                ),
+                temperature=analysis_temperature,
+                max_tokens=analysis_max_tokens,
+                skipped=True,
+                skip_reason="simple_query_keyword_mode",
+                response=_json_dumps_compact(
+                    {
+                        "is_clear": True,
+                        "questions": [keyword_query],
+                        "clarification_needed": "",
+                        "reason": "keyword_mode",
+                    }
+                ),
+            )
+
+            append_event(
+                state,
+                "rewrite",
+                {
+                    "original_query": original_query,
+                    "rewritten_queries": [keyword_query],
+                    "count": 1,
+                },
+            )
+            return state
 
         analysis_payload = _analyze_query_with_llm(
             state=state,
@@ -215,11 +334,9 @@ def rewrite_and_split_node_factory(chat_client: ChatClient):
             original_query=original_query,
             conversation_summary=summary,
             max_split=max_split,
-            system_prompt=str(
-                state.get("query_analysis_system_prompt") or ""
-            ),
-            temperature=float(state.get("query_analysis_temperature", 0.1)),
-            max_tokens=int(state.get("query_analysis_max_tokens", 320)),
+            system_prompt=analysis_system_prompt,
+            temperature=analysis_temperature,
+            max_tokens=analysis_max_tokens,
         )
 
         questions = analysis_payload.get("questions") or []
@@ -253,9 +370,14 @@ def rewrite_and_split_node_factory(chat_client: ChatClient):
             )
             return state
 
-        rewritten_queries = [str(item).strip() for item in questions if str(item).strip()][:max_split]
+        rewritten_queries = _sanitize_rewritten_queries(
+            questions=questions,
+            original_query=original_query,
+            max_split=max_split,
+            allow_split=allow_split,
+        )
         if not rewritten_queries:
-            rewritten_queries = [original_query]
+            rewritten_queries = [_build_keyword_focused_query(original_query)]
 
         state["rewritten_queries"] = rewritten_queries
         state["pending_questions"] = list(rewritten_queries)
@@ -557,8 +679,10 @@ def finalize_answer_node_factory(chat_client: ChatClient):
             for src in sorted_sources[:evidence_max_sources]:
                 ref_index = src.get("index")
                 title = src.get("title") or "未命名来源"
-                snippet = str(src.get("content") or "").strip().replace("\n", " ")
-                snippet = snippet[:snippet_max_chars]
+                snippet = _build_evidence_snippet(
+                    source=src,
+                    snippet_max_chars=snippet_max_chars,
+                )
                 evidence_lines.append(f"[ref:{ref_index}] 标题: {title} | 证据: {snippet}")
 
             answer = _generate_answer_with_evidence(
@@ -839,6 +963,144 @@ def _analyze_query_with_llm(
         return payload
 
 
+def _should_split_query(query: str) -> bool:
+    normalized = str(query or "").strip().lower()
+    if not normalized:
+        return False
+
+    if any(hint in normalized for hint in MULTI_INTENT_HINTS):
+        return True
+
+    multi_question_marks = normalized.count("?") + normalized.count("？")
+    if multi_question_marks >= 2:
+        return True
+
+    separators = normalized.count(";") + normalized.count("；") + normalized.count("/")
+    if separators >= 2:
+        return True
+
+    return False
+
+
+def _prefer_keyword_first_rewrite(query: str, conversation_summary: str) -> bool:
+    clean_query = str(query or "").strip()
+    if not clean_query:
+        return False
+
+    if _should_split_query(clean_query):
+        return False
+
+    if len(clean_query) > 64:
+        return False
+
+    if conversation_summary and len(clean_query) > 36:
+        return False
+
+    return True
+
+
+def _sanitize_rewritten_queries(
+    questions: List[str],
+    original_query: str,
+    max_split: int,
+    allow_split: bool,
+) -> List[str]:
+    source_terms = set(_extract_query_terms(original_query))
+    source_has_year = bool(YEAR_PATTERN.search(original_query))
+
+    normalized: List[str] = []
+    for item in questions:
+        candidate = str(item or "").strip()
+        if not candidate:
+            continue
+
+        candidate = EXAMPLE_PARENS_PATTERN.sub("", candidate)
+        candidate = _compact_text(candidate)
+        if not source_has_year:
+            candidate = YEAR_PATTERN.sub("", candidate)
+            candidate = _compact_text(candidate)
+
+        if _looks_like_drift(candidate, source_terms):
+            candidate = _build_keyword_focused_query(original_query)
+
+        if candidate:
+            normalized.append(candidate)
+
+    deduped: List[str] = []
+    used: set[str] = set()
+    for item in normalized:
+        key = item.lower()
+        if key in used:
+            continue
+        used.add(key)
+        deduped.append(item)
+
+    if not allow_split and deduped:
+        deduped = [deduped[0]]
+
+    return deduped[: max(1, int(max_split))]
+
+
+def _looks_like_drift(candidate: str, source_terms: set[str]) -> bool:
+    if not candidate:
+        return True
+
+    if not source_terms:
+        return False
+
+    candidate_terms = set(_extract_query_terms(candidate))
+    if len(candidate_terms) <= 2:
+        return False
+
+    overlap = len(candidate_terms & source_terms)
+    overlap_ratio = overlap / max(1, len(candidate_terms))
+    return overlap_ratio < 0.35
+
+
+def _build_keyword_focused_query(query: str) -> str:
+    cleaned = _strip_rewrite_noise(query)
+    terms = _extract_query_terms(cleaned)
+    if not terms:
+        return _compact_text(query)
+    return " ".join(terms[:8]).strip() or _compact_text(query)
+
+
+def _strip_rewrite_noise(text: str) -> str:
+    cleaned = str(text or "")
+    for phrase in REWRITE_NOISE_PHRASES:
+        cleaned = cleaned.replace(phrase, " ")
+    return _compact_text(cleaned)
+
+
+def _extract_query_terms(text: str) -> List[str]:
+    ordered_terms: List[str] = []
+    seen: set[str] = set()
+
+    for match in QUERY_TERM_PATTERN.findall(str(text or "").lower()):
+        token = str(match or "").strip()
+        if len(token) < 2:
+            continue
+        if token in QUERY_STOP_TERMS:
+            continue
+        if token in seen:
+            continue
+        seen.add(token)
+        ordered_terms.append(token)
+
+    return ordered_terms
+
+
+def _compact_text(text: str) -> str:
+    compacted = str(text or "").strip()
+    compacted = re.sub(r"\s+", " ", compacted)
+    compacted = compacted.strip(" ,，。；;、:\\：")
+    return compacted
+
+
+def _json_dumps_compact(data: Any) -> str:
+    return json.dumps(data, ensure_ascii=False, separators=(",", ":"), default=str)
+
+
 def _generate_answer_with_evidence(
     state: AgenticRagState,
     chat_client: ChatClient,
@@ -956,6 +1218,20 @@ def _merge_sources(existing: List[Dict[str, Any]], incoming: List[Dict[str, Any]
     merged = list(source_map.values())
     merged.sort(key=lambda src: (-(float(src.get("score") or 0.0)), int(src.get("index") or 0)))
     return merged
+
+
+def _build_evidence_snippet(source: Dict[str, Any], snippet_max_chars: int) -> str:
+    """构建证据片段：repository 来源保留完整内容，其他来源按阈值截断。"""
+    snippet = str(source.get("content") or "").strip().replace("\n", " ")
+    if not snippet:
+        return ""
+
+    source_type = str(source.get("source_type") or "").strip().lower()
+    is_repository = source_type == "repository" or bool(source.get("repository_id"))
+    if is_repository:
+        return snippet
+
+    return snippet[: max(80, int(snippet_max_chars))]
 
 
 def _ensure_valid_refs(answer: str, valid_refs: set[int]) -> str:

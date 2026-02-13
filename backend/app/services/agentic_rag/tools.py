@@ -80,6 +80,7 @@ class AgenticRagTools:
             return []
 
         safe_top_k = max(1, int(top_k))
+        prefer_repository_query = self._prefer_repository_query(query)
         fetch_count = min(
             self.semantic_fetch_cap,
             max(safe_top_k * self.semantic_fetch_multiplier, safe_top_k + 12),
@@ -87,11 +88,28 @@ class AgenticRagTools:
 
         try:
             query_embedding = run_async_in_thread(self.embedding_client.embed(query))
-            semantic_hits = self._search_semantic_with_backoff(
+            semantic_target_hits = max(safe_top_k * 2, safe_top_k + 2)
+
+            article_semantic_hits = self._search_semantic_with_backoff(
                 query_embedding=query_embedding,
                 top_k=fetch_count,
                 min_score=min_score,
-                target_hits=max(safe_top_k * 2, safe_top_k + 2),
+                target_hits=semantic_target_hits,
+                source_type="article",
+            )
+
+            repository_semantic_hits = self._search_semantic_with_backoff(
+                query_embedding=query_embedding,
+                top_k=fetch_count,
+                min_score=min_score,
+                target_hits=semantic_target_hits,
+                source_type="repository",
+            )
+
+            semantic_hits = self._merge_semantic_hits(
+                article_hits=article_semantic_hits,
+                repository_hits=repository_semantic_hits,
+                limit=max(fetch_count * 2, safe_top_k * 4),
             )
             normalized_semantic = [self._normalize_hit(hit) for hit in semantic_hits]
 
@@ -110,8 +128,10 @@ class AgenticRagTools:
                 merged_sources,
                 top_k=safe_top_k,
                 prefer_breadth=self._prefer_breadth_query(query),
+                prefer_repository=prefer_repository_query,
             )
-            return reranked
+            hydrated = self._hydrate_repository_full_text(reranked)
+            return hydrated
         except Exception as exc:
             logger.error("search_embeddings_tool failed: %s", exc)
             raise
@@ -122,6 +142,7 @@ class AgenticRagTools:
         top_k: int,
         min_score: float,
         target_hits: int,
+        source_type: Optional[str] = None,
     ) -> List[Dict[str, Any]]:
         """语义检索（自适应放宽阈值，优先提升召回）。"""
         thresholds: List[float] = []
@@ -147,6 +168,7 @@ class AgenticRagTools:
                 user_id=self.user_id,
                 top_k=top_k,
                 min_score=threshold,
+                source_type=source_type,
             )
 
             for hit in round_hits:
@@ -175,6 +197,39 @@ class AgenticRagTools:
             key=lambda item: (-(float(item.get("score") or 0.0)), int(item.get("chunk_index") or 0))
         )
         return ordered_hits
+
+    @staticmethod
+    def _merge_semantic_hits(
+        article_hits: List[Dict[str, Any]],
+        repository_hits: List[Dict[str, Any]],
+        limit: int,
+    ) -> List[Dict[str, Any]]:
+        """合并 article/repository 语义召回结果并按分数排序去重。"""
+        deduped: Dict[str, Dict[str, Any]] = {}
+
+        for hit in [*article_hits, *repository_hits]:
+            hit_id = str(hit.get("id") or "").strip()
+            if not hit_id:
+                hit_id = (
+                    f"{hit.get('article_id') or ''}:"
+                    f"{hit.get('repository_id') or ''}:"
+                    f"{hit.get('chunk_index') or 0}:"
+                    f"{len(deduped)}"
+                )
+
+            existing = deduped.get(hit_id)
+            if existing is None:
+                deduped[hit_id] = hit
+                continue
+
+            if float(hit.get("score") or 0.0) > float(existing.get("score") or 0.0):
+                deduped[hit_id] = hit
+
+        ordered_hits = list(deduped.values())
+        ordered_hits.sort(
+            key=lambda item: (-(float(item.get("score") or 0.0)), int(item.get("chunk_index") or 0))
+        )
+        return ordered_hits[: max(1, int(limit))]
 
     def expand_context_tool(
         self,
@@ -232,6 +287,87 @@ class AgenticRagTools:
             "language": hit.get("repository_language"),
             "description": hit.get("repository_description"),
         }
+
+    def _hydrate_repository_full_text(self, sources: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        """将 repository 来源的 content 替换为 all_embeddings 全量分块拼接文本。"""
+        if not sources:
+            return []
+
+        repository_ids_raw = [str(item.get("repository_id") or "").strip() for item in sources]
+        repository_ids = self._normalize_uuid_list([item for item in repository_ids_raw if item])
+        if not repository_ids:
+            return sources
+
+        try:
+            repository_chunk_rows = self._fetch_repository_chunk_rows(repository_ids)
+        except Exception as exc:
+            logger.warning("hydrate repository full_text failed: %s", exc)
+            return sources
+
+        repository_chunk_map: Dict[str, List[Dict[str, Any]]] = {}
+        for row in repository_chunk_rows:
+            repository_id = str(row.get("repository_id") or "").strip()
+            if not repository_id:
+                continue
+            repository_chunk_map.setdefault(repository_id, []).append(row)
+
+        repository_context_map: Dict[str, str] = {}
+        for repository_id, chunk_rows in repository_chunk_map.items():
+            ordered_rows = sorted(
+                chunk_rows,
+                key=lambda item: int(item.get("chunk_index") or 0),
+            )
+            combined_content = "".join(str(item.get("content") or "") for item in ordered_rows)
+            if combined_content:
+                repository_context_map[repository_id] = combined_content
+
+        if not repository_context_map:
+            return sources
+
+        hydrated_sources: List[Dict[str, Any]] = []
+        for source in sources:
+            repository_id = str(source.get("repository_id") or "").strip()
+            repository_content = repository_context_map.get(repository_id)
+            if not repository_id or not repository_content:
+                hydrated_sources.append(source)
+                continue
+
+            hydrated_source = dict(source)
+            hydrated_source["content"] = repository_content
+
+            hydrated_sources.append(hydrated_source)
+
+        return hydrated_sources
+
+    def _fetch_repository_chunk_rows(self, repository_ids: List[str]) -> List[Dict[str, Any]]:
+        """分页读取指定仓库在 all_embeddings 中的全部分块。"""
+        rows: List[Dict[str, Any]] = []
+        page_size = 1000
+        start = 0
+
+        while True:
+            page_result = (
+                self.supabase.table("all_embeddings")
+                .select("repository_id, chunk_index, content")
+                .eq("user_id", self.user_id)
+                .in_("repository_id", repository_ids)
+                .order("repository_id")
+                .order("chunk_index")
+                .range(start, start + page_size - 1)
+                .execute()
+            )
+            page_rows = page_result.data or []
+            if not page_rows:
+                break
+
+            rows.extend(page_rows)
+
+            if len(page_rows) < page_size:
+                break
+
+            start += page_size
+
+        return rows
 
     def _expand_by_neighborhood(
         self,
@@ -382,6 +518,7 @@ class AgenticRagTools:
         sources: List[Dict[str, Any]],
         top_k: int,
         prefer_breadth: bool = False,
+        prefer_repository: bool = False,
     ) -> List[Dict[str, Any]]:
         """在高分前提下增加来源多样性，减少同源重复。"""
         if not sources:
@@ -416,7 +553,80 @@ class AgenticRagTools:
                 if len(selected) >= safe_top_k:
                     break
 
+        if prefer_repository and selected:
+            selected = self._ensure_repository_presence(
+                selected=selected,
+                sorted_sources=sorted_sources,
+                top_k=safe_top_k,
+            )
+
         return selected[:safe_top_k]
+
+    @staticmethod
+    def _source_type_of(source: Dict[str, Any]) -> str:
+        source_type = str(source.get("source_type") or "").strip().lower()
+        if source_type in {"article", "repository"}:
+            return source_type
+        if source.get("repository_id"):
+            return "repository"
+        if source.get("article_id"):
+            return "article"
+        return ""
+
+    def _ensure_repository_presence(
+        self,
+        selected: List[Dict[str, Any]],
+        sorted_sources: List[Dict[str, Any]],
+        top_k: int,
+    ) -> List[Dict[str, Any]]:
+        """当查询偏向项目/仓库时，确保最终结果至少保留一个 repository 来源。"""
+        has_repo_in_candidates = any(
+            self._source_type_of(item) == "repository" for item in sorted_sources
+        )
+        if not has_repo_in_candidates:
+            return selected[:top_k]
+
+        has_repo_selected = any(self._source_type_of(item) == "repository" for item in selected)
+        if has_repo_selected:
+            return selected[:top_k]
+
+        selected_ids = {str(item.get("id") or "") for item in selected}
+        best_repository = None
+        for candidate in sorted_sources:
+            if self._source_type_of(candidate) != "repository":
+                continue
+
+            candidate_id = str(candidate.get("id") or "")
+            if candidate_id and candidate_id in selected_ids:
+                continue
+
+            best_repository = candidate
+            break
+
+        if best_repository is None:
+            return selected[:top_k]
+
+        replace_index = None
+        replace_score = float("inf")
+        for idx, item in enumerate(selected):
+            if self._source_type_of(item) == "repository":
+                continue
+
+            item_score = float(item.get("score") or 0.0)
+            if item_score < replace_score:
+                replace_score = item_score
+                replace_index = idx
+
+        updated = list(selected)
+        if replace_index is not None:
+            updated[replace_index] = best_repository
+        elif len(updated) < top_k:
+            updated.append(best_repository)
+
+        updated.sort(
+            key=lambda item: (-(float(item.get("score") or 0.0)), int(item.get("chunk_index") or 0))
+        )
+        return updated[:top_k]
 
     def _search_keyword_candidates(self, query: str, limit: int) -> List[Dict[str, Any]]:
         """关键词兜底召回（content + repository metadata）。"""
@@ -425,10 +635,17 @@ class AgenticRagTools:
             return []
 
         safe_limit = max(1, int(limit))
+        prefer_repository = self._prefer_repository_query(query)
         rows: List[Dict[str, Any]] = []
 
         rows.extend(self._search_content_keyword_rows(terms=terms, limit=safe_limit))
-        rows.extend(self._search_repository_keyword_rows(terms=terms, limit=safe_limit))
+        rows.extend(
+            self._search_repository_keyword_rows(
+                terms=terms,
+                limit=safe_limit,
+                prefer_repository=prefer_repository,
+            )
+        )
 
         deduped_rows: Dict[str, Dict[str, Any]] = {}
         for row in rows:
@@ -476,14 +693,20 @@ class AgenticRagTools:
             logger.warning("keyword content recall query failed: %s", exc)
             return []
 
-    def _search_repository_keyword_rows(self, terms: List[str], limit: int) -> List[Dict[str, Any]]:
+    def _search_repository_keyword_rows(
+        self,
+        terms: List[str],
+        limit: int,
+        prefer_repository: bool = False,
+    ) -> List[Dict[str, Any]]:
         """基于仓库 metadata 先召回 repo，再映射到 embeddings。"""
-        clauses: List[str] = []
+        basic_clauses: List[str] = []
+        extended_clauses: List[str] = []
         for term in terms[:4]:
             escaped = self._escape_ilike_term(term)
             if not escaped:
                 continue
-            clauses.extend(
+            basic_clauses.extend(
                 [
                     f"name.ilike.%{escaped}%",
                     f"full_name.ilike.%{escaped}%",
@@ -491,21 +714,51 @@ class AgenticRagTools:
                 ]
             )
 
-        if not clauses:
+            extended_clauses.extend(
+                [
+                    f"name.ilike.%{escaped}%",
+                    f"full_name.ilike.%{escaped}%",
+                    f"description.ilike.%{escaped}%",
+                    f"ai_summary.ilike.%{escaped}%",
+                    f"custom_description.ilike.%{escaped}%",
+                ]
+            )
+
+        if not basic_clauses:
             return []
+
+        primary_clauses = extended_clauses if prefer_repository else basic_clauses
 
         try:
             repository_rows = (
                 self.supabase.table("repositories")
                 .select("id")
                 .eq("user_id", self.user_id)
-                .or_(",".join(clauses))
+                .or_(",".join(primary_clauses))
                 .limit(max(10, limit))
                 .execute()
             ).data or []
         except Exception as exc:
-            logger.warning("keyword repository recall query failed: %s", exc)
-            return []
+            if prefer_repository and primary_clauses != basic_clauses:
+                logger.warning(
+                    "keyword repository recall with extended fields failed, fallback to basic fields: %s",
+                    exc,
+                )
+                try:
+                    repository_rows = (
+                        self.supabase.table("repositories")
+                        .select("id")
+                        .eq("user_id", self.user_id)
+                        .or_(",".join(basic_clauses))
+                        .limit(max(10, limit))
+                        .execute()
+                    ).data or []
+                except Exception as fallback_exc:
+                    logger.warning("keyword repository recall query failed: %s", fallback_exc)
+                    return []
+            else:
+                logger.warning("keyword repository recall query failed: %s", exc)
+                return []
 
         repository_ids = [str(row.get("id") or "").strip() for row in repository_rows if row.get("id")]
         repository_ids = [item for item in repository_ids if item]
@@ -662,6 +915,24 @@ class AgenticRagTools:
 
         terms = self._extract_query_terms(normalized)
         return len(normalized) <= 24 and 1 <= len(terms) <= 3
+
+    def _prefer_repository_query(self, query: str) -> bool:
+        """判断查询是否明显偏向仓库/项目发现。"""
+        normalized = str(query or "").strip().lower()
+        if not normalized:
+            return False
+
+        return any(
+            keyword in normalized
+            for keyword in (
+                "开源项目",
+                "项目",
+                "仓库",
+                "repo",
+                "repository",
+                "github",
+            )
+        )
 
     @classmethod
     def _extract_query_terms(cls, query: str) -> List[str]:

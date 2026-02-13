@@ -31,7 +31,7 @@ def write_agentic_rag_trace_markdown(
     base_dir.mkdir(parents=True, exist_ok=True)
 
     last_user_query = _extract_last_user_query(messages)
-    run_id = finished_at.strftime("%Y%m%d-%H%M%S-%f")
+    run_id = finished_at.strftime("%Y%m%d_%H%M%S_%f")
     safe_query = _safe_filename_text(last_user_query)
     file_path = base_dir / f"{run_id}_{safe_query}.md"
 
@@ -272,13 +272,27 @@ def _summarize_sources(sources: List[Dict[str, Any]]) -> List[str]:
         ref = source.get("index")
         title = str(source.get("title") or "未命名来源").strip()
         score = float(source.get("score") or 0.0)
-        snippet = str(source.get("content") or "").strip().replace("\n", " ")[:120]
+        snippet = _source_preview_text(source, max_chars=120)
         ref_text = f"ref:{ref}" if str(ref).isdigit() else "ref:?"
         if snippet:
             lines.append(f"[{ref_text}] {title} (score={score:.4f}) -> {snippet}")
         else:
             lines.append(f"[{ref_text}] {title} (score={score:.4f})")
     return lines
+
+
+def _source_preview_text(source: Dict[str, Any], max_chars: int = 120) -> str:
+    """日志预览：repository 来源显示完整内容，其他来源按 max_chars 截断。"""
+    snippet = str(source.get("content") or "").strip().replace("\n", " ")
+    if not snippet:
+        return ""
+
+    source_type = str(source.get("source_type") or "").strip().lower()
+    is_repository = source_type == "repository" or bool(source.get("repository_id"))
+    if is_repository:
+        return snippet
+
+    return snippet[: max(20, int(max_chars))]
 
 
 def _render_llm_call(data: Dict[str, Any]) -> List[str]:
@@ -360,7 +374,9 @@ def _event_summary(event: Dict[str, Any]) -> str:
 def _resolve_trace_dir(output_dir: Optional[str]) -> Path:
     if output_dir and str(output_dir).strip():
         return Path(str(output_dir).strip()).expanduser()
-    return Path(__file__).resolve().parents[4] / "logs" / "agentic-rag-traces"
+    # 默认保持历史路径，兼容既有调试流程：
+    # /<repo>/backend/backend/logs/agentic_rag_traces
+    return Path(__file__).resolve().parents[3] / "backend" / "logs" / "agentic_rag_traces"
 
 
 def _extract_last_user_query(messages: List[Dict[str, str]]) -> str:

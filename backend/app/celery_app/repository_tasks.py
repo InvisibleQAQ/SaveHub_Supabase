@@ -21,6 +21,7 @@ from .task_lock import get_task_lock
 from .supabase_client import get_supabase_service
 from app.services.repository_analyzer import analyze_repositories_needing_analysis
 from app.services.db.repositories import RepositoryService
+from app.services.rag.repository_text import build_repository_embedding_text
 
 logger = logging.getLogger(__name__)
 
@@ -291,38 +292,6 @@ def _get_repos_needing_embedding(supabase, user_id: str) -> List[dict]:
     return result.data or []
 
 
-def _build_repository_text(repo: dict) -> str:
-    """组合仓库文本用于 embedding。"""
-    parts = []
-    parts.append(f"仓库名称: {repo.get('full_name', '')}")
-
-    if repo.get("description"):
-        parts.append(f"描述: {repo['description']}")
-    if repo.get("html_url"):
-        parts.append(f"链接: {repo['html_url']}")
-    if repo.get("owner_login"):
-        parts.append(f"所有者: {repo['owner_login']}")
-
-    topics = repo.get("topics") or []
-    if topics:
-        parts.append(f"标签: {', '.join(topics)}")
-
-    ai_tags = repo.get("ai_tags") or []
-    if ai_tags:
-        parts.append(f"AI标签: {', '.join(ai_tags)}")
-
-    if repo.get("language"):
-        parts.append(f"主要语言: {repo['language']}")
-
-    if repo.get("readme_content"):
-        parts.append(f"\nREADME内容:\n{repo['readme_content']}")
-
-    if repo.get("ai_summary"):
-        parts.append(f"\nAI摘要:\n{repo['ai_summary']}")
-
-    return "\n".join(parts)
-
-
 def _process_single_repository_embedding(
     repo: dict,
     embedding_config: dict,
@@ -336,7 +305,7 @@ def _process_single_repository_embedding(
 
     try:
         # 1. 组合文本
-        full_text = _build_repository_text(repo)
+        full_text = build_repository_embedding_text(repo)
         if not full_text.strip():
             rag_service.mark_repository_embedding_processed(repository_id, success=True)
             return {"success": True, "chunks": 0}

@@ -11,6 +11,28 @@ from supabase import Client
 
 logger = logging.getLogger(__name__)
 
+SUPPORTED_SOURCE_TYPES = {"article", "repository"}
+
+
+def _normalize_source_type(source_type: Optional[str]) -> Optional[str]:
+    normalized = str(source_type or "").strip().lower()
+    if not normalized:
+        return None
+    if normalized in SUPPORTED_SOURCE_TYPES:
+        return normalized
+    return None
+
+
+def _filter_hits_by_source_type(
+    hits: List[Dict[str, Any]],
+    source_type: Optional[str],
+) -> List[Dict[str, Any]]:
+    if source_type == "article":
+        return [hit for hit in hits if hit.get("article_id")]
+    if source_type == "repository":
+        return [hit for hit in hits if hit.get("repository_id")]
+    return hits
+
 
 def search_embeddings(
     supabase: Client,
@@ -19,6 +41,7 @@ def search_embeddings(
     top_k: int = 10,
     feed_id: Optional[str] = None,
     min_score: float = 0.0,
+    source_type: Optional[str] = None,
 ) -> List[Dict[str, Any]]:
     """
     向量相似度搜索。
@@ -32,6 +55,7 @@ def search_embeddings(
         top_k: 返回结果数量
         feed_id: 可选的 Feed ID 过滤
         min_score: 最小相似度阈值（0-1）
+        source_type: 可选来源类型过滤（article/repository）
 
     Returns:
         搜索结果列表，每个结果包含：
@@ -48,25 +72,43 @@ def search_embeddings(
         logger.warning("Empty query embedding provided")
         return []
 
+    normalized_source_type = _normalize_source_type(source_type)
+    if source_type and normalized_source_type is None:
+        logger.warning("Unknown source_type=%s, ignore source filter", source_type)
+
+    rpc_args = {
+        "query_embedding": query_embedding,
+        "match_user_id": user_id,
+        "match_count": top_k,
+        "match_feed_id": feed_id,
+        "min_similarity": min_score,
+    }
+    if normalized_source_type:
+        rpc_args["match_source_type"] = normalized_source_type
+
     try:
         # 使用 RPC 调用执行向量搜索
         # 注意：需要在 Supabase 中创建对应的函数
-        result = supabase.rpc(
-            "search_all_embeddings",
-            {
-                "query_embedding": query_embedding,
-                "match_user_id": user_id,
-                "match_count": top_k,
-                "match_feed_id": feed_id,
-                "min_similarity": min_score,
-            }
-        ).execute()
+        try:
+            result = supabase.rpc("search_all_embeddings", rpc_args).execute()
+        except Exception as exc:
+            if not normalized_source_type:
+                raise
+
+            fallback_args = dict(rpc_args)
+            fallback_args.pop("match_source_type", None)
+            logger.warning(
+                "Vector search source filter unavailable, fallback to client filter: %s",
+                exc,
+            )
+            result = supabase.rpc("search_all_embeddings", fallback_args).execute()
 
         hits = result.data or []
+        hits = _filter_hits_by_source_type(hits, normalized_source_type)
 
         logger.info(
             f"Vector search: user={user_id}, top_k={top_k}, "
-            f"feed={feed_id}, results={len(hits)}"
+            f"feed={feed_id}, source_type={normalized_source_type}, results={len(hits)}"
         )
 
         return hits
@@ -84,6 +126,7 @@ def search_all_embeddings(
     top_k: int = 10,
     feed_id: Optional[str] = None,
     min_score: float = 0.0,
+    source_type: Optional[str] = None,
 ) -> List[Dict[str, Any]]:
     """语义检索 all_embeddings 的显式入口（Agentic-RAG 使用）。"""
     return search_embeddings(
@@ -93,6 +136,7 @@ def search_all_embeddings(
         top_k=top_k,
         feed_id=feed_id,
         min_score=min_score,
+        source_type=source_type,
     )
 
 
@@ -206,18 +250,27 @@ CREATE OR REPLACE FUNCTION search_all_embeddings(
     match_user_id uuid,
     match_count int DEFAULT 10,
     match_feed_id uuid DEFAULT NULL,
-    min_similarity float DEFAULT 0.0
+    min_similarity float DEFAULT 0.0,
+    match_source_type text DEFAULT NULL
 )
 RETURNS TABLE (
     id uuid,
     article_id uuid,
+    repository_id uuid,
     chunk_index int,
-    content_type text,
     content text,
-    source_url text,
     score float,
+    -- Article fields
     article_title text,
-    article_url text
+    article_url text,
+    -- Repository fields (expanded for reference cards)
+    repository_name text,
+    repository_url text,
+    repository_owner_login text,
+    repository_owner_avatar_url text,
+    repository_stargazers_count int,
+    repository_language text,
+    repository_description text
 )
 LANGUAGE plpgsql
 SECURITY DEFINER
@@ -228,18 +281,48 @@ BEGIN
     SELECT
         e.id,
         e.article_id,
+        e.repository_id,
         e.chunk_index,
-        e.content_type,
         e.content,
-        e.source_url,
         1 - (e.embedding <=> query_embedding) AS score,
+        -- Article fields
         a.title AS article_title,
-        a.url AS article_url
+        a.url AS article_url,
+        -- Repository fields
+        r.name AS repository_name,
+        r.html_url AS repository_url,
+        r.owner_login AS repository_owner_login,
+        r.owner_avatar_url AS repository_owner_avatar_url,
+        r.stargazers_count AS repository_stargazers_count,
+        r.language AS repository_language,
+        r.description AS repository_description
     FROM all_embeddings e
-    JOIN articles a ON e.article_id = a.id
+    LEFT JOIN articles a ON e.article_id = a.id
+    LEFT JOIN repositories r ON e.repository_id = r.id
     WHERE e.user_id = match_user_id
-      AND (match_feed_id IS NULL OR a.feed_id = match_feed_id)
       AND 1 - (e.embedding <=> query_embedding) >= min_similarity
+      AND (
+          match_source_type IS NULL
+          OR lower(match_source_type) = ''
+          OR (lower(match_source_type) = 'article' AND e.article_id IS NOT NULL)
+          OR (lower(match_source_type) = 'repository' AND e.repository_id IS NOT NULL)
+      )
+      AND (
+          match_feed_id IS NULL
+          OR (e.article_id IS NOT NULL AND a.feed_id = match_feed_id)
+          OR (
+              e.repository_id IS NOT NULL
+              AND EXISTS (
+                  SELECT 1
+                  FROM article_repositories ar
+                  JOIN articles fa ON fa.id = ar.article_id
+                  WHERE ar.repository_id = e.repository_id
+                    AND ar.user_id = match_user_id
+                    AND fa.user_id = match_user_id
+                    AND fa.feed_id = match_feed_id
+              )
+          )
+      )
     ORDER BY e.embedding <=> query_embedding
     LIMIT match_count;
 END;
