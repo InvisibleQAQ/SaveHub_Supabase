@@ -7,6 +7,10 @@ def clarification_next(state: AgenticRagState) -> str:
     """澄清节点后的流向。"""
     if state.get("clarification_required"):
         return "end"
+
+    if state.get("enable_parallel_map_reduce", True):
+        return "map_reduce_questions"
+
     return "dispatch_questions"
 
 
@@ -22,4 +26,3 @@ def judge_enough_next(state: AgenticRagState) -> str:
     if state.get("enough_for_finalize"):
         return "finalize_answer"
     return "agent_reason"
-

@@ -1,5 +1,6 @@
 """Agentic-RAG 图节点实现。"""
 
+from concurrent.futures import ThreadPoolExecutor, as_completed
 import json
 import logging
 import re
@@ -803,6 +804,249 @@ def finalize_answer_node_factory(chat_client: ChatClient):
     return finalize_answer_node
 
 
+def map_reduce_questions_node_factory(tools: AgenticRagTools, chat_client: ChatClient):
+    """构建 Map-Reduce 子问题处理节点（可并行）。"""
+
+    run_tools_node = run_tools_node_factory(tools)
+    finalize_answer_node = finalize_answer_node_factory(chat_client)
+
+    def _process_single_question(
+        base_state: AgenticRagState,
+        question: str,
+        question_index: int,
+    ) -> Dict[str, Any]:
+        local_state: AgenticRagState = dict(base_state)
+        local_state["events"] = []
+        local_state["question_answers"] = []
+        local_state["source_index_map"] = {}
+        local_state["all_sources"] = []
+        local_state["pending_questions"] = []
+
+        local_state["current_question"] = question
+        local_state["current_question_index"] = question_index
+        local_state["current_tool_round"] = 0
+        local_state["current_expand_calls"] = 0
+        local_state["current_parent_calls"] = 0
+        local_state["current_tool_retry"] = 0
+        local_state["current_seed_source_ids"] = []
+        local_state["current_sources"] = []
+        local_state["enough_for_finalize"] = False
+
+        append_event(
+            local_state,
+            "progress",
+            {
+                "stage": "toolCall",
+                "message": f"开始处理第 {question_index + 1} 个子问题，准备检索证据",
+            },
+        )
+
+        loop_guard_max = max(
+            4,
+            int(local_state.get("max_tool_rounds_per_question", 3)) * 3 + 3,
+        )
+
+        for _ in range(loop_guard_max):
+            local_state = agent_reason_node(local_state)
+            if local_state.get("enough_for_finalize"):
+                break
+
+            local_state = run_tools_node(local_state)
+            local_state = judge_enough_node(local_state)
+            if local_state.get("enough_for_finalize"):
+                break
+
+        local_state = finalize_answer_node(local_state)
+
+        local_question_answers = local_state.get("question_answers") or []
+        question_answer = local_question_answers[-1] if local_question_answers else {
+            "question": question,
+            "answer": str(local_state.get("no_kb_answer") or NO_KB_ANSWER),
+            "sources": [],
+        }
+
+        return {
+            "question_index": question_index,
+            "question": question,
+            "question_answer": question_answer,
+            "events": list(local_state.get("events", [])),
+            "error": str(local_state.get("error") or "").strip(),
+        }
+
+    def map_reduce_questions_node(state: AgenticRagState) -> AgenticRagState:
+        rewritten_queries = [
+            str(item).strip()
+            for item in (
+                state.get("rewritten_queries")
+                or state.get("pending_questions")
+                or []
+            )
+            if str(item).strip()
+        ]
+
+        state["pending_questions"] = []
+        state["current_question"] = None
+
+        if not rewritten_queries:
+            return state
+
+        enable_parallel = bool(state.get("enable_parallel_map_reduce", True))
+        configured_workers = max(1, int(state.get("map_max_parallel_workers", 3) or 3))
+        worker_count = 1
+        if enable_parallel:
+            worker_count = max(1, min(len(rewritten_queries), configured_workers))
+
+        if worker_count > 1:
+            append_event(
+                state,
+                "progress",
+                {
+                    "stage": "toolCall",
+                    "message": f"已拆分 {len(rewritten_queries)} 个子问题，正在并行检索证据（{worker_count} 个并发 worker）",
+                },
+            )
+        else:
+            append_event(
+                state,
+                "progress",
+                {
+                    "stage": "toolCall",
+                    "message": f"已拆分 {len(rewritten_queries)} 个子问题，正在逐个检索证据",
+                },
+            )
+
+        map_results: List[Dict[str, Any]] = []
+
+        if worker_count <= 1:
+            for question_index, question in enumerate(rewritten_queries):
+                map_results.append(_process_single_question(state, question, question_index))
+        else:
+            with ThreadPoolExecutor(max_workers=worker_count) as executor:
+                future_map = {
+                    executor.submit(
+                        _process_single_question,
+                        state,
+                        question,
+                        question_index,
+                    ): (question_index, question)
+                    for question_index, question in enumerate(rewritten_queries)
+                }
+
+                for future in as_completed(future_map):
+                    question_index, question = future_map[future]
+                    try:
+                        result = future.result()
+                    except Exception as exc:  # pragma: no cover
+                        logger.warning(
+                            "map worker failed question_index=%s: %s",
+                            question_index,
+                            exc,
+                        )
+                        result = {
+                            "question_index": question_index,
+                            "question": question,
+                            "question_answer": {
+                                "question": question,
+                                "answer": str(state.get("no_kb_answer") or NO_KB_ANSWER),
+                                "sources": [],
+                            },
+                            "events": [],
+                            "error": str(exc),
+                        }
+                    map_results.append(result)
+
+        map_results.sort(key=lambda item: int(item.get("question_index", 0)))
+
+        state["question_answers"] = []
+        state["source_index_map"] = {}
+        state["all_sources"] = []
+
+        no_kb_answer = str(state.get("no_kb_answer") or NO_KB_ANSWER)
+
+        for result in map_results:
+            for event in result.get("events") or []:
+                event_name = str(event.get("event") or "").strip()
+                if not event_name or event_name in {"rewrite", "clarification_required"}:
+                    continue
+                append_event(state, event_name, dict(event.get("data") or {}))
+
+            if result.get("error"):
+                append_event(
+                    state,
+                    "progress",
+                    {
+                        "stage": "toolCall",
+                        "message": f"第 {int(result.get('question_index', 0)) + 1} 个子问题处理异常，已回退兜底答案",
+                    },
+                )
+
+            question_answer = result.get("question_answer") or {}
+            raw_sources = question_answer.get("sources") or []
+
+            local_to_global_ref: Dict[int, int] = {}
+            indexed_sources: List[Dict[str, Any]] = []
+
+            for source in raw_sources:
+                source_copy = dict(source)
+                local_ref = None
+                local_ref_text = str(source_copy.get("index") or "").strip()
+                if local_ref_text.isdigit():
+                    local_ref = int(local_ref_text)
+
+                normalized = register_sources_with_index(state, [source_copy])
+                if not normalized:
+                    continue
+
+                indexed = normalized[0]
+                indexed_sources.append(indexed)
+                if local_ref is not None:
+                    local_to_global_ref[local_ref] = int(indexed.get("index") or local_ref)
+
+            deduped_sources = _merge_sources([], indexed_sources)
+
+            answer = str(question_answer.get("answer") or "").strip() or no_kb_answer
+            answer = _remap_answer_refs(answer, local_to_global_ref)
+
+            valid_refs = {
+                int(src.get("index"))
+                for src in deduped_sources
+                if src.get("index") and str(src.get("index")).isdigit()
+            }
+            answer = _ensure_valid_refs(answer, valid_refs)
+
+            if not answer.strip():
+                answer = no_kb_answer
+            if valid_refs and not REF_PATTERN.search(answer) and not _is_no_kb_like(answer, no_kb_answer):
+                answer = f"{answer.rstrip()}[ref:{min(valid_refs)}]"
+
+            state["question_answers"].append(
+                {
+                    "question": str(question_answer.get("question") or result.get("question") or "").strip(),
+                    "answer": answer,
+                    "sources": deduped_sources,
+                }
+            )
+
+        state["current_sources"] = []
+        state["current_tool_name"] = None
+        state["current_tool_args"] = {}
+        state["current_tool_retry"] = 0
+        state["current_seed_source_ids"] = []
+        state["enough_for_finalize"] = False
+
+        append_event(
+            state,
+            "progress",
+            {
+                "stage": "aggregation",
+                "message": f"Map 阶段完成，已得到 {len(state['question_answers'])} 个子答案，开始归并",
+            },
+        )
+        return state
+
+    return map_reduce_questions_node
+
+
 def aggregate_answers_node_factory(chat_client: ChatClient):
     """构建多子问题聚合节点。"""
 
@@ -1409,6 +1653,25 @@ def _ensure_valid_refs(answer: str, valid_refs: set[int]) -> str:
     cleaned = REF_PATTERN.sub(_replace, answer)
     cleaned = re.sub(r"\s+\n", "\n", cleaned)
     return cleaned.strip()
+
+
+def _remap_answer_refs(answer: str, local_to_global_ref: Dict[int, int]) -> str:
+    """把子任务局部引用编号映射到全局引用编号。"""
+    if not answer:
+        return answer
+    if not local_to_global_ref:
+        return answer
+
+    def _replace(match: re.Match[str]) -> str:
+        local_ref = int(match.group(1))
+        mapped_ref = local_to_global_ref.get(local_ref)
+        if mapped_ref is None:
+            return ""
+        return f"[ref:{mapped_ref}]"
+
+    remapped = REF_PATTERN.sub(_replace, answer)
+    remapped = re.sub(r"\s+\n", "\n", remapped)
+    return remapped.strip()
 
 
 def _fallback_concat(question_answers: List[Dict[str, Any]], no_kb_answer: str) -> str:

@@ -14,6 +14,7 @@ from app.services.agentic_rag.nodes import (
     dispatch_questions_node,
     finalize_answer_node_factory,
     judge_enough_node,
+    map_reduce_questions_node_factory,
     rewrite_and_split_node_factory,
     run_tools_node_factory,
     summarize_history_node_factory,
@@ -30,6 +31,7 @@ def build_agentic_rag_graph(tools: AgenticRagTools, chat_client: ChatClient):
     graph.add_node("summarize_history", summarize_history_node_factory(chat_client))
     graph.add_node("rewrite_and_split", rewrite_and_split_node_factory(chat_client))
     graph.add_node("clarification_gate", clarification_gate_node)
+    graph.add_node("map_reduce_questions", map_reduce_questions_node_factory(tools, chat_client))
     graph.add_node("dispatch_questions", dispatch_questions_node)
     graph.add_node("agent_reason", agent_reason_node)
     graph.add_node("run_tools", run_tools_node_factory(tools))
@@ -45,10 +47,13 @@ def build_agentic_rag_graph(tools: AgenticRagTools, chat_client: ChatClient):
         "clarification_gate",
         clarification_next,
         {
+            "map_reduce_questions": "map_reduce_questions",
             "dispatch_questions": "dispatch_questions",
             "end": END,
         },
     )
+
+    graph.add_edge("map_reduce_questions", "aggregate_answers")
 
     graph.add_conditional_edges(
         "dispatch_questions",

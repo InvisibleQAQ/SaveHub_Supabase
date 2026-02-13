@@ -22,6 +22,38 @@ def _normalize_max_split_questions(max_split: int) -> int:
     return min(MAX_SPLIT_QUESTIONS_LIMIT, max(1, value))
 
 
+def _normalize_bool(value: Any, default: bool) -> bool:
+    if value is None:
+        return default
+
+    if isinstance(value, bool):
+        return value
+
+    if isinstance(value, (int, float)):
+        return bool(value)
+
+    if isinstance(value, str):
+        normalized = value.strip().lower()
+        if normalized in {"1", "true", "yes", "y", "on"}:
+            return True
+        if normalized in {"0", "false", "no", "n", "off"}:
+            return False
+
+    return default
+
+
+def _normalize_int(value: Any, default: int, min_value: int = 1, max_value: int | None = None) -> int:
+    try:
+        parsed = int(value)
+    except Exception:
+        parsed = int(default)
+
+    parsed = max(int(min_value), parsed)
+    if max_value is not None:
+        parsed = min(int(max_value), parsed)
+    return parsed
+
+
 class AgenticRagState(TypedDict, total=False):
     """LangGraph 运行时状态。"""
 
@@ -32,6 +64,8 @@ class AgenticRagState(TypedDict, total=False):
     max_tool_rounds_per_question: int
     max_expand_calls_per_question: int
     max_parent_chunks_per_question: int
+    enable_parallel_map_reduce: bool
+    map_max_parallel_workers: int
     retry_tool_on_failure: bool
     max_tool_retry: int
     answer_max_tokens: int
@@ -127,6 +161,19 @@ def create_initial_state(
         "max_tool_rounds_per_question": max_tool_rounds_per_question,
         "max_expand_calls_per_question": max_expand_calls_per_question,
         "max_parent_chunks_per_question": max(0, int(max_parent_chunks_per_question)),
+        "enable_parallel_map_reduce": _normalize_bool(
+            rag_settings.get("agentic_rag_enable_parallel_map_reduce"),
+            True,
+        ),
+        "map_max_parallel_workers": max(
+            1,
+            _normalize_int(
+                rag_settings.get("agentic_rag_map_max_parallel_workers"),
+                3,
+                min_value=1,
+                max_value=8,
+            ),
+        ),
         "retry_tool_on_failure": retry_tool_on_failure,
         "max_tool_retry": max_tool_retry,
         "answer_max_tokens": answer_max_tokens,
