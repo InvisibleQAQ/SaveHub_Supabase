@@ -8,6 +8,7 @@
 """
 
 import logging
+import re
 from typing import List, Dict, Any, AsyncGenerator, Optional
 
 import httpx
@@ -21,6 +22,7 @@ DEFAULT_MAX_RETRIES = 3
 
 # 批处理配置
 DEFAULT_BATCH_SIZE = 100
+OPENAI_COMPAT_SAFE_BATCH_SIZE = 10
 
 # Vision 提示词
 CAPTION_PROMPT = """你是一个专业的图片描述生成器。请仔细分析这张图片，用中文生成详细但简洁的描述。
@@ -257,7 +259,30 @@ class EmbeddingClient:
             timeout=DEFAULT_TIMEOUT,
             max_retries=DEFAULT_MAX_RETRIES,
         )
+        self.api_base = api_base
         self.model = model
+
+    @staticmethod
+    def _extract_batch_limit(error_message: str) -> Optional[int]:
+        """从 provider 错误信息中提取批量上限（如果存在）。"""
+        match = re.search(r"not be larger than\s*(\d+)", error_message, re.IGNORECASE)
+        if not match:
+            return None
+
+        try:
+            return int(match.group(1))
+        except ValueError:
+            return None
+
+    def _get_provider_safe_batch_size(self, requested_batch_size: int) -> int:
+        """根据 provider 特性返回安全批大小。"""
+        safe_batch_size = max(1, requested_batch_size)
+        api_base_lower = (self.api_base or "").lower()
+
+        if "dashscope" in api_base_lower or "aliyuncs" in api_base_lower:
+            return min(safe_batch_size, OPENAI_COMPAT_SAFE_BATCH_SIZE)
+
+        return safe_batch_size
 
     async def embed(self, text: str, dimensions: int = 1536) -> List[float]:
         """
@@ -323,41 +348,54 @@ class EmbeddingClient:
             return [[] for _ in texts]
 
         try:
-            all_embeddings: List[Optional[List[float]]] = [None] * len(texts)
+            async def _embed_with_batch_size(effective_batch_size: int) -> List[List[float]]:
+                all_embeddings: List[Optional[List[float]]] = [None] * len(texts)
 
-            # 分批处理
-            for batch_start in range(0, len(valid_texts), batch_size):
-                batch_end = min(batch_start + batch_size, len(valid_texts))
-                batch_texts = valid_texts[batch_start:batch_end]
-                batch_indices = valid_indices[batch_start:batch_end]
+                for batch_start in range(0, len(valid_texts), effective_batch_size):
+                    batch_end = min(batch_start + effective_batch_size, len(valid_texts))
+                    batch_texts = valid_texts[batch_start:batch_end]
+                    batch_indices = valid_indices[batch_start:batch_end]
 
-                logger.debug(
-                    f"Processing batch {batch_start}-{batch_end} of {len(valid_texts)}"
+                    logger.debug(
+                        f"Processing batch {batch_start}-{batch_end} of {len(valid_texts)}"
+                    )
+
+                    response = await self._client.embeddings.create(
+                        model=self.model,
+                        input=batch_texts,
+                        dimensions=dimensions,
+                    )
+
+                    for j, emb_data in enumerate(response.data):
+                        original_idx = batch_indices[j]
+                        all_embeddings[original_idx] = emb_data.embedding
+
+                result = []
+                for emb in all_embeddings:
+                    result.append(emb if emb is not None else [])
+
+                logger.info(
+                    f"Generated embeddings: total={len(texts)}, "
+                    f"valid={len(valid_texts)}, "
+                    f"batches={len(range(0, len(valid_texts), effective_batch_size))}"
                 )
 
-                response = await self._client.embeddings.create(
-                    model=self.model,
-                    input=batch_texts,
-                    dimensions=dimensions,
-                )
+                return result
 
-                # 将结果放回原始位置
-                for j, emb_data in enumerate(response.data):
-                    original_idx = batch_indices[j]
-                    all_embeddings[original_idx] = emb_data.embedding
+            effective_batch_size = self._get_provider_safe_batch_size(batch_size)
 
-            # 填充空文本位置为空列表
-            result = []
-            for emb in all_embeddings:
-                result.append(emb if emb is not None else [])
+            try:
+                return await _embed_with_batch_size(effective_batch_size)
+            except Exception as first_error:
+                retry_batch_limit = self._extract_batch_limit(str(first_error))
+                if retry_batch_limit and retry_batch_limit < effective_batch_size:
+                    logger.warning(
+                        "Embedding provider batch limit detected (%s), retrying with smaller batches",
+                        retry_batch_limit,
+                    )
+                    return await _embed_with_batch_size(retry_batch_limit)
 
-            logger.info(
-                f"Generated embeddings: total={len(texts)}, "
-                f"valid={len(valid_texts)}, "
-                f"batches={len(range(0, len(valid_texts), batch_size))}"
-            )
-
-            return result
+                raise first_error
 
         except Exception as e:
             logger.error(f"Batch embedding failed: {e}")

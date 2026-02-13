@@ -14,6 +14,9 @@ from urllib.parse import urljoin, urlparse
 from bs4 import BeautifulSoup, NavigableString
 
 logger = logging.getLogger(__name__)
+SEMANTIC_CHUNKER_BATCH_SIZE = 10
+SEMANTIC_CHUNKER_MAX_INPUT_LEN = 7000
+SEMANTIC_CHUNKER_SEGMENT_OVERLAP = 200
 
 
 # =============================================================================
@@ -265,6 +268,49 @@ def parse_article_content(
 # Text Chunking
 # =============================================================================
 
+def _split_for_semantic_chunking(
+    text: str,
+    max_chars: int = SEMANTIC_CHUNKER_MAX_INPUT_LEN,
+    overlap: int = SEMANTIC_CHUNKER_SEGMENT_OVERLAP,
+) -> List[str]:
+    if not text:
+        return []
+
+    normalized = text.strip()
+    if not normalized:
+        return []
+
+    if len(normalized) <= max_chars:
+        return [normalized]
+
+    safe_max_chars = max(1, max_chars)
+    safe_overlap = max(0, min(overlap, safe_max_chars - 1))
+    step = safe_max_chars - safe_overlap
+
+    segments = []
+    start = 0
+    while start < len(normalized):
+        end = min(start + safe_max_chars, len(normalized))
+        segment = normalized[start:end]
+
+        if end < len(normalized):
+            for sep in ["\n\n", "\n", "。", "！", "？", ".", "!", "?", ";", "；", " "]:
+                split_pos = segment.rfind(sep)
+                if split_pos > safe_max_chars // 2:
+                    end = start + split_pos + len(sep)
+                    segment = normalized[start:end]
+                    break
+
+        segment = segment.strip()
+        if segment:
+            segments.append(segment)
+
+        if end >= len(normalized):
+            break
+        start = max(start + step, end - safe_overlap)
+
+    return segments
+
 def chunk_text_semantic(
     text: str,
     api_key: str,
@@ -304,6 +350,8 @@ def chunk_text_semantic(
             api_key=api_key,
             base_url=normalized_base_url,
             model=model,
+            check_embedding_ctx_length=False,
+            chunk_size=SEMANTIC_CHUNKER_BATCH_SIZE,
         )
 
         # 创建语义分块器
@@ -312,11 +360,19 @@ def chunk_text_semantic(
             breakpoint_threshold_type="percentile",  # 使用百分位数阈值
         )
 
-        # 执行分块
-        docs = chunker.create_documents([text])
+        semantic_inputs = _split_for_semantic_chunking(text)
+
+        docs = []
+        for semantic_input in semantic_inputs:
+            docs.extend(chunker.create_documents([semantic_input]))
+
         chunks = [doc.page_content for doc in docs if doc.page_content.strip()]
 
-        logger.info(f"Semantic chunking: input_len={len(text)}, output_chunks={len(chunks)}")
+        logger.info(
+            f"Semantic chunking: input_len={len(text)}, "
+            f"segments={len(semantic_inputs)}, "
+            f"output_chunks={len(chunks)}"
+        )
 
         return chunks
 
