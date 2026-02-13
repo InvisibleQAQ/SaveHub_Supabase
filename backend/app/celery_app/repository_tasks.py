@@ -218,9 +218,8 @@ def do_repository_embedding(
     Returns:
         {"embedding_processed": N, "embedding_failed": N, "embedding_total": N}
     """
-    from app.services.ai import EmbeddingClient
+    from app.services.ai import EmbeddingClient, get_active_config
     from app.services.db.rag import RagService
-    from app.celery_app.rag_processor import get_user_api_configs, ConfigError
 
     supabase = get_supabase_service()
     rag_service = RagService(supabase, user_id)
@@ -230,20 +229,18 @@ def do_repository_embedding(
     if not repos:
         return {"embedding_processed": 0, "embedding_failed": 0, "embedding_total": 0}
 
-    # 2. 获取 API 配置
-    try:
-        configs = get_user_api_configs(user_id)
-    except ConfigError as e:
-        logger.warning(f"No embedding config for user {user_id}: {e}")
+    # 2. 获取 API 配置（使用 AI 服务层统一入口）
+    embedding_config = get_active_config(supabase, user_id, "embedding")
+    if not embedding_config:
+        reason = f"No active embedding config for user {user_id}"
+        logger.warning(reason)
         return {
             "embedding_processed": 0,
             "embedding_failed": 0,
             "embedding_total": len(repos),
             "skipped": True,
-            "reason": str(e),
+            "reason": reason,
         }
-
-    embedding_config = configs["embedding"]
     embedding_client = EmbeddingClient(
         api_key=embedding_config["api_key"],
         api_base=embedding_config["api_base"],
