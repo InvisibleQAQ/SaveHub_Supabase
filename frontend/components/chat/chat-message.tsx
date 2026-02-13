@@ -1,6 +1,6 @@
 "use client"
 
-import { useMemo, useState } from "react"
+import { useEffect, useMemo, useRef, useState } from "react"
 import {
   Message,
   MessageAvatar,
@@ -13,12 +13,7 @@ import { getCircledNumber } from "@/lib/reference-parser"
 import type { ChatMessage as ChatMessageData, RetrievedSource } from "@/lib/api/agentic-rag"
 import { useRSSStore } from "@/lib/store"
 import { RepositoryCard } from "@/components/repository/repository-card"
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog"
+import { Popover, PopoverAnchor, PopoverContent } from "@/components/ui/popover"
 
 interface ChatMessageProps {
   message: ChatMessageData
@@ -62,6 +57,8 @@ export function ChatMessage({ message, sources }: ChatMessageProps) {
   const from = isUser ? "user" : "assistant"
   const repositories = useRSSStore((state) => state.repositories)
   const [activeSource, setActiveSource] = useState<RetrievedSource | null>(null)
+  const activeSourceAnchorRef = useRef<HTMLAnchorElement | null>(null)
+  const closeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const content = formatMessageContent(message.content, sources)
 
   const userMarkdownClassName =
@@ -72,7 +69,53 @@ export function ChatMessage({ message, sources }: ChatMessageProps) {
     return repositories.find((repo) => repo.id === activeSource.repository_id) || null
   }, [activeSource?.repository_id, repositories])
 
-  const handleMessageClick = (event: React.MouseEvent<HTMLDivElement>) => {
+  const cancelClose = () => {
+    if (closeTimerRef.current) {
+      clearTimeout(closeTimerRef.current)
+      closeTimerRef.current = null
+    }
+  }
+
+  const scheduleClose = (delayMs = 250) => {
+    cancelClose()
+    closeTimerRef.current = setTimeout(() => {
+      setActiveSource(null)
+      activeSourceAnchorRef.current = null
+    }, delayMs)
+  }
+
+  const setReferencePreview = (source: RetrievedSource, anchor: HTMLAnchorElement) => {
+    cancelClose()
+    activeSourceAnchorRef.current = anchor
+    setActiveSource(source)
+  }
+
+  const handleReferenceHover = (event: React.MouseEvent<HTMLDivElement>) => {
+    if (!sources || sources.length === 0) return
+
+    const target = event.target as HTMLElement
+    const referenceAnchor = target.closest("a[data-reference-index]") as HTMLAnchorElement | null
+    if (!referenceAnchor) {
+      scheduleClose()
+      return
+    }
+
+    const rawIndex = referenceAnchor.dataset.referenceIndex
+    const referenceIndex = Number.parseInt(rawIndex || "", 10)
+    if (Number.isNaN(referenceIndex)) return
+
+    const source = sources.find((item) => item.index === referenceIndex)
+    if (!source) return
+
+    if (activeSource?.id === source.id && activeSourceAnchorRef.current === referenceAnchor) {
+      cancelClose()
+      return
+    }
+
+    setReferencePreview(source, referenceAnchor)
+  }
+
+  const handleReferenceClick = (event: React.MouseEvent<HTMLDivElement>) => {
     if (!sources || sources.length === 0) return
 
     const target = event.target as HTMLElement
@@ -88,38 +131,77 @@ export function ChatMessage({ message, sources }: ChatMessageProps) {
 
     event.preventDefault()
     event.stopPropagation()
-    setActiveSource(source)
+
+    if (activeSource?.id === source.id) {
+      setActiveSource(null)
+      activeSourceAnchorRef.current = null
+      return
+    }
+
+    setReferencePreview(source, referenceAnchor)
   }
 
-  const closeReferenceDialog = () => {
-    setActiveSource(null)
-  }
+  useEffect(() => {
+    return () => {
+      cancelClose()
+    }
+  }, [])
 
   return (
     <>
       <Message from={from}>
         <MessageAvatar from={from} />
-        <MessageContent from={from} onClick={!isUser ? handleMessageClick : undefined}>
+        <MessageContent
+          from={from}
+          onClick={!isUser ? handleReferenceClick : undefined}
+          onMouseOver={!isUser ? handleReferenceHover : undefined}
+          onMouseLeave={!isUser ? () => scheduleClose() : undefined}
+        >
           <Response className={isUser ? userMarkdownClassName : undefined}>{content}</Response>
           {!isUser && sources && <ChatSources sources={sources} />}
         </MessageContent>
       </Message>
 
-      {!isUser && activeSource && (
-        <Dialog open={Boolean(activeSource)} onOpenChange={(open) => (!open ? closeReferenceDialog() : undefined)}>
-          <DialogContent className="max-w-2xl p-0 gap-0" showCloseButton>
-            <DialogHeader className="px-4 pt-4 pb-2 border-b">
-              <DialogTitle className="text-base">引用来源</DialogTitle>
-            </DialogHeader>
-            <div className="p-4 max-h-[75vh] overflow-y-auto">
-              {activeRepository ? (
-                <RepositoryCard repository={activeRepository} />
-              ) : (
-                <ArticleReferenceCard source={activeSource} />
-              )}
-            </div>
-          </DialogContent>
-        </Dialog>
+      {!isUser && (
+        <Popover
+          open={Boolean(activeSource)}
+          onOpenChange={(open) => {
+            if (!open) {
+              setActiveSource(null)
+              activeSourceAnchorRef.current = null
+            }
+          }}
+        >
+          <PopoverAnchor
+            virtualRef={{
+              current: {
+                getBoundingClientRect: () => {
+                  return activeSourceAnchorRef.current?.getBoundingClientRect() ?? new DOMRect()
+                },
+              },
+            }}
+          />
+          {activeSource && (
+            <PopoverContent
+              side="top"
+              align="center"
+              sideOffset={12}
+              className="w-[560px] max-w-[calc(100vw-1.5rem)] p-0 border-0 bg-transparent shadow-none rounded-xl"
+              onMouseEnter={cancelClose}
+              onMouseLeave={() => scheduleClose()}
+            >
+              <div className="max-h-[75vh] overflow-y-auto">
+                {activeRepository ? (
+                  <RepositoryCard repository={activeRepository} />
+                ) : (
+                  <div className="bg-card border rounded-xl">
+                    <ArticleReferenceCard source={activeSource} />
+                  </div>
+                )}
+              </div>
+            </PopoverContent>
+          )}
+        </Popover>
       )}
     </>
   )
