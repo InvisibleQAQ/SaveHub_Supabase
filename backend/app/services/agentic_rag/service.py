@@ -361,6 +361,11 @@ class AgenticRagService:
         sse_events: List[Dict[str, Any]] = []
         error_message: str | None = None
 
+        try:
+            normalized_max_split_questions = min(10, max(1, int(max_split_questions)))
+        except Exception:
+            normalized_max_split_questions = 3
+
         debug_trace_enabled = AgenticRagService._parse_bool(
             self.agentic_rag_settings.get("agentic_rag_debug_trace_markdown_enabled"),
             True,
@@ -372,7 +377,7 @@ class AgenticRagService:
         request_params = {
             "top_k": top_k,
             "min_score": min_score,
-            "max_split_questions": max_split_questions,
+            "max_split_questions": normalized_max_split_questions,
             "max_tool_rounds_per_question": max_tool_rounds_per_question,
             "max_expand_calls_per_question": max_expand_calls_per_question,
             "retry_tool_on_failure": retry_tool_on_failure,
@@ -384,7 +389,7 @@ class AgenticRagService:
             messages=messages,
             top_k=top_k,
             min_score=min_score,
-            max_split_questions=max_split_questions,
+            max_split_questions=normalized_max_split_questions,
             max_tool_rounds_per_question=max_tool_rounds_per_question,
             max_expand_calls_per_question=max_expand_calls_per_question,
             retry_tool_on_failure=retry_tool_on_failure,

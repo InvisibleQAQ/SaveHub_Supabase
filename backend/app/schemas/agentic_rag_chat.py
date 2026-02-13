@@ -18,7 +18,7 @@ class AgenticRagChatRequest(BaseModel):
     messages: List[AgenticChatMessage] = Field(..., min_length=1, description="对话历史")
     top_k: int | None = Field(default=None, ge=1, le=30, description="检索文档数量")
     min_score: float | None = Field(default=None, ge=0.0, le=1.0, description="最小相似度阈值")
-    max_split_questions: int | None = Field(default=None, ge=1, le=6, description="最多拆分子问题数")
+    max_split_questions: int | None = Field(default=None, ge=1, le=10, description="最多拆分子问题数")
     max_tool_rounds_per_question: int | None = Field(
         default=None,
         ge=1,

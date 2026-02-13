@@ -11,6 +11,16 @@ from app.services.agentic_rag.prompts import (
     QUERY_ANALYSIS_SYSTEM_PROMPT,
 )
 
+MAX_SPLIT_QUESTIONS_LIMIT = 10
+
+
+def _normalize_max_split_questions(max_split: int) -> int:
+    try:
+        value = int(max_split)
+    except Exception:
+        value = 3
+    return min(MAX_SPLIT_QUESTIONS_LIMIT, max(1, value))
+
 
 class AgenticRagState(TypedDict, total=False):
     """LangGraph 运行时状态。"""
@@ -99,12 +109,13 @@ def create_initial_state(
 ) -> AgenticRagState:
     """创建图初始状态。"""
     rag_settings = agentic_rag_settings or {}
+    normalized_max_split_questions = _normalize_max_split_questions(max_split_questions)
 
     return {
         "messages": messages,
         "top_k": top_k,
         "min_score": min_score,
-        "max_split_questions": max_split_questions,
+        "max_split_questions": normalized_max_split_questions,
         "max_tool_rounds_per_question": max_tool_rounds_per_question,
         "max_expand_calls_per_question": max_expand_calls_per_question,
         "retry_tool_on_failure": retry_tool_on_failure,

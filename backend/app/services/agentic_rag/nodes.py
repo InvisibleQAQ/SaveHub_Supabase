@@ -96,6 +96,17 @@ QUERY_STOP_TERMS = {
 QUERY_TERM_PATTERN = re.compile(r"[a-z0-9][a-z0-9._/-]{1,}|[\u4e00-\u9fff]{2,}", re.IGNORECASE)
 YEAR_PATTERN = re.compile(r"(?:19|20)\d{2}年?")
 EXAMPLE_PARENS_PATTERN = re.compile(r"[（(](?:如|例如|比如|such as)[^）)]{0,100}[）)]", re.IGNORECASE)
+SYNONYM_EXPANSION_LIMIT = 2
+MAX_SPLIT_QUESTIONS_LIMIT = 10
+
+QUERY_SYNONYM_GROUPS = (
+    (
+        "rag",
+        "retrieval-augmented generation",
+        "retrieval augmented generation",
+        "检索增强生成",
+    ),
+)
 
 
 def _append_llm_call_event(
@@ -278,7 +289,7 @@ def rewrite_and_split_node_factory(chat_client: ChatClient):
             )
             return state
 
-        max_split = max(1, int(state.get("max_split_questions", 3)))
+        max_split = _normalize_max_split_questions(state.get("max_split_questions", 3))
         analysis_system_prompt = str(state.get("query_analysis_system_prompt") or "")
         analysis_temperature = float(state.get("query_analysis_temperature", 0.1))
         analysis_max_tokens = int(state.get("query_analysis_max_tokens", 320))
@@ -288,8 +299,15 @@ def rewrite_and_split_node_factory(chat_client: ChatClient):
 
         if prefer_keyword_mode:
             keyword_query = _build_keyword_focused_query(original_query)
-            state["rewritten_queries"] = [keyword_query]
-            state["pending_questions"] = [keyword_query]
+            rewritten_queries = _expand_rewritten_queries_with_synonym_variants(
+                queries=[keyword_query],
+                max_split=max_split,
+            )
+            if not rewritten_queries:
+                fallback_query = _compact_text(original_query) or original_query
+                rewritten_queries = [fallback_query]
+            state["rewritten_queries"] = rewritten_queries
+            state["pending_questions"] = list(rewritten_queries)
             state["clarification_required"] = False
             state["clarification_message"] = None
             state["analysis_reason"] = "keyword_mode"
@@ -310,7 +328,7 @@ def rewrite_and_split_node_factory(chat_client: ChatClient):
                 response=_json_dumps_compact(
                     {
                         "is_clear": True,
-                        "questions": [keyword_query],
+                        "questions": rewritten_queries,
                         "clarification_needed": "",
                         "reason": "keyword_mode",
                     }
@@ -322,8 +340,8 @@ def rewrite_and_split_node_factory(chat_client: ChatClient):
                 "rewrite",
                 {
                     "original_query": original_query,
-                    "rewritten_queries": [keyword_query],
-                    "count": 1,
+                    "rewritten_queries": rewritten_queries,
+                    "count": len(rewritten_queries),
                 },
             )
             return state
@@ -377,7 +395,13 @@ def rewrite_and_split_node_factory(chat_client: ChatClient):
             allow_split=allow_split,
         )
         if not rewritten_queries:
-            rewritten_queries = [_build_keyword_focused_query(original_query)]
+            rewritten_queries = _expand_rewritten_queries_with_synonym_variants(
+                queries=[_build_keyword_focused_query(original_query)],
+                max_split=max_split,
+            )
+        if not rewritten_queries:
+            fallback_query = _compact_text(original_query) or original_query
+            rewritten_queries = [fallback_query]
 
         state["rewritten_queries"] = rewritten_queries
         state["pending_questions"] = list(rewritten_queries)
@@ -1005,6 +1029,7 @@ def _sanitize_rewritten_queries(
     max_split: int,
     allow_split: bool,
 ) -> List[str]:
+    normalized_max_split = _normalize_max_split_questions(max_split)
     source_terms = set(_extract_query_terms(original_query))
     source_has_year = bool(YEAR_PATTERN.search(original_query))
 
@@ -1038,7 +1063,12 @@ def _sanitize_rewritten_queries(
     if not allow_split and deduped:
         deduped = [deduped[0]]
 
-    return deduped[: max(1, int(max_split))]
+    expanded = _expand_rewritten_queries_with_synonym_variants(
+        queries=deduped,
+        max_split=normalized_max_split,
+    )
+
+    return expanded[:normalized_max_split]
 
 
 def _looks_like_drift(candidate: str, source_terms: set[str]) -> bool:
@@ -1063,6 +1093,100 @@ def _build_keyword_focused_query(query: str) -> str:
     if not terms:
         return _compact_text(query)
     return " ".join(terms[:8]).strip() or _compact_text(query)
+
+
+def _expand_rewritten_queries_with_synonym_variants(queries: List[str], max_split: int) -> List[str]:
+    normalized_max_split = _normalize_max_split_questions(max_split)
+    expanded_queries: List[str] = []
+    seen: set[str] = set()
+
+    for query in queries:
+        variants = _build_query_synonym_variants(query)
+        for candidate in variants:
+            key = candidate.lower()
+            if key in seen:
+                continue
+
+            seen.add(key)
+            expanded_queries.append(candidate)
+            if len(expanded_queries) >= normalized_max_split:
+                return expanded_queries
+
+    return expanded_queries
+
+
+def _build_query_synonym_variants(query: str) -> List[str]:
+    base = _compact_text(query)
+    if not base:
+        return []
+
+    variants = [base]
+    variant_keys = {base.lower()}
+    expansions = _collect_query_synonym_expansions(base, limit=SYNONYM_EXPANSION_LIMIT)
+    for synonym in expansions:
+        variant = _compact_text(f"{base} {synonym}")
+        variant_key = variant.lower()
+        if variant and variant_key not in variant_keys:
+            variants.append(variant)
+            variant_keys.add(variant_key)
+
+    return variants
+
+
+def _normalize_max_split_questions(max_split: Any) -> int:
+    try:
+        value = int(max_split)
+    except Exception:
+        value = 3
+
+    return min(MAX_SPLIT_QUESTIONS_LIMIT, max(1, value))
+
+
+def _collect_query_synonym_expansions(query: str, limit: int) -> List[str]:
+    normalized_query = _normalize_synonym_text(query)
+    if not normalized_query or limit <= 0:
+        return []
+
+    expansions: List[str] = []
+    seen: set[str] = set()
+
+    for group in QUERY_SYNONYM_GROUPS:
+        group_hit = any(_query_contains_alias(normalized_query, alias) for alias in group)
+        if not group_hit:
+            continue
+
+        for alias in group:
+            if _query_contains_alias(normalized_query, alias):
+                continue
+
+            key = _normalize_synonym_text(alias)
+            if not key or key in seen:
+                continue
+
+            seen.add(key)
+            expansions.append(alias)
+            if len(expansions) >= limit:
+                return expansions
+
+    return expansions
+
+
+def _query_contains_alias(normalized_query: str, alias: str) -> bool:
+    alias_norm = _normalize_synonym_text(alias)
+    if not alias_norm:
+        return False
+
+    if re.search(r"[\u4e00-\u9fff]", alias_norm):
+        return alias_norm in normalized_query
+
+    pattern = rf"(?<![a-z0-9]){re.escape(alias_norm)}(?![a-z0-9])"
+    return bool(re.search(pattern, normalized_query))
+
+
+def _normalize_synonym_text(text: str) -> str:
+    normalized = str(text or "").lower().replace("-", " ").replace("_", " ")
+    normalized = re.sub(r"\s+", " ", normalized)
+    return normalized.strip()
 
 
 def _strip_rewrite_noise(text: str) -> str:
