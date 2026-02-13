@@ -275,7 +275,7 @@ def get_pending_articles(limit: int = BATCH_SIZE) -> List[Dict[str, str]]:
     """
     获取待处理的文章列表。
 
-    条件：images_processed = true AND rag_processed IS NULL
+    条件：images_processed = true AND (rag_processed IS NULL OR rag_processed = FALSE)
 
     Returns:
         [{"id": "...", "user_id": "..."}, ...]
@@ -284,7 +284,7 @@ def get_pending_articles(limit: int = BATCH_SIZE) -> List[Dict[str, str]]:
 
     result = supabase.table("articles") \
         .select("id, user_id") \
-        .is_("rag_processed", "null") \
+        .or_("rag_processed.is.null,rag_processed.eq.false") \
         .eq("images_processed", True) \
         .order("created_at", desc=True) \
         .limit(limit) \
@@ -485,6 +485,7 @@ def schedule_rag_for_articles(article_ids: List[str]) -> Dict[str, Any]:
 
     Called by on_images_complete after all image processing finishes.
     Retrieves user_id for each article and schedules RAG tasks with staggered delays.
+    Also retries failed/pending RAG articles for affected users.
 
     Args:
         article_ids: List of article UUIDs
@@ -498,7 +499,7 @@ def schedule_rag_for_articles(article_ids: List[str]) -> Dict[str, Any]:
 
     supabase = get_supabase_service()
 
-    # Get article user_ids
+    # Get article user_ids for current batch
     result = supabase.table("articles").select(
         "id, user_id"
     ).in_("id", article_ids).execute()
@@ -507,17 +508,51 @@ def schedule_rag_for_articles(article_ids: List[str]) -> Dict[str, Any]:
         logger.warning(f"No articles found for RAG scheduling: {article_ids[:3]}...")
         return {"scheduled": 0}
 
+    articles_by_user: dict[str, List[str]] = {}
+    seen_by_user: dict[str, set[str]] = {}
+
+    # 1) Seed with newly-added article IDs (new first)
+    for article in result.data:
+        user_id = article["user_id"]
+        article_id = article["id"]
+        if user_id not in articles_by_user:
+            articles_by_user[user_id] = []
+            seen_by_user[user_id] = set()
+
+        if article_id not in seen_by_user[user_id]:
+            articles_by_user[user_id].append(article_id)
+            seen_by_user[user_id].add(article_id)
+
+    # 2) Append this user's pending/failed articles for retry
+    for user_id in list(articles_by_user.keys()):
+        pending_result = supabase.table("articles") \
+            .select("id") \
+            .eq("user_id", user_id) \
+            .eq("images_processed", True) \
+            .or_("rag_processed.is.null,rag_processed.eq.false") \
+            .order("created_at", desc=True) \
+            .limit(BATCH_SIZE) \
+            .execute()
+
+        for pending in (pending_result.data or []):
+            pending_id = pending["id"]
+            if pending_id not in seen_by_user[user_id]:
+                articles_by_user[user_id].append(pending_id)
+                seen_by_user[user_id].add(pending_id)
+
+    # 3) Schedule all selected articles
     scheduled = 0
-    for i, article in enumerate(result.data):
-        process_article_rag.apply_async(
-            kwargs={
-                "article_id": article["id"],
-                "user_id": article["user_id"],
-            },
-            countdown=i * 3,  # 3 second delay between each to avoid API rate limits
-            queue="default",
-        )
-        scheduled += 1
+    for user_id, user_article_ids in articles_by_user.items():
+        for article_id in user_article_ids:
+            process_article_rag.apply_async(
+                kwargs={
+                    "article_id": article_id,
+                    "user_id": user_id,
+                },
+                countdown=scheduled * 3,  # 3 second delay between each to avoid API rate limits
+                queue="default",
+            )
+            scheduled += 1
 
     logger.info(f"Scheduled RAG processing for {scheduled} articles (staggered 3s apart)")
     return {"scheduled": scheduled}

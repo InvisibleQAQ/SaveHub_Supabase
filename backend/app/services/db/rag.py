@@ -348,6 +348,7 @@ class RagService:
             "embedding_processed": success,
             "embedding_processed_at": datetime.now(timezone.utc).isoformat(),
         }
+
         self.supabase.table("repositories") \
             .update(update_data) \
             .eq("id", repository_id) \

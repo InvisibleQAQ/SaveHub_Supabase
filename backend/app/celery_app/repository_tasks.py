@@ -27,6 +27,7 @@ logger = logging.getLogger(__name__)
 
 # Sync interval: 1 hour
 REPO_SYNC_INTERVAL_SECONDS = 3600
+REPO_EMBEDDING_BATCH_SIZE = 50
 
 
 # =============================================================================
@@ -217,8 +218,7 @@ def do_repository_embedding(
     Returns:
         {"embedding_processed": N, "embedding_failed": N, "embedding_total": N}
     """
-    from app.services.rag.chunker import chunk_text_semantic, fallback_chunk_text
-    from app.services.rag.embedder import embed_texts
+    from app.services.ai import EmbeddingClient
     from app.services.db.rag import RagService
     from app.celery_app.rag_processor import get_user_api_configs, ConfigError
 
@@ -244,31 +244,46 @@ def do_repository_embedding(
         }
 
     embedding_config = configs["embedding"]
+    embedding_client = EmbeddingClient(
+        api_key=embedding_config["api_key"],
+        api_base=embedding_config["api_base"],
+        model=embedding_config["model"],
+    )
     processed = 0
     failed = 0
     total = len(repos)
 
-    # 3. 处理每个仓库
-    for i, repo in enumerate(repos):
-        # 报告进度
-        if on_progress:
-            try:
-                on_progress(repo.get("full_name", ""), i, total)
-            except Exception as e:
-                logger.debug(f"Progress callback failed: {e}")
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
 
-        try:
-            result = _process_single_repository_embedding(
-                repo, embedding_config, rag_service
-            )
-            if result["success"]:
-                processed += 1
-            else:
+    try:
+        # 3. 处理每个仓库
+        for i, repo in enumerate(repos):
+            # 报告进度
+            if on_progress:
+                try:
+                    on_progress(repo.get("full_name", ""), i, total)
+                except Exception as e:
+                    logger.debug(f"Progress callback failed: {e}")
+
+            try:
+                result = _process_single_repository_embedding(
+                    repo=repo,
+                    embedding_config=embedding_config,
+                    rag_service=rag_service,
+                    embedding_client=embedding_client,
+                    loop=loop,
+                )
+                if result["success"]:
+                    processed += 1
+                else:
+                    failed += 1
+            except Exception as e:
+                logger.error(f"Failed to process embedding for repo {repo['id']}: {e}")
+                rag_service.mark_repository_embedding_processed(repo["id"], success=False)
                 failed += 1
-        except Exception as e:
-            logger.error(f"Failed to process embedding for repo {repo['id']}: {e}")
-            rag_service.mark_repository_embedding_processed(repo["id"], success=False)
-            failed += 1
+    finally:
+        loop.close()
 
     logger.info(f"Repository embedding completed: {processed}/{total}, {failed} failed")
 
@@ -285,21 +300,27 @@ def _get_repos_needing_embedding(supabase, user_id: str) -> List[dict]:
         .select("id, full_name, description, html_url, owner_login, topics, "
                 "ai_tags, language, readme_content, ai_summary") \
         .eq("user_id", user_id) \
-        .is_("embedding_processed", "null") \
+        .or_("embedding_processed.is.null,embedding_processed.eq.false") \
         .not_.is_("readme_content", "null") \
-        .limit(50) \
+        .order("created_at", desc=False) \
+        .limit(REPO_EMBEDDING_BATCH_SIZE) \
         .execute()
-    return result.data or []
+
+    return [
+        repo for repo in (result.data or [])
+        if (repo.get("readme_content") or "").strip()
+    ]
 
 
 def _process_single_repository_embedding(
     repo: dict,
     embedding_config: dict,
     rag_service,
+    embedding_client,
+    loop,
 ) -> Dict[str, Any]:
     """处理单个仓库的 embedding 生成。"""
     from app.services.rag.chunker import chunk_text_semantic, fallback_chunk_text
-    from app.services.rag.embedder import embed_texts
 
     repository_id = repo["id"]
 
@@ -338,12 +359,7 @@ def _process_single_repository_embedding(
 
         # 4. 批量生成 embeddings
         texts = [c["content"] for c in final_chunks]
-        embeddings = embed_texts(
-            texts,
-            embedding_config["api_key"],
-            embedding_config["api_base"],
-            embedding_config["model"],
-        )
+        embeddings = loop.run_until_complete(embedding_client.embed_batch(texts))
 
         for i, chunk in enumerate(final_chunks):
             chunk["embedding"] = embeddings[i]
