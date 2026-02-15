@@ -14,7 +14,9 @@
     "backend:prod": "cd backend && uvicorn app.main:app --host 0.0.0.0 --timeout-keep-alive 300 --port 8000",
 
     "---CELERY---": "========================================",
-    "celery": "cd backend && celery -A app.celery_app worker --pool=solo --loglevel=info --queues=high,default",
+    "celery": "cd backend && celery -A app.celery_app worker --beat --pool=solo --loglevel=info --queues=high,default",
+    "celery:worker": "cd backend && celery -A app.celery_app worker --pool=solo --loglevel=info --queues=high,default",
+    "celery:beat": "cd backend && celery -A app.celery_app beat --loglevel=info",
     "flower": "cd backend && celery -A app.celery_app flower --port=5555",
 
     "---COMBINED---": "========================================",

@@ -2,3 +2,6 @@ node_modules/
 
 # Logs
 logs/
+
+# Celery Beat schedule database
+celerybeat-schedule*
