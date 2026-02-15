@@ -11,6 +11,7 @@ import os
 from typing import Any, Callable, Optional
 
 from realtime import RealtimeSubscribeStates
+from realtime._async.client import AsyncRealtimeClient
 from supabase import acreate_client, AsyncClient
 
 from app.services.realtime import connection_manager
@@ -19,6 +20,37 @@ logger = logging.getLogger(__name__)
 
 # Tables to subscribe for realtime changes
 REALTIME_TABLES = ["feeds", "articles", "folders"]
+
+
+def _patch_async_realtime_empty_wait_bug() -> None:
+    """
+    Guard realtime-py reconnect bug when asyncio.wait() receives an empty set.
+
+    In some websocket close scenarios, AsyncRealtimeClient._reconnect() can call
+    asyncio.wait([]), which raises ValueError("Set of Tasks/Futures is empty.").
+    This patch suppresses only that known library bug and keeps normal reconnect
+    behavior for all other exceptions.
+    """
+    if getattr(AsyncRealtimeClient, "_savehub_empty_wait_patch", False):
+        return
+
+    original_reconnect = AsyncRealtimeClient._reconnect
+
+    async def _reconnect_with_empty_wait_guard(client_self: Any) -> None:
+        try:
+            await original_reconnect(client_self)
+        except ValueError as reconnect_error:
+            if str(reconnect_error) != "Set of Tasks/Futures is empty.":
+                raise
+            logger.warning(
+                "Suppressed realtime reconnect ValueError caused by empty rejoin set"
+            )
+
+    AsyncRealtimeClient._reconnect = _reconnect_with_empty_wait_guard
+    setattr(AsyncRealtimeClient, "_savehub_empty_wait_patch", True)
+
+
+_patch_async_realtime_empty_wait_bug()
 
 
 class SupabaseRealtimeForwarder:
