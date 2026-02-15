@@ -51,8 +51,8 @@ export function ArticleRepositories({ articleId }: ArticleRepositoriesProps) {
     setDetailOpen(true)
   }
 
-  // Hide completely when loading or no repositories
-  if (isLoading || repositories.length === 0) {
+  // No repositories after loading — hide entirely
+  if (!isLoading && repositories.length === 0) {
     return null
   }
 
@@ -63,20 +63,66 @@ export function ArticleRepositories({ articleId }: ArticleRepositoriesProps) {
         <div className="flex items-center gap-2 mb-4">
           <Github className="w-5 h-5 text-muted-foreground" />
           <h3 className="text-lg font-semibold">相关 GitHub 仓库</h3>
-          <span className="text-sm text-muted-foreground">
-            ({repositories.length})
-          </span>
+          {!isLoading && (
+            <span className="text-sm text-muted-foreground">
+              ({repositories.length})
+            </span>
+          )}
         </div>
 
         {/* Repository Cards Grid */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          {repositories.map((repo) => (
-            <RepositoryCard
-              key={repo.id}
-              repository={repo}
-              onClick={() => handleCardClick(repo)}
-            />
-          ))}
+          {isLoading
+            ? Array.from({ length: 2 }).map((_, i) => (
+                <div
+                  key={i}
+                  className="bg-card border rounded-xl p-5 flex flex-col h-full animate-pulse"
+                >
+                  {/* Header skeleton */}
+                  <div className="flex items-center gap-3 mb-3">
+                    <div className="w-8 h-8 rounded-full bg-muted" />
+                    <div className="flex-1 space-y-2">
+                      <div className="h-4 bg-muted rounded w-1/2" />
+                      <div className="h-3 bg-muted rounded w-1/3" />
+                    </div>
+                  </div>
+                  {/* Action buttons skeleton */}
+                  <div className="flex items-center justify-between mb-4">
+                    <div className="flex gap-2">
+                      <div className="w-8 h-8 bg-muted rounded-lg" />
+                      <div className="w-8 h-8 bg-muted rounded-lg" />
+                    </div>
+                    <div className="flex gap-2">
+                      <div className="w-8 h-8 bg-muted rounded-lg" />
+                      <div className="w-8 h-8 bg-muted rounded-lg" />
+                    </div>
+                  </div>
+                  {/* Description skeleton */}
+                  <div className="mb-4 flex-1 space-y-2">
+                    <div className="h-3 bg-muted rounded w-full" />
+                    <div className="h-3 bg-muted rounded w-5/6" />
+                    <div className="h-3 bg-muted rounded w-2/3" />
+                  </div>
+                  {/* Tags skeleton */}
+                  <div className="flex gap-1.5 mb-4">
+                    <div className="h-5 bg-muted rounded-md w-14" />
+                    <div className="h-5 bg-muted rounded-md w-16" />
+                    <div className="h-5 bg-muted rounded-md w-12" />
+                  </div>
+                  {/* Stats skeleton */}
+                  <div className="flex items-center gap-4 mt-auto">
+                    <div className="h-3 bg-muted rounded w-16" />
+                    <div className="h-3 bg-muted rounded w-12" />
+                  </div>
+                </div>
+              ))
+            : repositories.map((repo) => (
+                <RepositoryCard
+                  key={repo.id}
+                  repository={repo}
+                  onClick={() => handleCardClick(repo)}
+                />
+              ))}
         </div>
       </div>
 
