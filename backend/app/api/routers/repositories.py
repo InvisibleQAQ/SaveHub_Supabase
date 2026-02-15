@@ -461,12 +461,12 @@ async def analyze_repository(
 
     try:
         # Create AI service and analyze
-        ai_service = RepositoryAnalyzerService(**config)
-        analysis = await ai_service.analyze_repository(
-            readme_content=repo["readme_content"],
-            repo_name=repo["full_name"],
-            description=repo.get("description"),
-        )
+        async with RepositoryAnalyzerService(**config) as ai_service:
+            analysis = await ai_service.analyze_repository(
+                readme_content=repo["readme_content"],
+                repo_name=repo["full_name"],
+                description=repo.get("description"),
+            )
 
         # Update repository with analysis results
         result = repo_service.update_ai_analysis(repo_id, analysis)

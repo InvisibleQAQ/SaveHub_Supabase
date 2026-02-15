@@ -87,6 +87,20 @@ class ChatClient:
         )
         self.model = model
 
+    async def aclose(self) -> None:
+        """显式关闭底层 HTTP 客户端。"""
+        try:
+            if not self._client.is_closed():
+                await self._client.close()
+        except Exception as e:
+            logger.warning(f"Failed to close ChatClient: {e}")
+
+    async def __aenter__(self):
+        return self
+
+    async def __aexit__(self, exc_type, exc, exc_tb):
+        await self.aclose()
+
     async def complete(
         self,
         messages: List[Dict[str, Any]],
@@ -261,6 +275,20 @@ class EmbeddingClient:
         )
         self.api_base = api_base
         self.model = model
+
+    async def aclose(self) -> None:
+        """显式关闭底层 HTTP 客户端。"""
+        try:
+            if not self._client.is_closed():
+                await self._client.close()
+        except Exception as e:
+            logger.warning(f"Failed to close EmbeddingClient: {e}")
+
+    async def __aenter__(self):
+        return self
+
+    async def __aexit__(self, exc_type, exc, exc_tb):
+        await self.aclose()
 
     @staticmethod
     def _extract_batch_limit(error_message: str) -> Optional[int]:

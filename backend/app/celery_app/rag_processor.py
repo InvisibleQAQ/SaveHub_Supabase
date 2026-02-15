@@ -171,19 +171,34 @@ def do_process_article_rag(article_id: str, user_id: str) -> Dict[str, Any]:
         image_count = 0
         captions = {}
 
-        # 创建 ChatClient 用于 Vision
-        chat_client = ChatClient(
-            api_key=chat_config["api_key"],
-            api_base=chat_config["api_base"],
-            model=chat_config["model"],
-        )
+        async def _generate_image_captions(urls: List[str]) -> tuple[Dict[str, str], int]:
+            chat_client = ChatClient(
+                api_key=chat_config["api_key"],
+                api_base=chat_config["api_base"],
+                model=chat_config["model"],
+            )
 
-        for url in image_urls[:MAX_IMAGES_PER_ARTICLE]:
-            caption = asyncio.run(chat_client.vision_caption_safe(url))
-            if caption:
-                captions[url] = caption
-                image_count += 1
-                logger.debug(f"Generated caption for image: {url[:50]}...")
+            generated_captions: Dict[str, str] = {}
+            generated_count = 0
+
+            try:
+                for url in urls:
+                    caption = await chat_client.vision_caption_safe(url)
+                    if caption:
+                        generated_captions[url] = caption
+                        generated_count += 1
+                        logger.debug(f"Generated caption for image: {url[:50]}...")
+            finally:
+                try:
+                    await chat_client.aclose()
+                except Exception as close_error:
+                    logger.debug(f"Failed to close chat client: {close_error}")
+
+            return generated_captions, generated_count
+
+        captions, image_count = asyncio.run(
+            _generate_image_captions(image_urls[:MAX_IMAGES_PER_ARTICLE])
+        )
 
         # 5. 将 caption 填充到原位置
         parsed_article.fill_captions(captions)
@@ -229,13 +244,24 @@ def do_process_article_rag(article_id: str, user_id: str) -> Dict[str, Any]:
             return {"success": True, "chunks": 0, "images": image_count}
 
         # 9. 批量生成 embeddings
-        embedding_client = EmbeddingClient(
-            api_key=embedding_config["api_key"],
-            api_base=embedding_config["api_base"],
-            model=embedding_config["model"],
-        )
         texts = [c["content"] for c in final_chunks]
-        embeddings = asyncio.run(embedding_client.embed_batch(texts))
+
+        async def _embed_chunks(chunk_texts: List[str]) -> List[List[float]]:
+            embedding_client = EmbeddingClient(
+                api_key=embedding_config["api_key"],
+                api_base=embedding_config["api_base"],
+                model=embedding_config["model"],
+            )
+
+            try:
+                return await embedding_client.embed_batch(chunk_texts)
+            finally:
+                try:
+                    await embedding_client.aclose()
+                except Exception as close_error:
+                    logger.debug(f"Failed to close embedding client: {close_error}")
+
+        embeddings = asyncio.run(_embed_chunks(texts))
 
         for i, chunk in enumerate(final_chunks):
             chunk["embedding"] = embeddings[i]

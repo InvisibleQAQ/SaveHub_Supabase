@@ -280,6 +280,10 @@ def do_repository_embedding(
                 rag_service.mark_repository_embedding_processed(repo["id"], success=False)
                 failed += 1
     finally:
+        try:
+            loop.run_until_complete(embedding_client.aclose())
+        except Exception as e:
+            logger.debug(f"Failed to close embedding client: {e}")
         loop.close()
 
     logger.info(f"Repository embedding completed: {processed}/{total}, {failed} failed")

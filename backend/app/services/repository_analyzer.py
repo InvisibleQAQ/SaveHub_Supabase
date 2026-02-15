@@ -68,13 +68,13 @@ async def analyze_repositories_needing_analysis(
             repo_service.reset_analysis_failed(repo["id"])
 
     # Create AI service and run batch analysis
-    ai_service = RepositoryAnalyzerService(**config)
-    analysis_results = await ai_service.analyze_repositories_batch(
-        repos=repos_to_analyze,
-        concurrency=5,
-        use_fallback=True,
-        on_progress=on_progress,
-    )
+    async with RepositoryAnalyzerService(**config) as ai_service:
+        analysis_results = await ai_service.analyze_repositories_batch(
+            repos=repos_to_analyze,
+            concurrency=5,
+            use_fallback=True,
+            on_progress=on_progress,
+        )
 
     # Save analysis results
     analyzed = 0

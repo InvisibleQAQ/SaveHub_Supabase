@@ -126,6 +126,16 @@ class RepositoryAnalyzerService:
             model=model,
         )
 
+    async def aclose(self) -> None:
+        """关闭底层 AI 客户端连接。"""
+        await self.chat_client.aclose()
+
+    async def __aenter__(self):
+        return self
+
+    async def __aexit__(self, exc_type, exc, exc_tb):
+        await self.aclose()
+
     async def analyze_repository(
         self,
         readme_content: str,
