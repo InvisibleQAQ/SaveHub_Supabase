@@ -5,19 +5,19 @@
   "private": true,
   "scripts": {
     "---FRONTEND---": "========================================",
-    "frontend": "cd frontend && pnpm dev",
+    "frontend": "mkdir -p logs && cd frontend && pnpm dev 2>&1 | tee -a ../logs/frontend.log",
     "frontend:build": "cd frontend && pnpm build",
     "frontend:lint": "cd frontend && pnpm lint",
 
     "---BACKEND---": "========================================",
-    "backend": "cd backend && uvicorn app.main:app --reload --reload-exclude 'logs/*' --reload-exclude '../logs/*' --reload-exclude '*.csv' --timeout-keep-alive 300 --port 8000",
+    "backend": "mkdir -p logs && cd backend && uvicorn app.main:app --reload --reload-exclude 'logs/*' --reload-exclude '../logs/*' --reload-exclude '*.csv' --timeout-keep-alive 300 --port 8000 2>&1 | tee -a ../logs/backend.log",
     "backend:prod": "cd backend && uvicorn app.main:app --host 0.0.0.0 --timeout-keep-alive 300 --port 8000",
 
     "---CELERY---": "========================================",
-    "celery": "cd backend && celery -A app.celery_app worker --beat --pool=solo --loglevel=info --queues=high,default",
-    "celery:worker": "cd backend && celery -A app.celery_app worker --pool=solo --loglevel=info --queues=high,default",
-    "celery:beat": "cd backend && celery -A app.celery_app beat --loglevel=info",
-    "flower": "cd backend && celery -A app.celery_app flower --port=5555",
+    "celery": "mkdir -p logs && cd backend && celery -A app.celery_app worker --beat --pool=solo --loglevel=info --queues=high,default 2>&1 | tee -a ../logs/celery.log",
+    "celery:worker": "mkdir -p logs && cd backend && celery -A app.celery_app worker --pool=solo --loglevel=info --queues=high,default 2>&1 | tee -a ../logs/celery-worker.log",
+    "celery:beat": "mkdir -p logs && cd backend && celery -A app.celery_app beat --loglevel=info 2>&1 | tee -a ../logs/celery-beat.log",
+    "flower": "mkdir -p logs && cd backend && celery -A app.celery_app flower --port=5555 2>&1 | tee -a ../logs/flower.log",
 
     "---COMBINED---": "========================================",
     "dev": "concurrently -n next,api -c blue,green \"pnpm frontend\" \"pnpm backend\"",
