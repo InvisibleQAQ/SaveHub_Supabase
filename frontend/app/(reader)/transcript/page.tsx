@@ -120,35 +120,37 @@ export default function TranscriptPage() {
   }
 
   return (
-    <div className="container py-8 mx-auto space-y-8 animate-in fade-in duration-500">
-      <div className="space-y-2 text-center mb-8">
-        <h1 className="text-3xl font-bold tracking-tight">AI Video Transcript</h1>
-        <p className="text-muted-foreground">
-          Turn video content into structured notes with AI-powered transcription and summarization.
-        </p>
-      </div>
-
-      <TranscriptForm 
-        isLoading={status === "starting" || status === "processing"} 
-        onSubmit={handleStart} 
-      />
-
-      <ProgressDisplay 
-        status={status} 
-        progress={progress} 
-        stage={stage} 
-      />
-
-      {status === "error" && errorMessage && (
-        <div className="w-full max-w-4xl mx-auto p-4 border border-destructive/50 rounded-lg bg-destructive/10 text-destructive text-center">
-          <p className="font-medium">Error: {errorMessage}</p>
-          <p className="text-sm opacity-80 mt-1">Please check the URL and try again.</p>
+    <div className="flex-1 overflow-y-auto">
+      <div className="container py-8 mx-auto space-y-8 animate-in fade-in duration-500">
+        <div className="space-y-2 text-center mb-8">
+          <h1 className="text-3xl font-bold tracking-tight">AI Video Transcript</h1>
+          <p className="text-muted-foreground">
+            Turn video content into structured notes with AI-powered transcription and summarization.
+          </p>
         </div>
-      )}
 
-      {status === "completed" && result && (
-        <TranscriptResult data={result} videoTitle={videoTitle} />
-      )}
+        <TranscriptForm
+          isLoading={status === "starting" || status === "processing"}
+          onSubmit={handleStart}
+        />
+
+        <ProgressDisplay
+          status={status}
+          progress={progress}
+          stage={stage}
+        />
+
+        {status === "error" && errorMessage && (
+          <div className="w-full max-w-4xl mx-auto p-4 border border-destructive/50 rounded-lg bg-destructive/10 text-destructive text-center">
+            <p className="font-medium">Error: {errorMessage}</p>
+            <p className="text-sm opacity-80 mt-1">Please check the URL and try again.</p>
+          </div>
+        )}
+
+        {status === "completed" && result && (
+          <TranscriptResult data={result} videoTitle={videoTitle} />
+        )}
+      </div>
     </div>
   )
 }
