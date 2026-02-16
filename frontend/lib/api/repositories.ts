@@ -5,7 +5,8 @@
 import { Repository, SyncResult } from "@/lib/types"
 import { fetchWithAuth, isTokenExpiringSoon, proactiveRefresh } from "./fetch-client"
 
-const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000"
+// All requests use Next.js rewrite proxy (same-origin, cookie passthrough)
+const API_BASE = "/api/backend/repositories"
 
 /** SSE progress event from sync endpoint */
 export interface SyncProgressEvent {
@@ -20,7 +21,7 @@ export const repositoriesApi = {
    * Get all repositories for current user
    */
   async getAll(): Promise<Repository[]> {
-    const response = await fetchWithAuth(`${API_BASE}/api/repositories`, {
+    const response = await fetchWithAuth(API_BASE, {
       method: "GET",
       cache: "no-store",
     })
@@ -47,7 +48,7 @@ export const repositoriesApi = {
       }
     }
 
-    const response = await fetchWithAuth(`${API_BASE}/api/repositories/sync`, {
+    const response = await fetchWithAuth(`${API_BASE}/sync`, {
       method: "POST",
     })
 
@@ -108,7 +109,7 @@ export const repositoriesApi = {
       customCategory?: string | null
     }
   ): Promise<Repository> {
-    const response = await fetchWithAuth(`${API_BASE}/api/repositories/${id}`, {
+    const response = await fetchWithAuth(`${API_BASE}/${id}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -131,7 +132,7 @@ export const repositoriesApi = {
    * Analyze repository with AI
    */
   async analyze(id: string): Promise<Repository> {
-    const response = await fetchWithAuth(`${API_BASE}/api/repositories/${id}/analyze`, {
+    const response = await fetchWithAuth(`${API_BASE}/${id}/analyze`, {
       method: "POST",
     })
 

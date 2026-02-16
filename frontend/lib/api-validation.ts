@@ -1,7 +1,8 @@
 import type { ApiConfigType } from './types'
 import { fetchWithAuth } from './api/fetch-client'
 
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'
+// All requests use Next.js rewrite proxy (same-origin, cookie passthrough)
+const API_BASE_URL = "/api/backend"
 
 export interface ApiValidationRequest {
   apiKey: string

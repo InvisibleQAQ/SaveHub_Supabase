@@ -6,7 +6,8 @@
 
 import { fetchWithAuth, isTokenExpiringSoon, proactiveRefresh } from "./fetch-client"
 
-const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000"
+// All requests use Next.js rewrite proxy (same-origin, cookie passthrough)
+const API_BASE = "/api/backend/agentic-rag"
 
 export interface ChatMessage {
   role: "user" | "assistant"
@@ -153,7 +154,7 @@ export const agenticRagApi = {
       }
     }
 
-    const response = await fetchWithAuth(`${API_BASE}/api/agentic-rag/stream`, {
+    const response = await fetchWithAuth(`${API_BASE}/stream`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
