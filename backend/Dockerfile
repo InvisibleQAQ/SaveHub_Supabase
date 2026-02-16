@@ -6,7 +6,7 @@ WORKDIR /app
 
 # Install curl and install Poetry
 RUN apt-get update \
-  && apt-get install -y curl \
+  && apt-get install -y curl ffmpeg libgomp1 \
   && curl -sSL https://install.python-poetry.org | python3 - \
   && apt-get clean
 

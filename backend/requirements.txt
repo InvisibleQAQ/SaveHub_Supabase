@@ -19,6 +19,10 @@ dashscope==1.25.8
 # 数据验证
 pydantic==2.12.5
 
+# Transcript pipeline
+yt-dlp==2024.12.13
+faster-whisper==1.1.0
+
 # 工具
 python-dotenv==1.1.0
 httpx==0.28.1

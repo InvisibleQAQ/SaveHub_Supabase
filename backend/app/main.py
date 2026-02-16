@@ -94,6 +94,7 @@ from app.api.routers import (
     github,
     repositories,
     agentic_rag_chat,
+    transcripts,
 )
 app.include_router(rss.router, prefix="/api")
 app.include_router(auth.router, prefix="/api")
@@ -110,6 +111,7 @@ app.include_router(rag.router, prefix="/api")
 app.include_router(github.router, prefix="/api")
 app.include_router(repositories.router, prefix="/api")
 app.include_router(agentic_rag_chat.router, prefix="/api")
+app.include_router(transcripts.router, prefix="/api")
 
 
 @app.get("/health")
