@@ -1,7 +1,9 @@
-
 import { fetchWithAuth, isTokenExpiringSoon, proactiveRefresh } from "./fetch-client"
 
-const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000"
+// POST uses Next.js rewrite proxy (same-origin, no CORS issues)
+const API_BASE = "/api/backend/transcripts"
+// SSE stream uses direct backend URL (avoid Next.js rewrite buffering)
+const STREAM_BASE = `${process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000"}/api/transcripts`
 
 export interface TranscriptTask {
   task_id: string
@@ -57,7 +59,7 @@ export const transcriptApi = {
       await proactiveRefresh()
     }
 
-    const response = await fetchWithAuth(`${API_BASE}/api/transcripts/process`, {
+    const response = await fetchWithAuth(`${API_BASE}/process`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -89,7 +91,7 @@ export const transcriptApi = {
       }
     }
 
-    const response = await fetchWithAuth(`${API_BASE}/api/transcripts/stream/${taskId}`, {
+    const response = await fetchWithAuth(`${STREAM_BASE}/stream/${taskId}`, {
       method: "GET",
       headers: {
         Accept: "text/event-stream",
