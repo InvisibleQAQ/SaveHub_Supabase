@@ -9,6 +9,13 @@ services/
 ├── realtime.py             # ConnectionManager - WebSocket 连接管理
 ├── supabase_realtime.py    # SupabaseRealtimeForwarder - Supabase postgres_changes 转发
 ├── rss_parser.py           # RSS 解析服务
+├── transcripts/            # 视频转录管线（详见 transcripts/CLAUDE.md）
+│   ├── pipeline.py         # 编排器入口
+│   ├── task_manager.py     # 内存任务 + SSE 订阅
+│   ├── media.py            # yt-dlp 音频下载
+│   ├── subtitle.py         # 字幕探测/下载/解析
+│   ├── whisper.py          # faster-whisper 本地转录
+│   └── ai_text.py          # ChatClient 适配（优化/翻译/摘要）
 └── db/                     # 数据库服务模块
     ├── __init__.py         # 导出所有服务类
     ├── feeds.py            # FeedService - RSS订阅源 CRUD

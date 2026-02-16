@@ -13,6 +13,7 @@ Pydantic schemas for FastAPI request/response validation.
 | `api_configs.py` | LLM API configs (encrypted key/base fields) |
 | `rss.py` | RSS parsing (validate URL, parse feed/articles) |
 | `chat.py` | Chat sessions and LLM message exchange |
+| `transcripts.py` | Transcript pipeline request/response/SSE event models + SSRF URL validation |
 
 ## Conventions
 

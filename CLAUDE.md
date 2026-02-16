@@ -66,11 +66,13 @@ SaveHub_Supabase/
 │   │       ├── feed/[feedId]/        # Single feed view
 │   │       ├── repository/           # GitHub repo browser
 │   │       ├── chat/                 # AI chat interface
+│   │       ├── transcript/              # Video transcript processing
 │   │       └── settings/             # Settings pages
 │   ├── components/
 │   │   ├── sidebar/             # Navigation sidebar
 │   │   ├── repository/          # Repo browser components
-│   │   └── chat/                # Chat interface components
+│   │   ├── chat/                # Chat interface components
+│   │   └── transcript/          # Transcript UI components
 │   ├── lib/
 │   │   ├── store/               # Zustand slices (8 slices)
 │   │   ├── api/                 # Backend API clients
@@ -83,6 +85,7 @@ SaveHub_Supabase/
 │       ├── services/
 │       │   ├── ai/              # AI clients (Chat, Embedding, Rerank)
 │       │   ├── rag/             # RAG pipeline (chunker, retriever)
+│       │   ├── transcripts/     # Video transcript pipeline (yt-dlp, whisper, AI text)
 │       │   └── db/              # Database services
 │       └── celery_app/          # Background task processors
 └── docs/                        # Documentation (reference only)
@@ -95,6 +98,7 @@ SaveHub_Supabase/
 | **RSS Reader** | `/all`, `/unread`, `/starred`, `/feed/[id]` | `routers/feeds.py`, `routers/articles.py`, `routers/rss.py` | Feed subscription and article management |
 | **Repository Browser** | `/repository` | `routers/repositories.py`, `routers/github.py` | GitHub repo tracking with OpenRank metrics |
 | **AI Chat** | `/chat` | `routers/chat.py`, `routers/rag_chat.py` | RAG-powered Q&A over saved content |
+| **Transcript** | `/transcript` | `routers/transcripts.py`, `services/transcripts/` | Video transcription with subtitle/Whisper + AI text processing |
 | **Settings** | `/settings/*` | `routers/settings.py`, `routers/api_configs.py` | User preferences and API configuration |
 
 ### Backend Services
@@ -108,6 +112,13 @@ services/
 ├── rag/                   # RAG pipeline
 │   ├── chunker.py         # HTML parsing + semantic chunking
 │   └── retriever.py       # pgvector similarity search
+├── transcripts/           # Video transcript pipeline
+│   ├── pipeline.py        # Orchestrator (semaphore + executor + fallback)
+│   ├── task_manager.py    # In-memory task lifecycle + SSE subscriber queues
+│   ├── media.py           # yt-dlp audio download + ffmpeg normalization
+│   ├── subtitle.py        # Subtitle probe/download/parse (VTT/SRT→Markdown)
+│   ├── whisper.py         # faster-whisper local transcription
+│   └── ai_text.py         # ChatClient adapter (optimize/translate/summarize)
 ├── db/                    # Database services (user-scoped CRUD)
 ├── realtime.py            # WebSocket connection manager
 └── supabase_realtime.py   # Postgres changes → WebSocket forwarder
@@ -232,6 +243,7 @@ results = search_embeddings(supabase, query_vector, user_id, limit=10)
 | Backend Services | `backend/app/services/CLAUDE.md` | Service layer patterns |
 | AI Services | `backend/app/services/ai/CLAUDE.md` | Chat, Embedding, Vision clients |
 | RAG Services | `backend/app/services/rag/CLAUDE.md` | Chunking, retrieval pipeline |
+| Transcript Services | `backend/app/services/transcripts/CLAUDE.md` | Video transcript pipeline (yt-dlp, whisper, AI text) |
 | Pydantic Schemas | `backend/app/schemas/CLAUDE.md` | Schema conventions |
 | Database Migrations | `backend/scripts/` | SQL scripts (run in Supabase SQL Editor) |
 
@@ -246,6 +258,7 @@ results = search_embeddings(supabase, query_vector, user_id, limit=10)
 | `/feed/[feedId]/properties` | EditFeedForm | Edit feed properties |
 | `/repository` | RepositoryPage | GitHub repository browser |
 | `/chat` | ChatPage | AI chat interface |
+| `/transcript` | TranscriptPage | Video transcription with SSE progress |
 | `/settings/general` | GeneralSettings | General settings |
 | `/settings/appearance` | AppearanceSettings | Theme settings |
 | `/settings/storage` | StorageSettings | Data retention |
@@ -265,6 +278,7 @@ results = search_embeddings(supabase, query_vector, user_id, limit=10)
 | `chat.py` | `/api/chat/*` | AI chat completion |
 | `rag_chat.py` | `/api/rag-chat/*` | RAG-powered chat |
 | `rag.py` | `/api/rag/*` | RAG processing triggers |
+| `transcripts.py` | `/api/transcripts/*` | Video transcript processing + SSE streaming |
 | `api_configs.py` | `/api/api-configs/*` | AI API configuration |
 | `settings.py` | `/api/settings/*` | User settings |
 | `queue.py` | `/api/queue/*` | Celery task management |
