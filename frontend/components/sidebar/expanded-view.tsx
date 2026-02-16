@@ -3,7 +3,7 @@
 import React from "react"
 import Link from "next/link"
 import { usePathname } from "next/navigation"
-import { Search, BookOpen, Rss, Star, Github, Plus, FolderPlus, ChevronLeft, Settings, LogOut, Pin, PinOff, MessageSquare } from "lucide-react"
+import { Search, BookOpen, Rss, Star, Github, Plus, FolderPlus, ChevronLeft, Settings, LogOut, Pin, PinOff, MessageSquare, FileText } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { ScrollArea } from "@/components/ui/scroll-area"
@@ -196,6 +196,7 @@ export function ExpandedView({
         <ViewButton href="/unread" icon={Rss} label="Unread" count={totalUnread} isActive={pathname === "/unread"} variant="full" />
         <ViewButton href="/starred" icon={Star} label="Starred" count={totalStarred} isActive={pathname === "/starred"} variant="full" />
         <ViewButton href="/chat" icon={MessageSquare} label="Chat" isActive={pathname === "/chat"} variant="full" />
+        <ViewButton href="/transcript" icon={FileText} label="Transcript" isActive={pathname === "/transcript"} variant="full" />
         <ViewButton href="/repository" icon={Github} label="Repository" count={totalRepositories} isActive={pathname === "/repository"} variant="full" />
 
         <Button
