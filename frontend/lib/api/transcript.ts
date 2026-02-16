@@ -64,7 +64,7 @@ export const transcriptApi = {
       headers: {
         "Content-Type": "application/json",
       },
-      body: JSON.stringify({ url, language }),
+      body: JSON.stringify({ url, summary_language: language }),
     })
 
     if (!response.ok) {
