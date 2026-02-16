@@ -120,6 +120,7 @@ services/
 │   ├── whisper.py         # faster-whisper local transcription
 │   └── ai_text.py         # ChatClient adapter (optimize/translate/summarize)
 ├── db/                    # Database services (user-scoped CRUD)
+├── full_text_fetch.py     # Readability extraction (readability-lxml + httpx)
 ├── realtime.py            # WebSocket connection manager
 └── supabase_realtime.py   # Postgres changes → WebSocket forwarder
 ```

@@ -1,7 +1,7 @@
 """Article Pydantic schemas for request/response validation."""
 
 from pydantic import BaseModel
-from typing import Optional, List
+from typing import Literal, Optional, List
 from datetime import datetime
 from uuid import UUID
 
@@ -19,6 +19,8 @@ class ArticleBase(BaseModel):
     is_starred: bool = False
     thumbnail: Optional[str] = None
     content_hash: Optional[str] = None
+    full_content: Optional[str] = None
+    full_content_fetched_at: Optional[datetime] = None
 
 
 class ArticleCreate(ArticleBase):
@@ -66,3 +68,20 @@ class ArticleStatsResponse(BaseModel):
 class ClearOldArticlesResponse(BaseModel):
     """Response model for clearing old articles."""
     deleted_count: int
+
+
+class FetchFullContentRequest(BaseModel):
+    """Request model for fetching full article content."""
+    force_refresh: bool = False
+
+
+class FetchFullContentResponse(BaseModel):
+    """Response model for full content fetch result."""
+    success: bool
+    article_id: UUID
+    source_url: str
+    fetch_status: Literal["fetched", "cached"]
+    cached: bool = False
+    full_content: str
+    full_content_fetched_at: datetime
+    auto_show_all_content: bool

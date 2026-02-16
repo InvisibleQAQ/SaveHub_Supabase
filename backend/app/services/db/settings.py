@@ -92,6 +92,9 @@ DEFAULT_SETTINGS = {
     "agentic_rag_no_kb_answer": "知识库暂无相关信息。",
     "agentic_rag_history_summary_system_prompt": "你是精炼总结助手。",
     "agentic_rag_history_summary_user_prompt_template": "你是对话摘要助手。请把以下历史对话压缩为 1-2 句中文摘要，保留主题、关键实体和未解决问题。只输出摘要正文。",
+    # Full text fetch
+    "full_text_fetch_enabled": True,
+    "auto_show_all_content": True,
 }
 
 

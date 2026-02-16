@@ -28,6 +28,7 @@ export const FeedSchema = z.object({
   lastFetchStatus: z.enum(["success", "failed"]).nullable().optional(),
   lastFetchError: z.string().nullable().optional(),
   enableDeduplication: z.boolean().default(false),
+  autoExpandContent: z.enum(["global", "enabled", "disabled"]).default("global"),
 })
 
 export const ArticleSchema = z.object({
@@ -44,6 +45,7 @@ export const ArticleSchema = z.object({
   thumbnail: z.string().optional(),
   contentHash: z.string().optional(), // SHA-256 hash of (title + content), used for deduplication
   repositoryCount: z.number().default(0), // 关联仓库数量
+  fullContent: z.string().nullable().optional(), // Full text fetched from source URL
 })
 
 // API Configuration types
@@ -133,6 +135,10 @@ export interface RSSReaderState {
     agenticRagNoKbAnswer: string
     agenticRagHistorySummarySystemPrompt: string
     agenticRagHistorySummaryUserPromptTemplate: string
+
+    // Full text fetch settings
+    fullTextFetchEnabled: boolean
+    autoShowAllContent: boolean
   }
 }
 

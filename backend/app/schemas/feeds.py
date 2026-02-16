@@ -1,7 +1,7 @@
 """Feed Pydantic schemas for request/response validation."""
 
 from pydantic import BaseModel, HttpUrl
-from typing import Optional
+from typing import Literal, Optional
 from datetime import datetime
 from uuid import UUID
 
@@ -16,6 +16,7 @@ class FeedBase(BaseModel):
     order: int = 0
     refresh_interval: int = 60
     enable_deduplication: bool = False
+    auto_expand_content: Literal["global", "enabled", "disabled"] = "global"
 
 
 class FeedCreate(FeedBase):
@@ -41,6 +42,7 @@ class FeedUpdate(BaseModel):
     last_fetch_status: Optional[str] = None
     last_fetch_error: Optional[str] = None
     enable_deduplication: Optional[bool] = None
+    auto_expand_content: Optional[Literal["global", "enabled", "disabled"]] = None
 
 
 class FeedResponse(FeedBase):

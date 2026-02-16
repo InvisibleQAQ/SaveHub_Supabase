@@ -61,6 +61,7 @@ class FeedService:
                 "last_fetch_status": feed.get("last_fetch_status"),
                 "last_fetch_error": feed.get("last_fetch_error"),
                 "enable_deduplication": feed.get("enable_deduplication", False),
+                "auto_expand_content": feed.get("auto_expand_content", "global"),
             })
 
         logger.debug(
@@ -117,6 +118,7 @@ class FeedService:
                 "last_fetch_status": row.get("last_fetch_status"),
                 "last_fetch_error": row.get("last_fetch_error"),
                 "enable_deduplication": row.get("enable_deduplication", False),
+                "auto_expand_content": row.get("auto_expand_content", "global"),
                 "created_at": row.get("created_at"),
             })
 
@@ -157,6 +159,7 @@ class FeedService:
                 "last_fetch_status": row.get("last_fetch_status"),
                 "last_fetch_error": row.get("last_fetch_error"),
                 "enable_deduplication": row.get("enable_deduplication", False),
+                "auto_expand_content": row.get("auto_expand_content", "global"),
                 "created_at": row.get("created_at"),
             }
         return None
@@ -193,6 +196,7 @@ class FeedService:
             "last_fetch_status": "last_fetch_status",
             "last_fetch_error": "last_fetch_error",
             "enable_deduplication": "enable_deduplication",
+            "auto_expand_content": "auto_expand_content",
         }
 
         for key, db_key in field_mapping.items():

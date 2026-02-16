@@ -50,6 +50,46 @@ export default function GeneralSettingsPage() {
           </div>
         )}
       </div>
+
+      <Separator />
+
+      <div className="space-y-6">
+        <div>
+          <h2 className="text-lg font-semibold">Full Text Fetch</h2>
+          <p className="text-sm text-muted-foreground mt-1">
+            Fetch full article content from the original source URL
+          </p>
+        </div>
+
+        <div className="flex items-center justify-between">
+          <div className="space-y-1">
+            <Label htmlFor="full-text-fetch">Enable Full Text Fetch</Label>
+            <p className="text-sm text-muted-foreground">Allow fetching full content from article source URLs</p>
+          </div>
+          <Switch
+            id="full-text-fetch"
+            checked={settings.fullTextFetchEnabled}
+            onCheckedChange={(checked) => updateSettings({ fullTextFetchEnabled: checked })}
+          />
+        </div>
+
+        {settings.fullTextFetchEnabled && (
+          <div className="flex items-center justify-between pl-6 border-l-2 border-muted">
+            <div className="space-y-1">
+              <Label htmlFor="auto-show-all-content">Auto Expand Full Content</Label>
+              <p className="text-sm text-muted-foreground">
+                Automatically fetch and display full content when opening articles.
+                Can be overridden per feed.
+              </p>
+            </div>
+            <Switch
+              id="auto-show-all-content"
+              checked={settings.autoShowAllContent}
+              onCheckedChange={(checked) => updateSettings({ autoShowAllContent: checked })}
+            />
+          </div>
+        )}
+      </div>
     </div>
   )
 }

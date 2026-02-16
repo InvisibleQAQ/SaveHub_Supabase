@@ -109,6 +109,8 @@ class ArticleService:
                 "is_starred": row["is_starred"],
                 "thumbnail": row.get("thumbnail"),
                 "content_hash": row.get("content_hash"),
+                "full_content": row.get("full_content"),
+                "full_content_fetched_at": row.get("full_content_fetched_at"),
                 "user_id": row["user_id"],
                 "created_at": row.get("created_at"),
                 "repository_count": repo_count,
@@ -141,6 +143,8 @@ class ArticleService:
                 "is_starred": row["is_starred"],
                 "thumbnail": row.get("thumbnail"),
                 "content_hash": row.get("content_hash"),
+                "full_content": row.get("full_content"),
+                "full_content_fetched_at": row.get("full_content_fetched_at"),
                 "user_id": row["user_id"],
                 "created_at": row.get("created_at"),
             }
@@ -309,3 +313,29 @@ class ArticleService:
             .execute()
 
         logger.debug(f"Marked article {article_id} repos_extracted={success}")
+
+    def update_full_content(self, article_id: str, full_content: str, fetched_at: datetime) -> dict:
+        """
+        Update only full_content fields. Never touches content/RAG fields.
+
+        Args:
+            article_id: Article UUID
+            full_content: Extracted full HTML content
+            fetched_at: Timestamp of extraction
+
+        Returns:
+            Updated row dict
+        """
+        update_data = {
+            "full_content": full_content,
+            "full_content_fetched_at": fetched_at.isoformat(),
+        }
+
+        response = self.supabase.table("articles") \
+            .update(update_data) \
+            .eq("id", article_id) \
+            .eq("user_id", self.user_id) \
+            .execute()
+
+        logger.info(f"Updated full_content for article {article_id}")
+        return (response.data or [{}])[0]

@@ -1,5 +1,6 @@
 "use client"
-import { ExternalLink, Star, Share, MoreHorizontal, Clock, Check, Copy, BookOpen, ZoomIn, ZoomOut } from "lucide-react"
+import { useState, useEffect, useCallback, useRef, useMemo } from "react"
+import { ExternalLink, Star, Share, MoreHorizontal, Clock, Check, Copy, BookOpen, ZoomIn, ZoomOut, FileText, Loader2, RotateCw } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { Badge } from "@/components/ui/badge"
@@ -17,12 +18,69 @@ import { useToast } from "@/hooks/use-toast"
 import { ArticleRepositories } from "./article-repositories"
 
 export function ArticleContent() {
-  const { articles, feeds, selectedArticleId, markAsRead, markAsUnread, toggleStar, settings, updateSettings, isSidebarCollapsed, setSidebarCollapsed } =
+  const { articles, feeds, selectedArticleId, markAsRead, markAsUnread, toggleStar, settings, updateSettings, isSidebarCollapsed, setSidebarCollapsed, fetchArticleFullContent } =
     useRSSStore()
   const { toast } = useToast()
 
   const selectedArticle = articles.find((a) => a.id === selectedArticleId)
   const selectedFeed = selectedArticle ? feeds.find((f) => f.id === selectedArticle.feedId) : null
+
+  // Full content state
+  const [showFullContent, setShowFullContent] = useState(false)
+  const [isLoadingFullContent, setIsLoadingFullContent] = useState(false)
+  const [fullContentError, setFullContentError] = useState<string | null>(null)
+  const activeArticleIdRef = useRef<string | null>(null)
+
+  // Compute effective auto-show from 3-tier config (memoized)
+  const effectiveAutoShow = useMemo(() => {
+    if (!selectedFeed || !settings.fullTextFetchEnabled) return false
+    const feedConfig = selectedFeed.autoExpandContent ?? "global"
+    if (feedConfig === "enabled") return true
+    if (feedConfig === "disabled") return false
+    return settings.autoShowAllContent
+  }, [selectedFeed, settings.fullTextFetchEnabled, settings.autoShowAllContent])
+
+  const handleFetchFullContent = useCallback(async (forceRefresh = false) => {
+    if (!selectedArticle) return
+    const targetId = selectedArticle.id
+    setIsLoadingFullContent(true)
+    setFullContentError(null)
+    try {
+      const result = await fetchArticleFullContent(targetId, forceRefresh)
+      // Guard: only update UI if this article is still active
+      if (activeArticleIdRef.current !== targetId) return
+      setShowFullContent(true)
+    } catch (error) {
+      if (activeArticleIdRef.current !== targetId) return
+      const msg = error instanceof Error ? error.message : "Failed to fetch full content"
+      setFullContentError(msg)
+      toast({
+        title: "Fetch Failed",
+        description: msg,
+        variant: "destructive",
+      })
+    } finally {
+      if (activeArticleIdRef.current === targetId) {
+        setIsLoadingFullContent(false)
+      }
+    }
+  }, [selectedArticle, fetchArticleFullContent, toast])
+
+  // Reset state when article changes; auto-fetch if effective auto-show
+  useEffect(() => {
+    activeArticleIdRef.current = selectedArticleId ?? null
+    setShowFullContent(false)
+    setFullContentError(null)
+    setIsLoadingFullContent(false)
+
+    if (selectedArticle?.fullContent) {
+      if (effectiveAutoShow) {
+        setShowFullContent(true)
+      }
+    } else if (effectiveAutoShow && selectedArticle && settings.fullTextFetchEnabled) {
+      handleFetchFullContent()
+    }
+  }, [selectedArticleId, selectedArticle, effectiveAutoShow, settings.fullTextFetchEnabled, handleFetchFullContent])
 
   const handleShare = async () => {
     if (!selectedArticle) return
@@ -86,8 +144,12 @@ export function ArticleContent() {
     )
   }
 
-  const readingTime = estimateReadingTime(selectedArticle.content)
-  const sanitizedContent = sanitizeHTML(selectedArticle.content)
+  const displayContent = showFullContent && selectedArticle.fullContent
+    ? selectedArticle.fullContent
+    : selectedArticle.content
+  const readingTime = estimateReadingTime(displayContent)
+  const sanitizedContent = sanitizeHTML(displayContent)
+  const hasFullContent = !!selectedArticle.fullContent
 
   return (
     <div className="flex flex-col h-full" onClick={() => !isSidebarCollapsed && !settings.sidebarPinned && setSidebarCollapsed(true)}>
@@ -239,6 +301,58 @@ export function ArticleContent() {
               style={{ fontSize: `${settings.fontSize}px`, lineHeight: 1.6 }}
               dangerouslySetInnerHTML={{ __html: sanitizedContent }}
             />
+
+            {/* Full Content Fetch Section */}
+            {settings.fullTextFetchEnabled && (
+              <div className="mt-6 flex items-center gap-2 flex-wrap">
+                {!hasFullContent && !isLoadingFullContent && (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => handleFetchFullContent()}
+                    className="gap-2"
+                  >
+                    <FileText className="h-3.5 w-3.5" />
+                    Fetch Full Content
+                  </Button>
+                )}
+
+                {isLoadingFullContent && (
+                  <Button variant="outline" size="sm" disabled className="gap-2">
+                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                    Fetching...
+                  </Button>
+                )}
+
+                {hasFullContent && !isLoadingFullContent && (
+                  <>
+                    <Button
+                      variant={showFullContent ? "default" : "outline"}
+                      size="sm"
+                      onClick={() => setShowFullContent(!showFullContent)}
+                      className="gap-2"
+                    >
+                      <FileText className="h-3.5 w-3.5" />
+                      {showFullContent ? "Show RSS Content" : "Show Full Content"}
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => handleFetchFullContent(true)}
+                      title="Re-fetch full content"
+                      aria-label="Re-fetch full content"
+                      className="gap-2"
+                    >
+                      <RotateCw className="h-3.5 w-3.5" />
+                    </Button>
+                  </>
+                )}
+
+                {fullContentError && (
+                  <span className="text-xs text-destructive" role="alert">{fullContentError}</span>
+                )}
+              </div>
+            )}
 
             {/* Related GitHub Repositories */}
             <ArticleRepositories articleId={selectedArticle.id} />

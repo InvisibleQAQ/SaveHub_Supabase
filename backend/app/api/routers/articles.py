@@ -1,9 +1,10 @@
 """Articles API router for CRUD operations."""
 
 import logging
+from datetime import datetime, timezone
 from typing import List, Optional
 from uuid import UUID
-from fastapi import APIRouter, Depends, HTTPException, Query, Request
+from fastapi import APIRouter, Body, Depends, HTTPException, Query, Request
 
 from app.dependencies import verify_auth, get_access_token
 from app.supabase_client import get_supabase_client
@@ -13,9 +14,14 @@ from app.schemas.articles import (
     ArticleResponse,
     ArticleStatsResponse,
     ClearOldArticlesResponse,
+    FetchFullContentRequest,
+    FetchFullContentResponse,
 )
 from app.services.db.articles import ArticleService
+from app.services.db.feeds import FeedService
+from app.services.db.settings import SettingsService
 from app.services.db.article_repositories import ArticleRepositoryService
+from app.services.full_text_fetch import fetch_full_content_html, FullTextFetchError
 from app.schemas.repositories import RepositoryResponse
 
 logger = logging.getLogger(__name__)
@@ -237,3 +243,105 @@ async def get_article_repositories(
     except Exception as e:
         logger.error(f"Failed to get repositories for article {article_id}: {e}")
         raise HTTPException(status_code=500, detail="Failed to retrieve article repositories")
+
+
+@router.post("/{article_id}/fetch-full", response_model=FetchFullContentResponse)
+async def fetch_full_content(
+    article_id: UUID,
+    payload: FetchFullContentRequest = Body(default_factory=FetchFullContentRequest),
+    access_token: str = Depends(get_access_token),
+    user=Depends(verify_auth),
+):
+    """
+    Fetch full content from article's original URL using readability extraction.
+
+    Uses readability-lxml to extract readable content from the source page.
+    Results are persisted to the articles table for future access.
+
+    Args:
+        article_id: UUID of the article
+        payload: Optional force_refresh flag
+
+    Returns:
+        Extracted full content with metadata.
+
+    Raises:
+        403: Full text fetch disabled in settings
+        404: Article or feed not found
+        422: Article has no URL or extraction failed
+        502: Upstream connection error
+        504: Fetch timeout
+    """
+    try:
+        client = get_supabase_client(access_token)
+        article_service = ArticleService(client, user.user.id)
+        feed_service = FeedService(client, user.user.id)
+        settings_service = SettingsService(client, user.user.id)
+
+        # 1. Get article
+        article = article_service.get_article(str(article_id))
+        if not article:
+            raise HTTPException(status_code=404, detail="Article not found")
+
+        # 2. Check global setting
+        settings = settings_service.load_settings() or {}
+        if not settings.get("full_text_fetch_enabled", True):
+            raise HTTPException(status_code=403, detail="Full text fetch is disabled")
+
+        # 3. Check article has URL
+        source_url = article.get("url", "").strip()
+        if not source_url:
+            raise HTTPException(status_code=422, detail="Article has no source URL")
+
+        # 4. Get feed for auto_expand config
+        feed = feed_service.get_feed(article["feed_id"])
+        feed_config = feed.get("auto_expand_content", "global") if feed else "global"
+
+        # 5. Compute effective auto_show_all_content
+        if feed_config == "enabled":
+            effective_auto_show = True
+        elif feed_config == "disabled":
+            effective_auto_show = False
+        else:
+            effective_auto_show = settings.get("auto_show_all_content", False)
+
+        # 6. Return cached if available and not force refresh
+        if article.get("full_content") and not payload.force_refresh:
+            return FetchFullContentResponse(
+                success=True,
+                article_id=article_id,
+                source_url=source_url,
+                fetch_status="cached",
+                cached=True,
+                full_content=article["full_content"],
+                full_content_fetched_at=article["full_content_fetched_at"],
+                auto_show_all_content=effective_auto_show,
+            )
+
+        # 7. Fetch and extract
+        full_html = await fetch_full_content_html(source_url, timeout_seconds=30.0)
+        fetched_at = datetime.now(timezone.utc)
+
+        # 8. Persist
+        article_service.update_full_content(str(article_id), full_html, fetched_at)
+
+        logger.info(f"Fetched full content for article {article_id} ({len(full_html)} chars)")
+        return FetchFullContentResponse(
+            success=True,
+            article_id=article_id,
+            source_url=source_url,
+            fetch_status="fetched",
+            cached=False,
+            full_content=full_html,
+            full_content_fetched_at=fetched_at,
+            auto_show_all_content=effective_auto_show,
+        )
+
+    except HTTPException:
+        raise
+    except FullTextFetchError as e:
+        logger.warning(f"Full text fetch failed for article {article_id}: {e.detail}")
+        raise HTTPException(status_code=e.status_code, detail=e.detail)
+    except Exception as e:
+        logger.error(f"Unexpected error fetching full content for article {article_id}: {e}")
+        raise HTTPException(status_code=500, detail="Failed to fetch full content")

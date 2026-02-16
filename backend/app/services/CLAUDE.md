@@ -9,6 +9,7 @@ services/
 ├── realtime.py             # ConnectionManager - WebSocket 连接管理
 ├── supabase_realtime.py    # SupabaseRealtimeForwarder - Supabase postgres_changes 转发
 ├── rss_parser.py           # RSS 解析服务
+├── full_text_fetch.py      # 全文抓取服务 (readability-lxml + httpx)
 ├── transcripts/            # 视频转录管线（详见 transcripts/CLAUDE.md）
 │   ├── pipeline.py         # 编排器入口
 │   ├── task_manager.py     # 内存任务 + SSE 订阅
@@ -49,6 +50,26 @@ service = FeedService(supabase_client, user_id)
 | `FolderService` | 文件夹增删改查 |
 | `SettingsService` | 用户偏好设置（主题、刷新间隔等） |
 | `ApiConfigService` | OpenAI兼容API配置（无加密，需自行实现） |
+
+## full_text_fetch.py
+
+从文章原始 URL 抓取全文内容，使用 `readability-lxml` 提取可读正文。
+
+**核心函数**: `fetch_full_content_html(url, timeout_seconds=30.0) -> str`
+
+**错误映射**:
+| 异常 | HTTP 状态码 | 说明 |
+|------|------------|------|
+| `TimeoutException` | 504 | 请求超时 |
+| `HTTPStatusError` | 502 | 上游返回非 2xx |
+| `RequestError` | 502 | 连接失败 |
+| 提取为空 | 422 | readability 提取结果为空 |
+
+**三层设置优先级**: `feeds.auto_expand_content` (enabled/disabled) > `settings.auto_show_all_content` (global default) > `settings.full_text_fetch_enabled` (global toggle)
+
+**数据持久化**: `articles.full_content` + `articles.full_content_fetched_at`，通过 `ArticleService.update_full_content()` 写入。
+
+**API 端点**: `POST /api/articles/{article_id}/fetch-full`，支持 `force_refresh` 参数强制重新抓取。
 
 ## ConnectionManager (realtime.py)
 

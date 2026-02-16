@@ -1,6 +1,6 @@
 import type { StateCreator } from "zustand"
 import type { Article } from "../types"
-import { articlesApi } from "../api/articles"
+import { articlesApi, type FetchFullContentResponse } from "../api/articles"
 import { computeContentHash } from "../utils/hash"
 
 export interface ArticlesSlice {
@@ -9,6 +9,7 @@ export interface ArticlesSlice {
   markAsUnread: (articleId: string) => void
   toggleStar: (articleId: string) => void
   markFeedAsRead: (feedId: string) => void
+  fetchArticleFullContent: (articleId: string, forceRefresh?: boolean) => Promise<FetchFullContentResponse>
 }
 
 export const createArticlesSlice: StateCreator<
@@ -117,5 +118,20 @@ export const createArticlesSlice: StateCreator<
         articlesApi.updateArticle(article.id, { isRead: true })
       )
     ).catch(console.error)
+  },
+
+  fetchArticleFullContent: async (articleId, forceRefresh = false) => {
+    const result = await articlesApi.fetchFullContent(articleId, forceRefresh)
+
+    // Update article in store with fetched full content
+    set((state: any) => ({
+      articles: state.articles.map((a: any) =>
+        a.id === articleId
+          ? { ...a, fullContent: result.full_content }
+          : a
+      ),
+    }))
+
+    return result
   },
 })

@@ -51,6 +51,7 @@ function transformArticle(raw: Record<string, unknown>): Article {
     thumbnail: raw.thumbnail as string | undefined,
     contentHash: raw.content_hash as string | undefined,
     repositoryCount: (raw.repository_count as number) ?? 0,
+    fullContent: (raw.full_content as string | null) ?? null,
   }
 }
 
@@ -266,6 +267,44 @@ export async function getArticleRepositories(articleId: string): Promise<Reposit
 }
 
 /**
+ * Response from full text fetch endpoint.
+ */
+export interface FetchFullContentResponse {
+  success: boolean
+  article_id: string
+  source_url: string
+  fetch_status: "fetched" | "cached"
+  cached: boolean
+  full_content: string
+  full_content_fetched_at: string
+  auto_show_all_content: boolean
+}
+
+/**
+ * Fetch full content from article's original URL using readability extraction.
+ * Results are persisted to the articles table.
+ */
+export async function fetchFullContent(
+  articleId: string,
+  forceRefresh: boolean = false
+): Promise<FetchFullContentResponse> {
+  const response = await fetchWithAuth(`${API_BASE}/${articleId}/fetch-full`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ force_refresh: forceRefresh }),
+  })
+
+  if (!response.ok) {
+    const error: ApiError = await response.json()
+    throw new Error(error.detail || "Failed to fetch full content")
+  }
+
+  return response.json()
+}
+
+/**
  * Articles API namespace for easy import.
  */
 export const articlesApi = {
@@ -276,4 +315,5 @@ export const articlesApi = {
   clearOldArticles,
   getArticleStats,
   getArticleRepositories,
+  fetchFullContent,
 }

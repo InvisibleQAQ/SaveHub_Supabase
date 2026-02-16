@@ -103,6 +103,10 @@ class SettingsBase(BaseModel):
         "保留主题、关键实体和未解决问题。只输出摘要正文。"
     )
 
+    # Full text fetch settings
+    full_text_fetch_enabled: bool = True
+    auto_show_all_content: bool = True
+
 
 class SettingsCreate(SettingsBase):
     """Request model for creating settings."""
@@ -157,6 +161,10 @@ class SettingsUpdate(BaseModel):
     agentic_rag_no_kb_answer: Optional[str] = None
     agentic_rag_history_summary_system_prompt: Optional[str] = None
     agentic_rag_history_summary_user_prompt_template: Optional[str] = None
+
+    # Full text fetch settings
+    full_text_fetch_enabled: Optional[bool] = None
+    auto_show_all_content: Optional[bool] = None
 
 
 class SettingsResponse(SettingsBase):
