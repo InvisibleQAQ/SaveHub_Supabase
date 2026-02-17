@@ -59,17 +59,12 @@ export function ArticleContent() {
       setShowFullContent(false)
       const msg = error instanceof Error ? error.message : "Failed to fetch full content"
       setFullContentError(msg)
-      toast({
-        title: "Fetch Failed",
-        description: msg,
-        variant: "destructive",
-      })
     } finally {
       if (activeArticleIdRef.current === targetId) {
         setIsLoadingFullContent(false)
       }
     }
-  }, [selectedArticle, fetchArticleFullContent, toast])
+  }, [selectedArticle, fetchArticleFullContent])
 
   // Reset state when article changes; auto-fetch if effective auto-show
   useEffect(() => {
