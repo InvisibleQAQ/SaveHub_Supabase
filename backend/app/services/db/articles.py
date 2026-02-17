@@ -111,6 +111,7 @@ class ArticleService:
                 "content_hash": row.get("content_hash"),
                 "full_content": row.get("full_content"),
                 "full_content_fetched_at": row.get("full_content_fetched_at"),
+                "fetch_status": row.get("fetch_status", "unfetched"),
                 "user_id": row["user_id"],
                 "created_at": row.get("created_at"),
                 "repository_count": repo_count,
@@ -145,6 +146,7 @@ class ArticleService:
                 "content_hash": row.get("content_hash"),
                 "full_content": row.get("full_content"),
                 "full_content_fetched_at": row.get("full_content_fetched_at"),
+                "fetch_status": row.get("fetch_status", "unfetched"),
                 "user_id": row["user_id"],
                 "created_at": row.get("created_at"),
             }
@@ -329,6 +331,7 @@ class ArticleService:
         update_data = {
             "full_content": full_content,
             "full_content_fetched_at": fetched_at.isoformat(),
+            "fetch_status": "success",
         }
 
         response = self.supabase.table("articles") \
@@ -339,3 +342,15 @@ class ArticleService:
 
         logger.info(f"Updated full_content for article {article_id}")
         return (response.data or [{}])[0]
+
+    def update_fetch_status(self, article_id: str, status: str, clear_content: bool = False) -> None:
+        """Update fetch_status; optionally clear full_content (e.g. no readable text)."""
+        data: dict = {"fetch_status": status}
+        if clear_content:
+            data["full_content"] = None
+            data["full_content_fetched_at"] = None
+        self.supabase.table("articles") \
+            .update(data) \
+            .eq("id", article_id) \
+            .eq("user_id", self.user_id) \
+            .execute()

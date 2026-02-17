@@ -67,9 +67,11 @@ service = FeedService(supabase_client, user_id)
 
 **三层设置优先级**: `feeds.auto_expand_content` (enabled/disabled) > `settings.auto_show_all_content` (global default) > `settings.full_text_fetch_enabled` (global toggle)
 
-**数据持久化**: `articles.full_content` + `articles.full_content_fetched_at`，通过 `ArticleService.update_full_content()` 写入。
+**数据持久化**: `articles.full_content` + `articles.full_content_fetched_at` + `articles.fetch_status`（unfetched/success/failed），通过 `ArticleService.update_full_content()` 写入，成功时自动设 `fetch_status='success'`。
 
-**API 端点**: `POST /api/articles/{article_id}/fetch-full`，支持 `force_refresh` 参数强制重新抓取。
+**缓存策略**: `fetch_status='success'` 且内容有可读文本时返回缓存（手动和自动均不重新抓取）；仅 `unfetched`/`failed` 状态触发抓取。失败时写 `failed`，422（无可读文本）同时清空 `full_content`。
+
+**API 端点**: `POST /api/articles/{article_id}/fetch-full`，`force_refresh` 参数对 `success` 状态无效。
 
 ## ConnectionManager (realtime.py)
 

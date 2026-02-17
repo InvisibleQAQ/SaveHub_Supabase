@@ -21,6 +21,7 @@ class ArticleBase(BaseModel):
     content_hash: Optional[str] = None
     full_content: Optional[str] = None
     full_content_fetched_at: Optional[datetime] = None
+    fetch_status: Literal["unfetched", "success", "failed"] = "unfetched"
 
 
 class ArticleCreate(ArticleBase):
@@ -80,7 +81,7 @@ class FetchFullContentResponse(BaseModel):
     success: bool
     article_id: UUID
     source_url: str
-    fetch_status: Literal["fetched", "cached"]
+    fetch_status: Literal["success", "cached"]
     cached: bool = False
     full_content: str
     full_content_fetched_at: datetime

@@ -39,6 +39,7 @@ function mapArticleRowToArticle(articleRow: Record<string, any>): Article {
     thumbnail: articleRow.thumbnail || undefined,
     contentHash: articleRow.content_hash || undefined,
     repositoryCount: articleRow.repository_count ?? 0,
+    fetchStatus: articleRow.fetch_status ?? "unfetched",
   }
 }
 

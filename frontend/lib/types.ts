@@ -46,6 +46,7 @@ export const ArticleSchema = z.object({
   contentHash: z.string().optional(), // SHA-256 hash of (title + content), used for deduplication
   repositoryCount: z.number().default(0), // 关联仓库数量
   fullContent: z.string().nullable().optional(), // Full text fetched from source URL
+  fetchStatus: z.enum(["unfetched", "success", "failed"]).default("unfetched"),
 })
 
 // API Configuration types

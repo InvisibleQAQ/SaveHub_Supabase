@@ -127,7 +127,7 @@ export const createArticlesSlice: StateCreator<
     set((state: any) => ({
       articles: state.articles.map((a: any) =>
         a.id === articleId
-          ? { ...a, fullContent: result.full_content }
+          ? { ...a, fullContent: result.full_content, fetchStatus: "success" as const }
           : a
       ),
     }))

@@ -52,6 +52,7 @@ function transformArticle(raw: Record<string, unknown>): Article {
     contentHash: raw.content_hash as string | undefined,
     repositoryCount: (raw.repository_count as number) ?? 0,
     fullContent: (raw.full_content as string | null) ?? null,
+    fetchStatus: (raw.fetch_status as "unfetched" | "success" | "failed") ?? "unfetched",
   }
 }
 
@@ -273,7 +274,7 @@ export interface FetchFullContentResponse {
   success: boolean
   article_id: string
   source_url: string
-  fetch_status: "fetched" | "cached"
+  fetch_status: "success" | "cached"
   cached: boolean
   full_content: string
   full_content_fetched_at: string

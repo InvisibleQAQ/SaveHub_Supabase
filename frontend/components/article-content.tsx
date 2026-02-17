@@ -78,11 +78,12 @@ export function ArticleContent() {
     setFullContentError(null)
     setIsLoadingFullContent(false)
 
-    if (selectedArticle?.fullContent) {
+    const status = selectedArticle?.fetchStatus ?? "unfetched"
+    if (status === "success" && selectedArticle?.fullContent) {
       if (effectiveAutoShow) {
         setShowFullContent(true)
       }
-    } else if (effectiveAutoShow && selectedArticle && settings.fullTextFetchEnabled) {
+    } else if (effectiveAutoShow && selectedArticle && settings.fullTextFetchEnabled && status !== "success") {
       handleFetchFullContent()
     }
   }, [selectedArticleId, selectedArticle, effectiveAutoShow, settings.fullTextFetchEnabled, handleFetchFullContent])

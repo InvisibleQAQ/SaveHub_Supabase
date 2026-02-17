@@ -309,14 +309,10 @@ async def fetch_full_content(
         else:
             effective_auto_show = settings.get("auto_show_all_content", False)
 
-        # 6. Return cached if available and not force refresh
-        cached_full_content = article.get("full_content")
-        if cached_full_content and not payload.force_refresh:
-            if not has_meaningful_extracted_text(cached_full_content):
-                logger.info(
-                    f"Cached full content for article {article_id} has no readable text, refetching"
-                )
-            else:
+        # 6. Return cached if fetch_status is success (manual and auto both use cache)
+        if article.get("fetch_status") == "success":
+            cached_full_content = article.get("full_content")
+            if cached_full_content and has_meaningful_extracted_text(cached_full_content):
                 return FetchFullContentResponse(
                     success=True,
                     article_id=article_id,
@@ -327,12 +323,15 @@ async def fetch_full_content(
                     full_content_fetched_at=article["full_content_fetched_at"],
                     auto_show_all_content=effective_auto_show,
                 )
+            logger.info(
+                f"Cached full content for article {article_id} has no readable text, refetching"
+            )
 
         # 7. Fetch and extract
         full_html = await fetch_full_content_html(source_url, timeout_seconds=30.0)
         fetched_at = datetime.now(timezone.utc)
 
-        # 8. Persist
+        # 8. Persist (sets fetch_status='success')
         article_service.update_full_content(str(article_id), full_html, fetched_at)
 
         logger.info(f"Fetched full content for article {article_id} ({len(full_html)} chars)")
@@ -340,7 +339,7 @@ async def fetch_full_content(
             success=True,
             article_id=article_id,
             source_url=source_url,
-            fetch_status="fetched",
+            fetch_status="success",
             cached=False,
             full_content=full_html,
             full_content_fetched_at=fetched_at,
@@ -351,7 +350,17 @@ async def fetch_full_content(
         raise
     except FullTextFetchError as e:
         logger.warning(f"Full text fetch failed for article {article_id}: {e.detail}")
+        try:
+            article_service.update_fetch_status(
+                str(article_id), "failed", clear_content=(e.status_code == 422)
+            )
+        except Exception:
+            logger.error(f"Failed to update fetch_status for article {article_id}")
         raise HTTPException(status_code=e.status_code, detail=e.detail)
     except Exception as e:
         logger.error(f"Unexpected error fetching full content for article {article_id}: {e}")
+        try:
+            article_service.update_fetch_status(str(article_id), "failed")
+        except Exception:
+            logger.error(f"Failed to update fetch_status for article {article_id}")
         raise HTTPException(status_code=500, detail="Failed to fetch full content")
