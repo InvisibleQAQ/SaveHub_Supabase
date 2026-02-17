@@ -6,6 +6,8 @@ No SSRF protection in this phase (deferred).
 """
 
 import logging
+import re
+from html import unescape
 
 import httpx
 from readability import Document
@@ -25,6 +27,24 @@ class FullTextFetchError(Exception):
 MAX_RESPONSE_BYTES = 5 * 1024 * 1024  # 5 MB limit for fetched HTML
 
 ALLOWED_CONTENT_TYPES = {"text/html", "application/xhtml+xml", "application/xml", "text/xml"}
+
+
+def has_meaningful_extracted_text(html_content: str) -> bool:
+    """Return whether extracted HTML contains readable text content."""
+    if not html_content:
+        return False
+
+    text_content = re.sub(
+        r"<(script|style|noscript)\b[^>]*>.*?</\1>",
+        " ",
+        html_content,
+        flags=re.IGNORECASE | re.DOTALL,
+    )
+    text_content = re.sub(r"<[^>]+>", " ", text_content)
+    text_content = unescape(text_content)
+    text_content = re.sub(r"\s+", " ", text_content).strip()
+
+    return bool(text_content)
 
 
 async def fetch_full_content_html(url: str, timeout_seconds: float = 30.0) -> str:
@@ -97,6 +117,9 @@ async def fetch_full_content_html(url: str, timeout_seconds: float = 30.0) -> st
 
     if not full_content:
         raise FullTextFetchError(422, "Extracted content is empty")
+
+    if not has_meaningful_extracted_text(full_content):
+        raise FullTextFetchError(422, "Extracted content has no readable text")
 
     logger.info(f"Extracted {len(full_content)} chars from {url}")
     return full_content

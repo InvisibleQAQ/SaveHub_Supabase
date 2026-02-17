@@ -31,6 +31,10 @@ export function ArticleContent() {
   const [fullContentError, setFullContentError] = useState<string | null>(null)
   const activeArticleIdRef = useRef<string | null>(null)
 
+  const toggleContentView = useCallback(() => {
+    setShowFullContent((prev) => !prev)
+  }, [])
+
   // Compute effective auto-show from 3-tier config (memoized)
   const effectiveAutoShow = useMemo(() => {
     if (!selectedFeed || !settings.fullTextFetchEnabled) return false
@@ -46,12 +50,13 @@ export function ArticleContent() {
     setIsLoadingFullContent(true)
     setFullContentError(null)
     try {
-      const result = await fetchArticleFullContent(targetId, forceRefresh)
+      await fetchArticleFullContent(targetId, forceRefresh)
       // Guard: only update UI if this article is still active
       if (activeArticleIdRef.current !== targetId) return
       setShowFullContent(true)
     } catch (error) {
       if (activeArticleIdRef.current !== targetId) return
+      setShowFullContent(false)
       const msg = error instanceof Error ? error.message : "Failed to fetch full content"
       setFullContentError(msg)
       toast({
@@ -329,7 +334,7 @@ export function ArticleContent() {
                     <Button
                       variant={showFullContent ? "default" : "outline"}
                       size="sm"
-                      onClick={() => setShowFullContent(!showFullContent)}
+                      onClick={toggleContentView}
                       className="gap-2"
                     >
                       <FileText className="h-3.5 w-3.5" />

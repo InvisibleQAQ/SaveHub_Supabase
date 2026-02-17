@@ -21,7 +21,11 @@ from app.services.db.articles import ArticleService
 from app.services.db.feeds import FeedService
 from app.services.db.settings import SettingsService
 from app.services.db.article_repositories import ArticleRepositoryService
-from app.services.full_text_fetch import fetch_full_content_html, FullTextFetchError
+from app.services.full_text_fetch import (
+    fetch_full_content_html,
+    FullTextFetchError,
+    has_meaningful_extracted_text,
+)
 from app.schemas.repositories import RepositoryResponse
 
 logger = logging.getLogger(__name__)
@@ -306,17 +310,23 @@ async def fetch_full_content(
             effective_auto_show = settings.get("auto_show_all_content", False)
 
         # 6. Return cached if available and not force refresh
-        if article.get("full_content") and not payload.force_refresh:
-            return FetchFullContentResponse(
-                success=True,
-                article_id=article_id,
-                source_url=source_url,
-                fetch_status="cached",
-                cached=True,
-                full_content=article["full_content"],
-                full_content_fetched_at=article["full_content_fetched_at"],
-                auto_show_all_content=effective_auto_show,
-            )
+        cached_full_content = article.get("full_content")
+        if cached_full_content and not payload.force_refresh:
+            if not has_meaningful_extracted_text(cached_full_content):
+                logger.info(
+                    f"Cached full content for article {article_id} has no readable text, refetching"
+                )
+            else:
+                return FetchFullContentResponse(
+                    success=True,
+                    article_id=article_id,
+                    source_url=source_url,
+                    fetch_status="cached",
+                    cached=True,
+                    full_content=cached_full_content,
+                    full_content_fetched_at=article["full_content_fetched_at"],
+                    auto_show_all_content=effective_auto_show,
+                )
 
         # 7. Fetch and extract
         full_html = await fetch_full_content_html(source_url, timeout_seconds=30.0)
