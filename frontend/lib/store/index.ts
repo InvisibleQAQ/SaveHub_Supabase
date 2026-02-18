@@ -109,7 +109,6 @@ const defaultSettings = {
     "你是对话摘要助手。请把以下历史对话压缩为 1-2 句中文摘要，保留主题、关键实体和未解决问题。只输出摘要正文。",
 
   // Full text fetch settings
-  fullTextFetchEnabled: true,
   autoShowAllContent: true,
 }
 

@@ -14,6 +14,9 @@ POST /feeds (auto-trigger)
     v
 refresh_feed (parse RSS, save articles)
     |
+    v (if feed.enable_auto_fetch_full_content)
+do_serial_full_text_fetch (serial, per article)
+    |
     v
 schedule_image_processing (Celery chord)
     |
@@ -48,9 +51,12 @@ schedule_user_batch_refresh (per user)
     |
     v
 Chord 1: [refresh_feed_batch x N feeds] (parallel)
-    |      uses batch_mode=True (no image scheduling)
-    v      collects all article_ids
+    |      collects all article_ids + auto_fetch flags
+    v
 on_user_feeds_complete
+    |
+    v (serial full-text fetch for auto_fetch feeds)
+do_serial_full_text_fetch
     |
     v
 Chord 2: schedule_batch_image_processing
@@ -91,7 +97,7 @@ schedule_rag_for_articles (reuse existing)
 | Task | Mode | Description |
 |------|------|-------------|
 | `refresh_feed` | Single | Refresh one feed, trigger image chain (no self-scheduling) |
-| `refresh_feed_batch` | Batch | Refresh one feed with `batch_mode=True`, no chaining |
+| `refresh_feed_batch` | Batch | Refresh one feed, return article_ids + auto_fetch flag |
 | `scan_due_feeds` | Beat | Scan feeds due for refresh, group by user |
 | `schedule_user_batch_refresh` | Batch | Create chord for user's feeds |
 | `on_user_feeds_complete` | Batch | Chord callback, collect article_ids, trigger images |

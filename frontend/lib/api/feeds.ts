@@ -46,6 +46,7 @@ function transformFeed(raw: Record<string, unknown>): Feed {
     lastFetchError: raw.last_fetch_error as string | null | undefined,
     enableDeduplication: (raw.enable_deduplication as boolean) ?? false,
     autoExpandContent: (raw.auto_expand_content as "global" | "enabled" | "disabled") ?? "global",
+    enableAutoFetchFullContent: (raw.enable_auto_fetch_full_content as boolean) ?? false,
   }
 }
 
@@ -85,6 +86,7 @@ function toApiFormat(feed: Partial<Feed>): Record<string, unknown> {
   }
   if (isBoolean(feed.enableDeduplication)) result.enable_deduplication = feed.enableDeduplication
   if (isString(feed.autoExpandContent)) result.auto_expand_content = feed.autoExpandContent
+  if (isBoolean(feed.enableAutoFetchFullContent)) result.enable_auto_fetch_full_content = feed.enableAutoFetchFullContent
 
   return result
 }

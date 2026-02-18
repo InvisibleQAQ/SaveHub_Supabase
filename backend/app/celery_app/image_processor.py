@@ -270,9 +270,9 @@ def do_process_article_images(article_id: str) -> Dict[str, Any]:
     """
     supabase = get_supabase_service()
 
-    # Fetch article
+    # Fetch article (include full_content for auto-fetched articles)
     result = supabase.table("articles").select(
-        "id, user_id, content, images_processed"
+        "id, user_id, content, full_content, fetch_status, images_processed"
     ).eq("id", article_id).single().execute()
 
     if not result.data:
@@ -285,7 +285,9 @@ def do_process_article_images(article_id: str) -> Dict[str, Any]:
         logger.info(f"Article {article_id} already processed, skipping")
         return {"success": True, "processed": 0, "total": 0, "skipped": True}
 
-    content = article.get("content", "")
+    # Prefer full_content when successfully fetched
+    use_full = (article.get("fetch_status") == "success" and article.get("full_content"))
+    content = article["full_content"] if use_full else article.get("content", "")
     user_id = article["user_id"]
 
     if not content:
@@ -309,12 +311,16 @@ def do_process_article_images(article_id: str) -> Dict[str, Any]:
     else:
         images_processed = success_count > 0
 
-    # Update article
-    supabase.table("articles").update({
-        "content": new_content,
+    # Update article — write back to the field we read from
+    update_data = {
         "images_processed": images_processed,
         "images_processed_at": datetime.now(timezone.utc).isoformat(),
-    }).eq("id", article_id).execute()
+    }
+    if use_full:
+        update_data["full_content"] = new_content
+    else:
+        update_data["content"] = new_content
+    supabase.table("articles").update(update_data).eq("id", article_id).execute()
 
     return {
         "success": images_processed,

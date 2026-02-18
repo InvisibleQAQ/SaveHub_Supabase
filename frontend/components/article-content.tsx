@@ -37,12 +37,12 @@ export function ArticleContent() {
 
   // Compute effective auto-show from 3-tier config (memoized)
   const effectiveAutoShow = useMemo(() => {
-    if (!selectedFeed || !settings.fullTextFetchEnabled) return false
+    if (!selectedFeed) return false
     const feedConfig = selectedFeed.autoExpandContent ?? "global"
     if (feedConfig === "enabled") return true
     if (feedConfig === "disabled") return false
     return settings.autoShowAllContent
-  }, [selectedFeed, settings.fullTextFetchEnabled, settings.autoShowAllContent])
+  }, [selectedFeed, settings.autoShowAllContent])
 
   const handleFetchFullContent = useCallback(async (forceRefresh = false) => {
     if (!selectedArticle) return
@@ -78,10 +78,10 @@ export function ArticleContent() {
       if (effectiveAutoShow) {
         setShowFullContent(true)
       }
-    } else if (effectiveAutoShow && selectedArticle && settings.fullTextFetchEnabled && status !== "success") {
+    } else if (effectiveAutoShow && selectedArticle && status !== "success") {
       handleFetchFullContent()
     }
-  }, [selectedArticleId, selectedArticle, effectiveAutoShow, settings.fullTextFetchEnabled, handleFetchFullContent])
+  }, [selectedArticleId, selectedArticle, effectiveAutoShow, handleFetchFullContent])
 
   const handleShare = async () => {
     if (!selectedArticle) return
@@ -304,8 +304,7 @@ export function ArticleContent() {
             />
 
             {/* Full Content Fetch Section */}
-            {settings.fullTextFetchEnabled && (
-              <div className="mt-6 flex items-center gap-2 flex-wrap">
+            <div className="mt-6 flex items-center gap-2 flex-wrap">
                 {!hasFullContent && !isLoadingFullContent && (
                   <Button
                     variant="outline"
@@ -352,8 +351,7 @@ export function ArticleContent() {
                 {fullContentError && (
                   <span className="text-xs text-destructive" role="alert">{fullContentError}</span>
                 )}
-              </div>
-            )}
+            </div>
 
             {/* Related GitHub Repositories */}
             <ArticleRepositories articleId={selectedArticle.id} />

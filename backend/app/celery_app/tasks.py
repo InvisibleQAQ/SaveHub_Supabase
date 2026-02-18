@@ -58,18 +58,16 @@ def do_refresh_feed(
     feed_id: str,
     feed_url: str,
     user_id: str,
-    batch_mode: bool = False,
 ) -> Dict[str, Any]:
     """
-    Core feed refresh logic.
+    Core feed refresh logic: parse RSS + save articles.
 
-    Completely decoupled from Celery for unit testing.
+    Image scheduling and full-text fetch are handled by callers.
 
     Args:
         feed_id: Feed UUID
         feed_url: RSS URL
         user_id: User UUID
-        batch_mode: If True, skip image processing scheduling (handled by batch orchestrator)
 
     Returns:
         {"success": True, "article_count": N, "article_ids": [...]}
@@ -191,27 +189,10 @@ def do_refresh_feed(
             article_ids = []
 
         skipped_count = sum(1 for a in existing_articles.values() if a["images_processed"])
-        logger.info(f"[IMAGE_DEBUG] Upserted {len(articles_to_upsert)} articles, skipped {skipped_count} processed")
-
-        # Schedule image processing for new articles (with chord -> RAG callback)
-        # In batch_mode, image processing is handled by batch orchestrator
-        if not batch_mode:
-            try:
-                from .image_processor import schedule_image_processing
-                logger.info(f"[IMAGE_DEBUG] About to schedule image processing for {len(article_ids)} articles")
-                logger.info(f"[IMAGE_DEBUG] Article IDs: {article_ids[:5]}...")  # Show first 5 IDs
-
-                # Call the task with feed_id for chord -> RAG callback
-                result = schedule_image_processing.delay(article_ids, feed_id)
-                logger.info(f"[IMAGE_DEBUG] Scheduled image->RAG chain, task_id={result.id}")
-            except Exception as e:
-                logger.error(f"[IMAGE_DEBUG] Failed to schedule image processing: {e}", exc_info=True)
-                # Don't fail the entire refresh_feed task if image processing scheduling fails
-        else:
-            logger.info(f"[BATCH_MODE] Skipping image scheduling for {len(article_ids)} articles (batch orchestrator handles it)")
+        logger.info(f"Upserted {len(articles_to_upsert)} articles, skipped {skipped_count} processed")
     else:
         article_ids = []
-        logger.warning(f"[IMAGE_DEBUG] No articles parsed from feed {feed_id}, skipping image processing")
+        logger.debug(f"No articles parsed from feed {feed_id}")
 
     return {"success": True, "article_count": len(articles), "article_ids": article_ids}
 
@@ -234,6 +215,61 @@ def update_feed_status(
     supabase.table("feeds").update(update_data).eq(
         "id", feed_id
     ).eq("user_id", user_id).execute()
+
+
+def do_serial_full_text_fetch(article_ids: list) -> Dict[str, Any]:
+    """
+    Serial full-text fetch for articles with auto-fetch enabled feeds.
+
+    Fetches each article's source URL via readability extraction,
+    writes full_content / fetch_status to DB. Single failure does not
+    block the pipeline.
+
+    Returns:
+        {"fetched": int, "failed": int}
+    """
+    import asyncio
+    from app.services.full_text_fetch import fetch_full_content_html, FullTextFetchError
+
+    if not article_ids:
+        return {"fetched": 0, "failed": 0}
+
+    supabase = get_supabase_service()
+    fetched = 0
+    failed = 0
+
+    # Load article URLs in one query
+    result = supabase.table("articles").select(
+        "id, url, fetch_status"
+    ).in_("id", article_ids).execute()
+
+    for article in (result.data or []):
+        aid = article["id"]
+        url = (article.get("url") or "").strip()
+
+        # Skip already-fetched or no-URL articles
+        if article.get("fetch_status") == "success" or not url:
+            continue
+
+        try:
+            html = asyncio.run(fetch_full_content_html(url, timeout_seconds=30.0))
+            now_iso = datetime.now(timezone.utc).isoformat()
+            supabase.table("articles").update({
+                "full_content": html,
+                "full_content_fetched_at": now_iso,
+                "fetch_status": "success",
+            }).eq("id", aid).execute()
+            fetched += 1
+            logger.info(f"[FULL_TEXT] Fetched {len(html)} chars for article {aid}")
+        except (FullTextFetchError, Exception) as e:
+            supabase.table("articles").update({
+                "fetch_status": "failed",
+            }).eq("id", aid).execute()
+            failed += 1
+            logger.warning(f"[FULL_TEXT] Failed for article {aid}: {e}")
+
+    logger.info(f"[FULL_TEXT] Serial fetch done: fetched={fetched}, failed={failed}")
+    return {"fetched": fetched, "failed": failed}
 
 
 # =============================================================================
@@ -309,11 +345,11 @@ def refresh_feed(
             raise Reject(f"Feed {feed_id} is locked", requeue=False)
 
     try:
-        # Check if feed still exists (may have been deleted while task was queued)
+        # Check if feed still exists and get auto-fetch flag
         supabase = get_supabase_service()
-        feed_check = supabase.table("feeds").select("id").eq(
-            "id", feed_id
-        ).eq("user_id", user_id).execute()
+        feed_check = supabase.table("feeds").select(
+            "id, enable_auto_fetch_full_content"
+        ).eq("id", feed_id).eq("user_id", user_id).execute()
 
         if not feed_check.data:
             # Feed no longer exists, skip and terminate task chain
@@ -338,6 +374,24 @@ def refresh_feed(
 
         # Update status
         update_feed_status(feed_id, user_id, "success")
+
+        article_ids = result.get("article_ids", [])
+
+        # Auto full-text fetch (serial, before image processing)
+        auto_fetch = feed_check.data[0].get("enable_auto_fetch_full_content", False)
+        if auto_fetch and article_ids:
+            try:
+                do_serial_full_text_fetch(article_ids)
+            except Exception as e:
+                logger.error(f"[FULL_TEXT] Error in serial fetch: {e}")
+
+        # Schedule image processing (moved from do_refresh_feed)
+        if article_ids:
+            try:
+                from .image_processor import schedule_image_processing
+                schedule_image_processing.delay(article_ids, feed_id)
+            except Exception as e:
+                logger.error(f"Failed to schedule image processing: {e}")
 
         duration_ms = int((datetime.now(timezone.utc) - start_time).total_seconds() * 1000)
         logger.info(
@@ -464,9 +518,8 @@ def refresh_feed_batch(
     """
     Batch mode feed refresh task (used by Beat scan_due_feeds).
 
-    Differences from refresh_feed:
-    1. Uses batch_mode=True (skips image processing scheduling)
-    2. Returns article_ids for batch orchestrator
+    Returns article_ids + enable_auto_fetch_full_content for batch orchestrator.
+    Image scheduling and full-text fetch are handled by on_user_feeds_complete.
 
     Args:
         feed_id: Feed UUID
@@ -494,14 +547,13 @@ def refresh_feed_batch(
     start_time = datetime.now(timezone.utc)
 
     try:
-        # Check if feed still exists
+        # Check if feed still exists and get auto-fetch flag
         supabase = get_supabase_service()
-        feed_check = supabase.table("feeds").select("id").eq(
-            "id", feed_id
-        ).eq("user_id", user_id).execute()
+        feed_check = supabase.table("feeds").select(
+            "id, enable_auto_fetch_full_content"
+        ).eq("id", feed_id).eq("user_id", user_id).execute()
 
         if not feed_check.data:
-            # Feed no longer exists, skip and terminate task chain
             logger.info(f"[BATCH] Feed {feed_id} no longer exists, skipping")
             return {
                 "success": True,
@@ -511,8 +563,10 @@ def refresh_feed_batch(
                 "article_ids": []
             }
 
-        # Execute refresh with batch_mode=True
-        result = do_refresh_feed(feed_id, feed_url, user_id, batch_mode=True)
+        auto_fetch = feed_check.data[0].get("enable_auto_fetch_full_content", False)
+
+        # Execute refresh (no image scheduling — handled by batch orchestrator)
+        result = do_refresh_feed(feed_id, feed_url, user_id)
 
         update_feed_status(feed_id, user_id, "success")
 
@@ -526,6 +580,7 @@ def refresh_feed_batch(
             "feed_id": feed_id,
             "article_count": result["article_count"],
             "article_ids": result.get("article_ids", []),
+            "enable_auto_fetch_full_content": auto_fetch,
             "duration_ms": duration_ms
         }
 
@@ -694,16 +749,21 @@ def on_user_feeds_complete(self, refresh_results: list, user_id: str):
     success_count = sum(1 for r in refresh_results if r and r.get("success"))
     failed_count = len(refresh_results) - success_count
 
-    # Collect all new article IDs
+    # Collect all new article IDs + auto-fetch subset
     all_article_ids = []
+    auto_fetch_article_ids = []
     for r in refresh_results:
         if r and r.get("success") and not r.get("skipped"):
-            all_article_ids.extend(r.get("article_ids", []))
+            ids = r.get("article_ids", [])
+            all_article_ids.extend(ids)
+            if r.get("enable_auto_fetch_full_content"):
+                auto_fetch_article_ids.extend(ids)
 
     logger.info(
         f"[BATCH_CALLBACK] User {user_id} feeds complete: "
         f"{success_count}/{len(refresh_results)} succeeded, "
-        f"{len(all_article_ids)} new articles"
+        f"{len(all_article_ids)} new articles, "
+        f"{len(auto_fetch_article_ids)} for auto full-text"
     )
 
     if not all_article_ids:
@@ -714,6 +774,13 @@ def on_user_feeds_complete(self, refresh_results: list, user_id: str):
             "articles": 0,
             "image_processing": "skipped"
         }
+
+    # Serial full-text fetch for auto-fetch feeds (before image processing)
+    if auto_fetch_article_ids:
+        try:
+            do_serial_full_text_fetch(auto_fetch_article_ids)
+        except Exception as e:
+            logger.error(f"[FULL_TEXT] Batch serial fetch error: {e}")
 
     # Trigger batch image processing
     from .image_processor import schedule_batch_image_processing

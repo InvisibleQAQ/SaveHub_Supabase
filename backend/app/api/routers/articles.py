@@ -287,10 +287,8 @@ async def fetch_full_content(
         if not article:
             raise HTTPException(status_code=404, detail="Article not found")
 
-        # 2. Check global setting
+        # 2. Load settings for auto_show_all_content
         settings = settings_service.load_settings() or {}
-        if not settings.get("full_text_fetch_enabled", True):
-            raise HTTPException(status_code=403, detail="Full text fetch is disabled")
 
         # 3. Check article has URL
         source_url = article.get("url", "").strip()

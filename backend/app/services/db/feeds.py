@@ -53,6 +53,7 @@ class FeedService:
                 "last_fetch_error": feed.get("last_fetch_error"),
                 "enable_deduplication": feed.get("enable_deduplication", False),
                 "auto_expand_content": feed.get("auto_expand_content", "global"),
+                "enable_auto_fetch_full_content": feed.get("enable_auto_fetch_full_content", False),
             })
 
         logger.debug(
@@ -110,6 +111,7 @@ class FeedService:
                 "last_fetch_error": row.get("last_fetch_error"),
                 "enable_deduplication": row.get("enable_deduplication", False),
                 "auto_expand_content": row.get("auto_expand_content", "global"),
+                "enable_auto_fetch_full_content": row.get("enable_auto_fetch_full_content", False),
                 "created_at": row.get("created_at"),
             })
 
@@ -151,6 +153,7 @@ class FeedService:
                 "last_fetch_error": row.get("last_fetch_error"),
                 "enable_deduplication": row.get("enable_deduplication", False),
                 "auto_expand_content": row.get("auto_expand_content", "global"),
+                "enable_auto_fetch_full_content": row.get("enable_auto_fetch_full_content", False),
                 "created_at": row.get("created_at"),
             }
         return None
@@ -188,6 +191,7 @@ class FeedService:
             "last_fetch_error": "last_fetch_error",
             "enable_deduplication": "enable_deduplication",
             "auto_expand_content": "auto_expand_content",
+            "enable_auto_fetch_full_content": "enable_auto_fetch_full_content",
         }
 
         for key, db_key in field_mapping.items():

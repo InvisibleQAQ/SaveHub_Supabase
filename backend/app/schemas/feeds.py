@@ -17,6 +17,7 @@ class FeedBase(BaseModel):
     refresh_interval: int = 60
     enable_deduplication: bool = False
     auto_expand_content: Literal["global", "enabled", "disabled"] = "global"
+    enable_auto_fetch_full_content: bool = False
 
 
 class FeedCreate(FeedBase):
@@ -43,6 +44,7 @@ class FeedUpdate(BaseModel):
     last_fetch_error: Optional[str] = None
     enable_deduplication: Optional[bool] = None
     auto_expand_content: Optional[Literal["global", "enabled", "disabled"]] = None
+    enable_auto_fetch_full_content: Optional[bool] = None
 
 
 class FeedResponse(FeedBase):

@@ -34,6 +34,7 @@ export function EditFeedForm({ feedId }: EditFeedFormProps) {
     refreshInterval: 60,
     enableDeduplication: false,
     autoExpandContent: "global" as "global" | "enabled" | "disabled",
+    enableAutoFetchFullContent: false,
   })
 
   useEffect(() => {
@@ -47,6 +48,7 @@ export function EditFeedForm({ feedId }: EditFeedFormProps) {
         refreshInterval: feed.refreshInterval,
         enableDeduplication: feed.enableDeduplication,
         autoExpandContent: feed.autoExpandContent ?? "global",
+        enableAutoFetchFullContent: feed.enableAutoFetchFullContent ?? false,
       })
     }
   }, [feed])
@@ -114,6 +116,7 @@ export function EditFeedForm({ feedId }: EditFeedFormProps) {
         refreshInterval: formData.refreshInterval,
         enableDeduplication: formData.enableDeduplication,
         autoExpandContent: formData.autoExpandContent,
+        enableAutoFetchFullContent: formData.enableAutoFetchFullContent,
       }
 
       // updateFeed 已包含后端 API 持久化，这里避免重复请求
@@ -308,6 +311,25 @@ export function EditFeedForm({ feedId }: EditFeedFormProps) {
             <p className="text-xs text-muted-foreground">
               Control whether full content is automatically fetched when reading articles from this feed
             </p>
+          </div>
+
+          <div className="space-y-2">
+            <div className="flex items-center justify-between">
+              <div className="space-y-0.5">
+                <Label htmlFor="enableAutoFetchFullContent">
+                  Auto Fetch Full Content on Refresh
+                </Label>
+                <p className="text-xs text-muted-foreground">
+                  Automatically extract full content from source URLs when this feed is refreshed
+                </p>
+              </div>
+              <Switch
+                id="enableAutoFetchFullContent"
+                checked={formData.enableAutoFetchFullContent}
+                onCheckedChange={(checked) => setFormData({ ...formData, enableAutoFetchFullContent: checked })}
+                disabled={isLoading}
+              />
+            </div>
           </div>
 
           <div className="flex gap-3 pt-4">

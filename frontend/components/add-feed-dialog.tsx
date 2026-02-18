@@ -35,6 +35,7 @@ export function AddFeedDialog({ open, onOpenChange, defaultFolderId, lockFolder 
   const [selectedFolderId, setSelectedFolderId] = useState<string>(defaultFolderId || "none")
   const [refreshInterval, setRefreshInterval] = useState<number | undefined>(undefined)
   const [enableDeduplication, setEnableDeduplication] = useState(false)
+  const [enableAutoFetchFullContent, setEnableAutoFetchFullContent] = useState(false)
   const [isLoading, setIsLoading] = useState(false)
   const [discoveredFeeds, setDiscoveredFeeds] = useState<string[]>([])
   const [isDiscovering, setIsDiscovering] = useState(false)
@@ -79,6 +80,7 @@ export function AddFeedDialog({ open, onOpenChange, defaultFolderId, lockFolder 
         refreshInterval: refreshInterval, // undefined will use default from settings
         lastFetched: new Date(),
         enableDeduplication: enableDeduplication,
+        enableAutoFetchFullContent: enableAutoFetchFullContent,
       }
 
       // Add feed and articles to store
@@ -117,6 +119,7 @@ export function AddFeedDialog({ open, onOpenChange, defaultFolderId, lockFolder 
       setSelectedFolderId(defaultFolderId || "none")
       setRefreshInterval(undefined)
       setEnableDeduplication(false)
+      setEnableAutoFetchFullContent(false)
       setDiscoveredFeeds([])
       onOpenChange(false)
     } catch (error) {
@@ -284,6 +287,23 @@ export function AddFeedDialog({ open, onOpenChange, defaultFolderId, lockFolder 
                     />
                   </div>
                 </div>
+
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between">
+                    <div className="space-y-0.5">
+                      <Label htmlFor="enable-auto-fetch">Auto Fetch Full Content on Refresh</Label>
+                      <p className="text-xs text-muted-foreground">
+                        Automatically extract full content from source URLs when this feed is refreshed
+                      </p>
+                    </div>
+                    <Switch
+                      id="enable-auto-fetch"
+                      checked={enableAutoFetchFullContent}
+                      onCheckedChange={setEnableAutoFetchFullContent}
+                      disabled={isLoading}
+                    />
+                  </div>
+                </div>
               </div>
 
               <DialogFooter className="mt-6">
@@ -381,6 +401,23 @@ export function AddFeedDialog({ open, onOpenChange, defaultFolderId, lockFolder 
                     id="enable-deduplication-discover"
                     checked={enableDeduplication}
                     onCheckedChange={setEnableDeduplication}
+                    disabled={isDiscovering || isLoading}
+                  />
+                </div>
+              </div>
+
+              <div className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <div className="space-y-0.5">
+                    <Label htmlFor="enable-auto-fetch-discover">Auto Fetch Full Content on Refresh</Label>
+                    <p className="text-xs text-muted-foreground">
+                      Automatically extract full content from source URLs when this feed is refreshed
+                    </p>
+                  </div>
+                  <Switch
+                    id="enable-auto-fetch-discover"
+                    checked={enableAutoFetchFullContent}
+                    onCheckedChange={setEnableAutoFetchFullContent}
                     disabled={isDiscovering || isLoading}
                   />
                 </div>

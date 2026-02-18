@@ -128,9 +128,9 @@ def do_process_article_rag(article_id: str, user_id: str) -> Dict[str, Any]:
     rag_service = RagService(supabase, user_id)
 
     try:
-        # 1. 获取文章
+        # 1. 获取文章（含 full_content 用于优先使用）
         result = supabase.table("articles").select(
-            "id, user_id, title, author, content, url, rag_processed"
+            "id, user_id, title, author, content, full_content, fetch_status, url, rag_processed"
         ).eq("id", article_id).eq("user_id", user_id).single().execute()
 
         if not result.data:
@@ -154,11 +154,12 @@ def do_process_article_rag(article_id: str, user_id: str) -> Dict[str, Any]:
         chat_config = configs["chat"]
         embedding_config = configs["embedding"]
 
-        # 3. 解析文章内容（保持文本和图片的原始顺序）
+        # 3. 解析文章内容（优先使用 full_content）
         title = article.get("title", "")
         author = article.get("author")
-        content = article.get("content", "")
-        article_url = article.get("url")  # 用于解析相对路径的图片 URL
+        use_full = (article.get("fetch_status") == "success" and article.get("full_content"))
+        content = article["full_content"] if use_full else article.get("content", "")
+        article_url = article.get("url")
 
         if not content:
             rag_service.mark_article_rag_processed(article_id, success=True)
