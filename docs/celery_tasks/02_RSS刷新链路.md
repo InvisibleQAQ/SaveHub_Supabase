@@ -1,9 +1,11 @@
 # 02｜RSS 刷新链路（定时 vs 手动）
 
-RSS 刷新在后端 Celery 里分两种“编排模式”，但底层核心逻辑基本复用：
+RSS 刷新在后端 Celery 里分两种"编排模式"，底层核心逻辑复用 `do_refresh_feed`：
 
-- **单 Feed 链路（Single）**：通常来自“新建 Feed/手动触发”（高优先级），并且任务会自我调度下一次。
-- **批处理链路（Batch）**：由 Beat 每分钟扫描触发，按用户分组做编排，强调“全量有序”。
+- **单 Feed 链路（Single）**：来自"新建 Feed / 手动触发"（高优先级）。
+- **批处理链路（Batch）**：由 Beat 每分钟 `scan_due_feeds` 扫描触发，按用户分组编排。
+
+> **调度模型（Beat-only）**：所有自动刷新统一由 Beat `scan_due_feeds` 驱动，`refresh_feed` 不再自我调度下一次。
 
 核心代码：`backend/app/celery_app/tasks.py`
 
@@ -27,8 +29,7 @@ RSS 刷新在后端 Celery 里分两种“编排模式”，但底层核心逻�
    - 3.3 Upsert articles（重要：尽量复用旧 article id，避免 FK/all_embeddings 问题）
    - 3.4（非 batch 模式）调度图片处理 chord：`schedule_image_processing.delay(article_ids, feed_id)`
 4. **更新 feeds 表状态**：`last_fetched / last_fetch_status / last_fetch_error`
-5. **调度下一次刷新**：`schedule_next_refresh(feed_id, user_id, refresh_interval)`
-6. **释放任务锁**
+5. **释放任务锁**
 
 > 注意：`do_refresh_feed` 是“业务核心函数”，尽量与 Celery 解耦，方便测试/复用。
 
@@ -45,7 +46,7 @@ RSS 刷新在后端 Celery 里分两种“编排模式”，但底层核心逻�
 
 1. 获取全局锁：`scan_due_feeds`（TTL=55s，防止 Beat 重叠执行）
 2. 拉取所有 feeds 的必要字段
-3. 在代码里筛选“到期”的 feeds：
+3. 在代码里筛选"到期"的 feeds（per-feed try/except，单条数据异常不阻断扫描）：
    - `last_fetched + refresh_interval <= now`，或 `last_fetched is null`
 4. 按 `user_id` 分组
 5. 对每个用户触发：`schedule_user_batch_refresh.delay(user_id, feeds)`
@@ -61,8 +62,8 @@ RSS 刷新在后端 Celery 里分两种“编排模式”，但底层核心逻�
 
 与 `refresh_feed` 的关键区别：
 
-- 调用 `do_refresh_feed(..., batch_mode=True)`：**不在这里调度图片处理**
-- 不会 `schedule_next_refresh`：由 Beat 来决定下一轮扫描
+- 调用 `do_refresh_feed(..., batch_mode=True)`：**不在这里调度图片处理**（由 chord 回调统一处理）
+- 返回 `article_ids` 供批处理编排器汇总
 
 ### 4）on_user_feeds_complete（收集 article_ids → 触发图片批处理）
 
