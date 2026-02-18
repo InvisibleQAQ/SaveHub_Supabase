@@ -198,17 +198,12 @@ NEXT_PUBLIC_WS_PORT=8000                         # WebSocket port only (developm
 - `GET /api/backend/queue-health` - Queue health status
 - `GET /api/backend/queue/task/{task_id}` - Task status
 
-**Client** (`lib/queue-client.ts`):
-- `scheduleFeedRefresh(feedId, forceImmediate)` - Schedule refresh
-- `cancelFeedRefresh(feedId)` - No-op (Celery uses locks for deduplication)
-- `getQueueHealth()` - Check queue status
-
 **Celery Features**:
 - Task deduplication via Redis locks (3 min TTL)
 - Domain rate limiting (1 req/sec per domain)
 - Automatic retry with exponential backoff (3 retries)
 - Priority queues: `high` (manual refresh), `default` (scheduled)
-- Self-rescheduling: tasks automatically schedule next refresh after completion
+- Scheduling: Beat-only (no client-side scheduler, no self-rescheduling)
 
 ### Type System
 

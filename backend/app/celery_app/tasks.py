@@ -355,9 +355,6 @@ def refresh_feed(
             }
         )
 
-        # Schedule next refresh
-        schedule_next_refresh(feed_id, user_id, refresh_interval)
-
         return {
             "success": True,
             "feed_id": feed_id,
@@ -409,9 +406,6 @@ def refresh_feed(
 
         update_feed_status(feed_id, user_id, "failed", str(e))
 
-        # Still schedule next refresh
-        schedule_next_refresh(feed_id, user_id, refresh_interval)
-
         return {
             "success": False,
             "feed_id": feed_id,
@@ -445,201 +439,8 @@ def refresh_feed(
             task_lock.release(lock_key, task_id)
 
 
-def schedule_next_refresh(feed_id: str, user_id: str, refresh_interval: int):
-    """
-    Schedule next refresh.
-
-    Uses countdown instead of ETA because ETA tasks are lost on worker restart.
-    """
-    delay_seconds = refresh_interval * 60
-    task_lock = get_task_lock()
-
-    # Check if there's already a pending schedule (use separate lock)
-    schedule_lock_key = f"schedule:{feed_id}"
-
-    # Schedule lock TTL should be close to delay_seconds
-    schedule_lock_ttl = min(delay_seconds, 3600)  # Max 1 hour
-
-    if not task_lock.acquire(schedule_lock_key, schedule_lock_ttl):
-        logger.debug(f"Feed {feed_id} already has scheduled refresh")
-        return
-
-    try:
-        supabase = get_supabase_service()
-
-        # Get latest feed data
-        result = supabase.table("feeds").select(
-            "id, url, title, refresh_interval, user_id"
-        ).eq("id", feed_id).eq("user_id", user_id).single().execute()
-
-        if not result.data:
-            logger.warning(f"Feed {feed_id} not found, skipping reschedule")
-            return
-
-        feed = result.data
-
-        # Schedule task
-        task = refresh_feed.apply_async(
-            kwargs={
-                "feed_id": feed_id,
-                "feed_url": feed["url"],
-                "feed_title": feed["title"],
-                "user_id": user_id,
-                "refresh_interval": feed["refresh_interval"],
-                "priority": "normal"
-            },
-            countdown=delay_seconds,
-            queue="default"
-        )
-
-        # Store task ID in Redis for later revocation if feed is deleted
-        task_id_key = f"feed_task:{feed_id}"
-        task_ttl = delay_seconds + 300  # TTL = delay + 5 minutes buffer
-        task_lock.redis.setex(task_id_key, task_ttl, task.id)
-
-        logger.debug(f"Scheduled next refresh for {feed['title']} in {delay_seconds}s (task_id={task.id})")
-
-    except Exception as e:
-        logger.error(f"Failed to schedule next refresh: {e}")
-        # Release schedule lock to allow retry
-        task_lock.release(schedule_lock_key)
-
-
-def cancel_feed_refresh(feed_id: str) -> bool:
-    """
-    Cancel scheduled refresh task for a feed.
-
-    Called when a feed is deleted to prevent orphan tasks.
-
-    Steps:
-    1. Get task ID from Redis: feed_task:{feed_id}
-    2. Revoke task using Celery control API
-    3. Clean up Redis keys (feed_task + schedule lock)
-    """
-    task_lock = get_task_lock()
-    redis = task_lock.redis
-
-    # 1. Get stored task ID
-    task_id_key = f"feed_task:{feed_id}"
-    task_id = redis.get(task_id_key)
-
-    revoked = False
-    if task_id:
-        # Decode if bytes
-        if isinstance(task_id, bytes):
-            task_id = task_id.decode('utf-8')
-
-        # 2. Revoke the task (terminate=False: don't kill running task)
-        app.control.revoke(task_id, terminate=False)
-        logger.info(f"Revoked scheduled task {task_id} for feed {feed_id}")
-        revoked = True
-
-    # 3. Clean up Redis keys
-    redis.delete(task_id_key)
-    redis.delete(f"tasklock:schedule:{feed_id}")
-
-    logger.info(f"Cleaned up Redis keys for deleted feed {feed_id}")
-    return revoked
-
-
 # =============================================================================
-# Batch scheduling tasks
-# =============================================================================
-
-@app.task(name="schedule_feeds_batch")
-def schedule_feeds_batch(feed_ids: list, user_id: str = None):
-    """
-    Batch schedule a group of feeds.
-
-    Called by schedule_all_feeds in batches.
-    """
-    supabase = get_supabase_service()
-
-    query = supabase.table("feeds").select("*").in_("id", feed_ids)
-    if user_id:
-        query = query.eq("user_id", user_id)
-
-    result = query.execute()
-
-    if not result.data:
-        return {"scheduled": 0}
-
-    scheduled = 0
-    now = datetime.now(timezone.utc)
-
-    for feed in result.data:
-        # Calculate delay
-        last_fetched = None
-        if feed.get("last_fetched"):
-            last_fetched = datetime.fromisoformat(
-                feed["last_fetched"].replace("Z", "+00:00")
-            )
-
-        if last_fetched:
-            next_refresh = last_fetched + timedelta(minutes=feed["refresh_interval"])
-            delay_seconds = max(0, (next_refresh - now).total_seconds())
-        else:
-            # Never fetched, add random delay to avoid thundering herd
-            import random
-            delay_seconds = random.uniform(0, 60)
-
-        # Schedule
-        refresh_feed.apply_async(
-            kwargs={
-                "feed_id": feed["id"],
-                "feed_url": feed["url"],
-                "feed_title": feed["title"],
-                "user_id": feed["user_id"],
-                "refresh_interval": feed["refresh_interval"],
-                "priority": "normal"
-            },
-            countdown=int(delay_seconds),
-            queue="default"
-        )
-        scheduled += 1
-
-    return {"scheduled": scheduled}
-
-
-@app.task(name="schedule_all_feeds")
-def schedule_all_feeds(batch_size: int = 50):
-    """
-    Schedule refresh tasks for all feeds.
-
-    Processes in batches to avoid task storm.
-
-    Args:
-        batch_size: Number of feeds per batch
-    """
-    supabase = get_supabase_service()
-
-    # Get all feed IDs
-    result = supabase.table("feeds").select("id").execute()
-
-    if not result.data:
-        logger.info("No feeds to schedule")
-        return {"total": 0, "batches": 0}
-
-    feed_ids = [f["id"] for f in result.data]
-    total = len(feed_ids)
-
-    # Schedule in batches
-    batches = 0
-    for i in range(0, total, batch_size):
-        batch = feed_ids[i:i + batch_size]
-        # Add delay between batches to avoid creating too many tasks at once
-        schedule_feeds_batch.apply_async(
-            args=[batch],
-            countdown=batches * 5  # 5 seconds between batches
-        )
-        batches += 1
-
-    logger.info(f"Scheduled {total} feeds in {batches} batches")
-    return {"total": total, "batches": batches}
-
-
-# =============================================================================
-# Batch scheduling tasks (for scheduled refresh with global ordering)
+# Beat-driven batch refresh tasks
 # =============================================================================
 
 @app.task(
@@ -661,12 +462,11 @@ def refresh_feed_batch(
     refresh_interval: int,
 ):
     """
-    Batch mode feed refresh task.
+    Batch mode feed refresh task (used by Beat scan_due_feeds).
 
     Differences from refresh_feed:
     1. Uses batch_mode=True (skips image processing scheduling)
-    2. Does NOT call schedule_next_refresh (Beat controls timing)
-    3. Returns article_ids for batch orchestrator
+    2. Returns article_ids for batch orchestrator
 
     Args:
         feed_id: Feed UUID
@@ -788,16 +588,26 @@ def scan_due_feeds():
         # Filter feeds due for refresh in code
         due_feeds = []
         for feed in result.data:
-            if feed.get("last_fetched"):
-                last_fetched = datetime.fromisoformat(
-                    feed["last_fetched"].replace("Z", "+00:00")
-                )
-                next_refresh = last_fetched + timedelta(minutes=feed["refresh_interval"])
-                if next_refresh <= now:
+            try:
+                if feed.get("last_fetched"):
+                    last_fetched = datetime.fromisoformat(
+                        feed["last_fetched"].replace("Z", "+00:00")
+                    )
+                    next_refresh = last_fetched + timedelta(minutes=int(feed["refresh_interval"]))
+                    if next_refresh <= now:
+                        due_feeds.append(feed)
+                else:
+                    # Never fetched, needs refresh
                     due_feeds.append(feed)
-            else:
-                # Never fetched, needs refresh
-                due_feeds.append(feed)
+            except Exception as e:
+                logger.warning(
+                    f"[SCAN] Skipping feed {feed.get('id')} due to invalid data: {e}",
+                    extra={
+                        "feed_id": feed.get("id"),
+                        "last_fetched": feed.get("last_fetched"),
+                        "refresh_interval": feed.get("refresh_interval"),
+                    },
+                )
 
         if not due_feeds:
             logger.debug("[SCAN] No feeds due for refresh")

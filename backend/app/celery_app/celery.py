@@ -80,7 +80,7 @@ app.conf.update(
         "scan_pending_rag_articles": {"queue": "default"},
         "on_images_complete": {"queue": "default"},
         "schedule_rag_for_articles": {"queue": "default"},
-        # Batch scheduling tasks
+        # Beat-driven batch refresh tasks
         "scan_due_feeds": {"queue": "default"},
         "schedule_user_batch_refresh": {"queue": "default"},
         "refresh_feed_batch": {"queue": "default"},

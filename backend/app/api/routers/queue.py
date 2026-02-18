@@ -12,7 +12,7 @@ from uuid import UUID
 
 from app.dependencies import verify_auth, COOKIE_NAME_ACCESS
 from app.supabase_client import get_supabase_client
-from app.celery_app.tasks import refresh_feed, schedule_all_feeds
+from app.celery_app.tasks import refresh_feed
 from app.celery_app.task_lock import get_task_lock
 
 router = APIRouter(prefix="/queue", tags=["queue"])
@@ -120,18 +120,6 @@ async def schedule_feed_refresh(
             status="queued",
             delay_seconds=delay_seconds
         )
-
-
-@router.post("/schedule-all")
-async def schedule_all_feeds_endpoint(auth_response=Depends(verify_auth)):
-    """
-    Schedule refresh tasks for all feeds.
-
-    This is an admin function that schedules all feeds in the system.
-    """
-    # TODO: Add admin permission check
-    task = schedule_all_feeds.delay()
-    return {"task_id": task.id, "status": "initiated"}
 
 
 @router.get("/task/{task_id}")

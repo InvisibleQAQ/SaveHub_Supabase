@@ -90,7 +90,7 @@ schedule_rag_for_articles (reuse existing)
 
 | Task | Mode | Description |
 |------|------|-------------|
-| `refresh_feed` | Single | Refresh one feed, trigger image chain, schedule next |
+| `refresh_feed` | Single | Refresh one feed, trigger image chain (no self-scheduling) |
 | `refresh_feed_batch` | Batch | Refresh one feed with `batch_mode=True`, no chaining |
 | `scan_due_feeds` | Beat | Scan feeds due for refresh, group by user |
 | `schedule_user_batch_refresh` | Batch | Create chord for user's feeds |
@@ -141,9 +141,18 @@ schedule_rag_for_articles (reuse existing)
 - All tasks return `{"success": bool, ...}` instead of raising exceptions
 - `scan_pending_rag_articles` runs every 30min as fallback for missed articles
 
+## Scheduling Architecture
+
+**Single scheduling source**: Celery Beat `scan_due_feeds` (every minute) is the sole automatic scheduler.
+
+Exceptions (user-initiated only):
+- `POST /feeds`: Backend auto-schedules `refresh_feed` for new feeds (sets `last_fetched=now` to prevent Beat duplicate)
+- Manual refresh: `POST /queue/schedule-feed` with `force_immediate=True`
+
+No self-scheduling: `refresh_feed` does NOT schedule next refresh after completion.
+
 ## Conflict Prevention
 
 1. **Feed-level lock**: `refresh_feed` and `refresh_feed_batch` share same lock key `feed:{feed_id}`
 2. **Beat overlap lock**: `scan_due_feeds` uses lock with 55s TTL
-3. **New feed handling**: `POST /feeds` sets `last_fetched = now` before scheduling, preventing Beat re-trigger
-4. **Deleted feed handling**: Tasks check if feed exists before refresh; if deleted, skip with `feed_deleted` and terminate chain (tasks.py:286-302, 671-680)
+3. **Deleted feed handling**: Tasks check if feed exists before refresh; if deleted, skip with `feed_deleted` and terminate chain

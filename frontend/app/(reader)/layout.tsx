@@ -9,7 +9,6 @@ import { KeyboardShortcuts } from "@/components/keyboard-shortcuts"
 import { Sidebar } from "@/components/sidebar"
 import { Loader2 } from "lucide-react"
 import { useAuth } from "@/lib/context/auth-context"
-import { initializeScheduler, stopAllSchedulers } from "@/lib/scheduler"
 
 export default function ReaderLayout({ children }: { children: React.ReactNode }) {
   const router = useRouter()
@@ -49,8 +48,6 @@ export default function ReaderLayout({ children }: { children: React.ReactNode }
     const initializeData = async () => {
       try {
         await loadFromSupabase()
-        // Initialize feed schedulers after data is loaded
-        await initializeScheduler()
       } catch (error) {
         console.error("Failed to initialize data:", error)
         setError("Failed to load saved data")
@@ -58,11 +55,6 @@ export default function ReaderLayout({ children }: { children: React.ReactNode }
     }
 
     initializeData()
-
-    // Cleanup: stop all schedulers when component unmounts
-    return () => {
-      stopAllSchedulers()
-    }
   }, [isDatabaseReady, loadFromSupabase, setError])
 
 

@@ -1,8 +1,6 @@
 import type { StateCreator } from "zustand"
 import type { Feed } from "../types"
 import { feedsApi } from "../api/feeds"
-// Client-side queue API (calls FastAPI Celery backend)
-import { scheduleFeedRefresh, cancelFeedRefresh } from "../queue-client"
 
 export interface FeedsSlice {
   addFeed: (feed: Partial<Feed>) => Promise<{ success: boolean; reason: 'created' | 'duplicate' | 'error'; error?: string }>
@@ -66,11 +64,6 @@ export const createFeedsSlice: StateCreator<
         feeds: [...state.feeds, newFeed],
       }))
 
-      // Schedule automatic refresh for new feed (async, fire-and-forget)
-      scheduleFeedRefresh(newFeed.id).catch((err) => {
-        console.error("Failed to schedule feed refresh:", err)
-      })
-
       return { success: true, reason: 'created' as const }
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Unknown error'
@@ -95,10 +88,7 @@ export const createFeedsSlice: StateCreator<
       // Step 1: Delete from API (this will also delete associated articles)
       const stats = await feedsApi.deleteFeed(feedId)
 
-      // Step 2: Cancel scheduler (prevents memory leak)
-      await cancelFeedRefresh(feedId)
-
-      // Step 3: Update store only if API delete succeeded
+      // Step 2: Update store only if API delete succeeded
       set((state: any) => ({
         feeds: state.feeds.filter((f: any) => f.id !== feedId),
         articles: state.articles.filter((a: any) => a.feedId !== feedId),
@@ -123,24 +113,6 @@ export const createFeedsSlice: StateCreator<
       set((state: any) => ({
         feeds: state.feeds.map((f: any) => (f.id === feedId ? { ...f, ...updates } : f)),
       }))
-
-      // Reschedule if any scheduling-relevant field changed:
-      // - url: Task payload contains feedUrl
-      // - title: Task payload contains feedTitle
-      // - refreshInterval: Affects delay calculation
-      // - lastFetched: Affects delay calculation
-      const needsReschedule =
-        updates.url !== undefined ||
-        updates.title !== undefined ||
-        updates.refreshInterval !== undefined ||
-        updates.lastFetched !== undefined
-
-      if (needsReschedule) {
-        // Reschedule with feedId - Celery backend fetches latest data from database
-        scheduleFeedRefresh(feedId).catch((err) => {
-          console.error("Failed to reschedule feed refresh:", err)
-        })
-      }
 
       return { success: true }
     } catch (error) {
