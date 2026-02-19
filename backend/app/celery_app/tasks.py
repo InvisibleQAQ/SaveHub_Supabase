@@ -11,6 +11,7 @@ Design principles:
 import logging
 from datetime import datetime, timezone, timedelta
 from typing import Optional, Dict, Any
+from urllib.parse import urlparse
 from uuid import uuid4
 
 from celery import shared_task
@@ -18,6 +19,7 @@ from celery.exceptions import Reject
 
 from .celery import app
 from .rate_limiter import get_rate_limiter
+from ..schemas.feeds import _validate_image_url
 from .task_lock import get_task_lock
 from .supabase_client import get_supabase_service
 
@@ -100,9 +102,14 @@ def do_refresh_feed(
             raise NonRetryableError(error_msg)
 
     # 2.5 Extract feed_image for caller to merge into status update
-    feed_image = result.get("feed", {}).get("image")
-    if feed_image and not feed_image.startswith(("http://", "https://")):
-        feed_image = None
+    feed_image = _validate_image_url(result.get("feed", {}).get("image"))
+    if not feed_image:
+        try:
+            hostname = urlparse(feed_url).hostname
+            if hostname:
+                feed_image = f"https://www.google.com/s2/favicons?domain={hostname}&sz=32"
+        except Exception as exc:
+            logger.debug("Failed to build favicon URL for %s: %s", feed_url, exc)
 
     # 3. Save articles to database
     logger.info(f"[IMAGE_DEBUG] Parsed {len(articles)} articles from feed {feed_id}")

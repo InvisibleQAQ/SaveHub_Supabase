@@ -103,6 +103,15 @@ export function extractTextFromHTML(html: string): string {
     .trim()
 }
 
+/** Google Favicon URL for a given feed URL. Returns "" on parse failure. */
+export function getFaviconUrl(url: string): string {
+  try {
+    return `https://www.google.com/s2/favicons?domain=${new URL(url).hostname}&sz=32`
+  } catch {
+    return ""
+  }
+}
+
 export function estimateReadingTime(content: string): number {
   const wordsPerMinute = 200
   const text = extractTextFromHTML(content)

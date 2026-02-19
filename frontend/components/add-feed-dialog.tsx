@@ -4,6 +4,7 @@ import type React from "react"
 
 import { useState, useEffect } from "react"
 import { Plus, Loader2, Search, Globe } from "lucide-react"
+import { getFaviconUrl } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
 import {
   Dialog,
@@ -81,6 +82,8 @@ export function AddFeedDialog({ open, onOpenChange, defaultFolderId, lockFolder 
         lastFetched: new Date(),
         enableDeduplication: enableDeduplication,
         enableAutoFetchFullContent: enableAutoFetchFullContent,
+        feedImage: (parsedFeed.image && /^https?:\/\//i.test(parsedFeed.image) ? parsedFeed.image : null)
+          ?? (getFaviconUrl(feedUrl.trim()) || null),
       }
 
       // Add feed and articles to store

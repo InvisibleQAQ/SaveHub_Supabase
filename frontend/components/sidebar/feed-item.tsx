@@ -19,29 +19,21 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@/components/ui/tooltip"
-import { cn } from "@/lib/utils"
+import { cn, getFaviconUrl } from "@/lib/utils"
 import { useRSSStore } from "@/lib/store"
 import { parseRSSFeed } from "@/lib/rss-parser"
 import { useToast } from "@/hooks/use-toast"
 import type { Feed } from "@/lib/types"
 import type { RenameDialogState, MoveDialogState, DeleteFeedDialogState } from "./types"
 
-function getFavicon(url: string): string {
-  try {
-    return `https://www.google.com/s2/favicons?domain=${new URL(url).hostname}&sz=32`
-  } catch {
-    return ""
-  }
-}
 
 function FeedIcon({ feed, className }: { feed: Feed; className?: string }) {
-  const sources = useMemo(() =>
-    (feed.feedImage
-      ? [feed.feedImage, getFavicon(feed.url)]
-      : [getFavicon(feed.url)]
-    ).filter(Boolean) as string[],
-    [feed.feedImage, feed.url]
-  )
+  const sources = useMemo(() => {
+    const raw = feed.feedImage
+      ? [feed.feedImage, getFaviconUrl(feed.url)]
+      : [getFaviconUrl(feed.url)]
+    return [...new Set(raw)].filter(Boolean) as string[]
+  }, [feed.feedImage, feed.url])
   const [idx, setIdx] = useState(0)
   useEffect(() => setIdx(0), [feed.feedImage])
   const src = sources[idx]

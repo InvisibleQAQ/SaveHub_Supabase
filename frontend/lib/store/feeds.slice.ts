@@ -53,6 +53,7 @@ export const createFeedsSlice: StateCreator<
       lastFetchError: isString(feed.lastFetchError) ? feed.lastFetchError : undefined,
       enableDeduplication: isBoolean(feed.enableDeduplication) ? feed.enableDeduplication : false,
       enableAutoFetchFullContent: isBoolean(feed.enableAutoFetchFullContent) ? feed.enableAutoFetchFullContent : false,
+      feedImage: isString(feed.feedImage) ? feed.feedImage : null,
     }
 
     try {
