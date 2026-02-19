@@ -96,7 +96,6 @@ function transformSettings(raw: Record<string, unknown>): SettingsResponse {
       (raw.agentic_rag_history_summary_user_prompt_template as string) ?? "",
 
     // Full text fetch settings
-    autoShowAllContent: (raw.auto_show_all_content as boolean) ?? true,
 
     userId: raw.user_id as string | undefined,
     updatedAt: raw.updated_at ? new Date(raw.updated_at as string) : undefined,
@@ -157,7 +156,6 @@ function toApiFormat(settings: Partial<Settings>): Record<string, unknown> {
   if (settings.agenticRagHistorySummaryUserPromptTemplate !== undefined) result.agentic_rag_history_summary_user_prompt_template = settings.agenticRagHistorySummaryUserPromptTemplate
 
   // Full text fetch settings
-  if (settings.autoShowAllContent !== undefined) result.auto_show_all_content = settings.autoShowAllContent
 
   return result
 }

@@ -18,8 +18,6 @@ from app.schemas.articles import (
     FetchFullContentResponse,
 )
 from app.services.db.articles import ArticleService
-from app.services.db.feeds import FeedService
-from app.services.db.settings import SettingsService
 from app.services.db.article_repositories import ArticleRepositoryService
 from app.services.full_text_fetch import (
     fetch_full_content_html,
@@ -279,35 +277,18 @@ async def fetch_full_content(
     try:
         client = get_supabase_client(access_token)
         article_service = ArticleService(client, user.user.id)
-        feed_service = FeedService(client, user.user.id)
-        settings_service = SettingsService(client, user.user.id)
 
         # 1. Get article
         article = article_service.get_article(str(article_id))
         if not article:
             raise HTTPException(status_code=404, detail="Article not found")
 
-        # 2. Load settings for auto_show_all_content
-        settings = settings_service.load_settings() or {}
-
-        # 3. Check article has URL
+        # 2. Check article has URL
         source_url = article.get("url", "").strip()
         if not source_url:
             raise HTTPException(status_code=422, detail="Article has no source URL")
 
-        # 4. Get feed for auto_expand config
-        feed = feed_service.get_feed(article["feed_id"])
-        feed_config = feed.get("auto_expand_content", "global") if feed else "global"
-
-        # 5. Compute effective auto_show_all_content
-        if feed_config == "enabled":
-            effective_auto_show = True
-        elif feed_config == "disabled":
-            effective_auto_show = False
-        else:
-            effective_auto_show = settings.get("auto_show_all_content", False)
-
-        # 6. Return cached if fetch_status is success (manual and auto both use cache)
+        # 3. Return cached if fetch_status is success (manual and auto both use cache)
         if article.get("fetch_status") == "success":
             cached_full_content = article.get("full_content")
             if cached_full_content and has_meaningful_extracted_text(cached_full_content):
@@ -319,7 +300,6 @@ async def fetch_full_content(
                     cached=True,
                     full_content=cached_full_content,
                     full_content_fetched_at=article["full_content_fetched_at"],
-                    auto_show_all_content=effective_auto_show,
                 )
             logger.info(
                 f"Cached full content for article {article_id} has no readable text, refetching"
@@ -341,7 +321,6 @@ async def fetch_full_content(
             cached=False,
             full_content=full_html,
             full_content_fetched_at=fetched_at,
-            auto_show_all_content=effective_auto_show,
         )
 
     except HTTPException:

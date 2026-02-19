@@ -45,7 +45,6 @@ function transformFeed(raw: Record<string, unknown>): Feed {
     lastFetchStatus: raw.last_fetch_status as "success" | "failed" | null | undefined,
     lastFetchError: raw.last_fetch_error as string | null | undefined,
     enableDeduplication: (raw.enable_deduplication as boolean) ?? false,
-    autoExpandContent: (raw.auto_expand_content as "global" | "enabled" | "disabled") ?? "global",
     enableAutoFetchFullContent: (raw.enable_auto_fetch_full_content as boolean) ?? false,
   }
 }
@@ -85,7 +84,6 @@ function toApiFormat(feed: Partial<Feed>): Record<string, unknown> {
     result.last_fetch_error = feed.lastFetchError
   }
   if (isBoolean(feed.enableDeduplication)) result.enable_deduplication = feed.enableDeduplication
-  if (isString(feed.autoExpandContent)) result.auto_expand_content = feed.autoExpandContent
   if (isBoolean(feed.enableAutoFetchFullContent)) result.enable_auto_fetch_full_content = feed.enableAutoFetchFullContent
 
   return result

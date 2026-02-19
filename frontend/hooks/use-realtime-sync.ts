@@ -20,7 +20,7 @@ function mapFeedRowToFeed(feedRow: Record<string, any>): Feed {
     lastFetchStatus: feedRow.last_fetch_status || undefined,
     lastFetchError: feedRow.last_fetch_error || undefined,
     enableDeduplication: feedRow.enable_deduplication ?? false,
-    autoExpandContent: feedRow.auto_expand_content ?? "global",
+    enableAutoFetchFullContent: feedRow.enable_auto_fetch_full_content ?? false,
   }
 }
 

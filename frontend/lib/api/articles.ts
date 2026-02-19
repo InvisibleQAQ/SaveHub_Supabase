@@ -278,7 +278,6 @@ export interface FetchFullContentResponse {
   cached: boolean
   full_content: string
   full_content_fetched_at: string
-  auto_show_all_content: boolean
 }
 
 /**

@@ -65,9 +65,7 @@ service = FeedService(supabase_client, user_id)
 | `RequestError` | 502 | 连接失败 |
 | 提取为空 | 422 | readability 提取结果为空 |
 
-**两层设置优先级**: `feeds.auto_expand_content` (enabled/disabled) > `settings.auto_show_all_content` (global default)
-
-**自动全文提取**: `feeds.enable_auto_fetch_full_content` 控制 RSS 刷新时是否自动串行提取全文，在 Celery 流水线中执行（`do_serial_full_text_fetch`），位于图片处理之前。
+**自动全文提取**: `feeds.enable_auto_fetch_full_content` 控制 RSS 刷新时自动串行提取全文（Celery `do_serial_full_text_fetch`），同时控制打开文章时是否自动拉取并展示全文。
 
 **数据持久化**: `articles.full_content` + `articles.full_content_fetched_at` + `articles.fetch_status`（unfetched/success/failed），通过 `ArticleService.update_full_content()` 写入，成功时自动设 `fetch_status='success'`。
 

@@ -52,7 +52,7 @@ export const createFeedsSlice: StateCreator<
       lastFetchStatus: feed.lastFetchStatus === "success" || feed.lastFetchStatus === "failed" ? feed.lastFetchStatus : undefined,
       lastFetchError: isString(feed.lastFetchError) ? feed.lastFetchError : undefined,
       enableDeduplication: isBoolean(feed.enableDeduplication) ? feed.enableDeduplication : false,
-      autoExpandContent: feed.autoExpandContent === "enabled" || feed.autoExpandContent === "disabled" ? feed.autoExpandContent : "global",
+      enableAutoFetchFullContent: isBoolean(feed.enableAutoFetchFullContent) ? feed.enableAutoFetchFullContent : false,
     }
 
     try {

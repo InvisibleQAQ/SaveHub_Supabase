@@ -33,7 +33,6 @@ export function EditFeedForm({ feedId }: EditFeedFormProps) {
     folderId: "none" as string,
     refreshInterval: 60,
     enableDeduplication: false,
-    autoExpandContent: "global" as "global" | "enabled" | "disabled",
     enableAutoFetchFullContent: false,
   })
 
@@ -47,7 +46,6 @@ export function EditFeedForm({ feedId }: EditFeedFormProps) {
         folderId: feed.folderId || "none",
         refreshInterval: feed.refreshInterval,
         enableDeduplication: feed.enableDeduplication,
-        autoExpandContent: feed.autoExpandContent ?? "global",
         enableAutoFetchFullContent: feed.enableAutoFetchFullContent ?? false,
       })
     }
@@ -115,7 +113,6 @@ export function EditFeedForm({ feedId }: EditFeedFormProps) {
         folderId: formData.folderId === "none" ? undefined : formData.folderId,
         refreshInterval: formData.refreshInterval,
         enableDeduplication: formData.enableDeduplication,
-        autoExpandContent: formData.autoExpandContent,
         enableAutoFetchFullContent: formData.enableAutoFetchFullContent,
       }
 
@@ -290,27 +287,6 @@ export function EditFeedForm({ feedId }: EditFeedFormProps) {
                 disabled={isLoading}
               />
             </div>
-          </div>
-
-          <div className="space-y-2">
-            <Label htmlFor="autoExpandContent">Auto Expand Full Content</Label>
-            <Select
-              value={formData.autoExpandContent}
-              onValueChange={(value: "global" | "enabled" | "disabled") => setFormData({ ...formData, autoExpandContent: value })}
-              disabled={isLoading}
-            >
-              <SelectTrigger>
-                <SelectValue placeholder="Select behavior" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="global">Follow Global Setting</SelectItem>
-                <SelectItem value="enabled">Always Expand</SelectItem>
-                <SelectItem value="disabled">Never Expand</SelectItem>
-              </SelectContent>
-            </Select>
-            <p className="text-xs text-muted-foreground">
-              Control whether full content is automatically fetched when reading articles from this feed
-            </p>
           </div>
 
           <div className="space-y-2">

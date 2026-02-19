@@ -85,4 +85,3 @@ class FetchFullContentResponse(BaseModel):
     cached: bool = False
     full_content: str
     full_content_fetched_at: datetime
-    auto_show_all_content: bool

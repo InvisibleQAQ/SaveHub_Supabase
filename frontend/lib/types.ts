@@ -28,7 +28,6 @@ export const FeedSchema = z.object({
   lastFetchStatus: z.enum(["success", "failed"]).nullable().optional(),
   lastFetchError: z.string().nullable().optional(),
   enableDeduplication: z.boolean().default(false),
-  autoExpandContent: z.enum(["global", "enabled", "disabled"]).default("global"),
   enableAutoFetchFullContent: z.boolean().default(false),
 })
 
@@ -139,7 +138,6 @@ export interface RSSReaderState {
     agenticRagHistorySummaryUserPromptTemplate: string
 
     // Full text fetch settings
-    autoShowAllContent: boolean
   }
 }
 

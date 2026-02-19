@@ -35,14 +35,10 @@ export function ArticleContent() {
     setShowFullContent((prev) => !prev)
   }, [])
 
-  // Compute effective auto-show from 3-tier config (memoized)
+  // Auto-fetch full content only when feed explicitly enables it
   const effectiveAutoShow = useMemo(() => {
-    if (!selectedFeed) return false
-    const feedConfig = selectedFeed.autoExpandContent ?? "global"
-    if (feedConfig === "enabled") return true
-    if (feedConfig === "disabled") return false
-    return settings.autoShowAllContent
-  }, [selectedFeed, settings.autoShowAllContent])
+    return selectedFeed?.enableAutoFetchFullContent ?? false
+  }, [selectedFeed])
 
   const handleFetchFullContent = useCallback(async (forceRefresh = false) => {
     if (!selectedArticle) return
