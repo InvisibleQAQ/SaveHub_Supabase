@@ -9,7 +9,7 @@ import feedparser
 from uuid import uuid4
 from datetime import datetime, timezone
 from typing import Optional, Dict, Any
-from urllib.parse import urlparse
+from urllib.parse import urlparse, urljoin
 import hashlib
 import logging
 import re
@@ -232,9 +232,20 @@ def parse_rss_feed(url: str, feed_id: str) -> Dict[str, Any]:
         'image': None,
     }
 
-    # Extract feed image
+    # Extract feed image (RSS 2.0 <image>, Atom <logo>/<icon>)
+    # Note: feedparser may return str or dict for logo/icon — only accept str
     if 'image' in parsed.feed:
-        feed_info['image'] = parsed.feed.image.get('href')
+        feed_info['image'] = parsed.feed.image.get('href') or parsed.feed.image.get('url')
+    if not feed_info['image']:
+        for key in ('logo', 'icon'):
+            val = parsed.feed.get(key)
+            if isinstance(val, str) and val:
+                feed_info['image'] = val
+                break
+    if isinstance(feed_info['image'], str) and feed_info['image']:
+        feed_info['image'] = urljoin(url, feed_info['image'])
+    else:
+        feed_info['image'] = None
 
     # Parse articles
     articles = []

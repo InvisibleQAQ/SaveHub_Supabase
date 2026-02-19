@@ -29,6 +29,7 @@ export const FeedSchema = z.object({
   lastFetchError: z.string().nullable().optional(),
   enableDeduplication: z.boolean().default(false),
   enableAutoFetchFullContent: z.boolean().default(false),
+  feedImage: z.string().nullable().optional(),
 })
 
 export const ArticleSchema = z.object({

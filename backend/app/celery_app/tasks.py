@@ -99,6 +99,11 @@ def do_refresh_feed(
         else:
             raise NonRetryableError(error_msg)
 
+    # 2.5 Extract feed_image for caller to merge into status update
+    feed_image = result.get("feed", {}).get("image")
+    if feed_image and not feed_image.startswith(("http://", "https://")):
+        feed_image = None
+
     # 3. Save articles to database
     logger.info(f"[IMAGE_DEBUG] Parsed {len(articles)} articles from feed {feed_id}")
     if articles:
@@ -194,14 +199,15 @@ def do_refresh_feed(
         article_ids = []
         logger.debug(f"No articles parsed from feed {feed_id}")
 
-    return {"success": True, "article_count": len(articles), "article_ids": article_ids}
+    return {"success": True, "article_count": len(articles), "article_ids": article_ids, "feed_image": feed_image}
 
 
 def update_feed_status(
     feed_id: str,
     user_id: str,
     status: str,
-    error: Optional[str] = None
+    error: Optional[str] = None,
+    feed_image: Optional[str] = None
 ):
     """Update feed status after refresh attempt."""
     supabase = get_supabase_service()
@@ -211,7 +217,8 @@ def update_feed_status(
         "last_fetch_status": status,
         "last_fetch_error": error[:500] if error else None
     }
-
+    if feed_image:
+        update_data["feed_image"] = feed_image
     supabase.table("feeds").update(update_data).eq(
         "id", feed_id
     ).eq("user_id", user_id).execute()
@@ -372,8 +379,8 @@ def refresh_feed(
         # Execute refresh
         result = do_refresh_feed(feed_id, feed_url, user_id)
 
-        # Update status
-        update_feed_status(feed_id, user_id, "success")
+        # Update status (includes feed_image if available)
+        update_feed_status(feed_id, user_id, "success", feed_image=result.get("feed_image"))
 
         article_ids = result.get("article_ids", [])
 
@@ -568,7 +575,7 @@ def refresh_feed_batch(
         # Execute refresh (no image scheduling — handled by batch orchestrator)
         result = do_refresh_feed(feed_id, feed_url, user_id)
 
-        update_feed_status(feed_id, user_id, "success")
+        update_feed_status(feed_id, user_id, "success", feed_image=result.get("feed_image"))
 
         duration_ms = int((datetime.now(timezone.utc) - start_time).total_seconds() * 1000)
         logger.info(

@@ -46,6 +46,7 @@ function transformFeed(raw: Record<string, unknown>): Feed {
     lastFetchError: raw.last_fetch_error as string | null | undefined,
     enableDeduplication: (raw.enable_deduplication as boolean) ?? false,
     enableAutoFetchFullContent: (raw.enable_auto_fetch_full_content as boolean) ?? false,
+    feedImage: typeof raw.feed_image === "string" ? raw.feed_image : null,
   }
 }
 
@@ -85,6 +86,7 @@ function toApiFormat(feed: Partial<Feed>): Record<string, unknown> {
   }
   if (isBoolean(feed.enableDeduplication)) result.enable_deduplication = feed.enableDeduplication
   if (isBoolean(feed.enableAutoFetchFullContent)) result.enable_auto_fetch_full_content = feed.enableAutoFetchFullContent
+  if (isString(feed.feedImage) || feed.feedImage === null) result.feed_image = feed.feedImage
 
   return result
 }

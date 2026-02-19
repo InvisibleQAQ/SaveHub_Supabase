@@ -21,6 +21,7 @@ function mapFeedRowToFeed(feedRow: Record<string, any>): Feed {
     lastFetchError: feedRow.last_fetch_error || undefined,
     enableDeduplication: feedRow.enable_deduplication ?? false,
     enableAutoFetchFullContent: feedRow.enable_auto_fetch_full_content ?? false,
+    feedImage: feedRow.feed_image ?? null,
   }
 }
 

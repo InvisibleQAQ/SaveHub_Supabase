@@ -1,9 +1,28 @@
 """Feed Pydantic schemas for request/response validation."""
 
-from pydantic import BaseModel, HttpUrl
+import logging
+from pydantic import BaseModel, HttpUrl, field_validator
 from typing import Literal, Optional
 from datetime import datetime
 from uuid import UUID
+
+logger = logging.getLogger(__name__)
+
+
+def _validate_image_url(v: Optional[str]) -> Optional[str]:
+    """Validate feed image URL; return None for invalid values."""
+    if v is None:
+        return None
+    if not isinstance(v, str):
+        logger.debug("Invalid feed_image discarded: %s", v)
+        return None
+    if not v.lower().startswith(("http://", "https://")):
+        logger.debug("Invalid feed_image discarded: %s", v)
+        return None
+    if len(v) > 2048:
+        logger.debug("feed_image URL too long (%d), discarded", len(v))
+        return None
+    return v
 
 
 class FeedBase(BaseModel):
@@ -17,6 +36,12 @@ class FeedBase(BaseModel):
     refresh_interval: int = 60
     enable_deduplication: bool = False
     enable_auto_fetch_full_content: bool = False
+    feed_image: Optional[str] = None
+
+    @field_validator("feed_image", mode="before")
+    @classmethod
+    def validate_feed_image(cls, v: Optional[str]) -> Optional[str]:
+        return _validate_image_url(v)
 
 
 class FeedCreate(FeedBase):
@@ -43,6 +68,12 @@ class FeedUpdate(BaseModel):
     last_fetch_error: Optional[str] = None
     enable_deduplication: Optional[bool] = None
     enable_auto_fetch_full_content: Optional[bool] = None
+    feed_image: Optional[str] = None
+
+    @field_validator("feed_image", mode="before")
+    @classmethod
+    def validate_feed_image(cls, v: Optional[str]) -> Optional[str]:
+        return _validate_image_url(v)
 
 
 class FeedResponse(FeedBase):

@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect, useMemo } from "react"
 import Link from "next/link"
 import { Rss, Edit, Trash2, Check, ExternalLink, Settings, AlertCircle, RefreshCw, ArrowRightToLine, Loader2 } from "lucide-react"
 import { useRouter } from "next/navigation"
@@ -25,6 +25,38 @@ import { parseRSSFeed } from "@/lib/rss-parser"
 import { useToast } from "@/hooks/use-toast"
 import type { Feed } from "@/lib/types"
 import type { RenameDialogState, MoveDialogState, DeleteFeedDialogState } from "./types"
+
+function getFavicon(url: string): string {
+  try {
+    return `https://www.google.com/s2/favicons?domain=${new URL(url).hostname}&sz=32`
+  } catch {
+    return ""
+  }
+}
+
+function FeedIcon({ feed, className }: { feed: Feed; className?: string }) {
+  const sources = useMemo(() =>
+    (feed.feedImage
+      ? [feed.feedImage, getFavicon(feed.url)]
+      : [getFavicon(feed.url)]
+    ).filter(Boolean) as string[],
+    [feed.feedImage, feed.url]
+  )
+  const [idx, setIdx] = useState(0)
+  useEffect(() => setIdx(0), [feed.feedImage])
+  const src = sources[idx]
+  if (!src) return <Rss className={className} />
+  return (
+    <img
+      key={src}
+      src={src}
+      className={cn(className, "object-contain")}
+      referrerPolicy="no-referrer"
+      onError={() => setIdx(i => i + 1)}
+      alt=""
+    />
+  )
+}
 
 interface FeedItemProps {
   feed: Feed
@@ -148,7 +180,7 @@ export function FeedItem({ feed, unreadCount, isActive, variant, onRename, onMov
   if (variant === "icon") {
     const iconContent = (
       <div className="relative">
-        <Rss className="h-4 w-4" />
+        <FeedIcon feed={feed} className="h-4 w-4" />
         {feed.lastFetchStatus === "failed" && (
           <AlertCircle className="absolute -top-1 -left-1 h-3 w-3 text-destructive" />
         )}
@@ -260,6 +292,7 @@ export function FeedItem({ feed, unreadCount, isActive, variant, onRename, onMov
               <div className="flex-1 min-w-0">
                 <div className="flex items-center justify-between gap-2">
                   <div className="flex items-center gap-2 min-w-0 flex-1">
+                    <FeedIcon feed={feed} className="h-4 w-4 shrink-0" />
                     <span className="font-medium truncate">{feed.title}</span>
                     {feed.lastFetchStatus === "failed" && (
                       <TooltipProvider>

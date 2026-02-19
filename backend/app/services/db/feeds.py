@@ -53,6 +53,7 @@ class FeedService:
                 "last_fetch_error": feed.get("last_fetch_error"),
                 "enable_deduplication": feed.get("enable_deduplication", False),
                 "enable_auto_fetch_full_content": feed.get("enable_auto_fetch_full_content", False),
+                "feed_image": feed.get("feed_image"),
             })
 
         logger.debug(
@@ -110,6 +111,7 @@ class FeedService:
                 "last_fetch_error": row.get("last_fetch_error"),
                 "enable_deduplication": row.get("enable_deduplication", False),
                 "enable_auto_fetch_full_content": row.get("enable_auto_fetch_full_content", False),
+                "feed_image": row.get("feed_image"),
                 "created_at": row.get("created_at"),
             })
 
@@ -151,6 +153,7 @@ class FeedService:
                 "last_fetch_error": row.get("last_fetch_error"),
                 "enable_deduplication": row.get("enable_deduplication", False),
                 "enable_auto_fetch_full_content": row.get("enable_auto_fetch_full_content", False),
+                "feed_image": row.get("feed_image"),
                 "created_at": row.get("created_at"),
             }
         return None
@@ -188,6 +191,7 @@ class FeedService:
             "last_fetch_error": "last_fetch_error",
             "enable_deduplication": "enable_deduplication",
             "enable_auto_fetch_full_content": "enable_auto_fetch_full_content",
+            "feed_image": "feed_image",
         }
 
         for key, db_key in field_mapping.items():
