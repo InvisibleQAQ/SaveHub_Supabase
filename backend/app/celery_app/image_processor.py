@@ -33,6 +33,17 @@ ALLOWED_CONTENT_TYPES = {
     "image/svg+xml", "image/avif", "image/bmp",
 }
 BUCKET_NAME = "article-images"
+FEED_BUCKET_NAME = "feed-images"
+EXT_TO_CONTENT_TYPE = {
+    "webp": "image/webp",
+    "jpg": "image/jpeg",
+    "jpeg": "image/jpeg",
+    "png": "image/png",
+    "gif": "image/gif",
+    "svg": "image/svg+xml",
+    "avif": "image/avif",
+    "bmp": "image/bmp",
+}
 
 
 # =============================================================================
@@ -163,15 +174,7 @@ def upload_to_storage(
     image_hash = hashlib.md5(image_bytes).hexdigest()[:12]  # First 12 chars
     path = f"{user_id}/{article_id}/{image_hash}.{extension}"
 
-    # Content type mapping
-    content_types = {
-        "webp": "image/webp",
-        "jpg": "image/jpeg",
-        "jpeg": "image/jpeg",
-        "png": "image/png",
-        "gif": "image/gif",
-    }
-    content_type = content_types.get(extension, "application/octet-stream")
+    content_type = EXT_TO_CONTENT_TYPE.get(extension, "application/octet-stream")
 
     # Upload (upsert mode)
     try:
@@ -189,6 +192,44 @@ def upload_to_storage(
     base_url = supabase.storage.from_(BUCKET_NAME).get_public_url(path)
 
     return base_url
+
+
+def transfer_feed_image(image_url: str, user_id: str, feed_id: str):
+    """Download feed image, compress to WebP, upload to feed-images bucket.
+
+    Returns new Supabase public URL, or None on failure.
+    Skips if image_url is already a Supabase Storage URL (idempotent).
+    """
+    if not image_url or "supabase.co/storage" in image_url:
+        return None
+
+    try:
+        image_bytes, content_type = download_image(image_url)
+
+        try:
+            compressed, ext = compress_image(image_bytes)
+        except ValueError:
+            compressed = image_bytes
+            ext = get_image_extension(content_type) or "jpg"
+
+        # Upload to feed-images bucket
+        supabase = get_supabase_service()
+        image_hash = hashlib.md5(compressed).hexdigest()[:12]
+        path = f"{user_id}/{feed_id}/{image_hash}.{ext}"
+
+        supabase.storage.from_(FEED_BUCKET_NAME).upload(
+            path=path,
+            file=compressed,
+            file_options={"content-type": EXT_TO_CONTENT_TYPE.get(ext, "application/octet-stream"), "upsert": "true"},
+        )
+
+        public_url = supabase.storage.from_(FEED_BUCKET_NAME).get_public_url(path)
+        logger.info(f"Transferred feed image: {image_url[:80]} -> {path}")
+        return public_url
+
+    except Exception as e:
+        logger.warning(f"Feed image transfer failed for {image_url[:100]}: {e}")
+        return None
 
 
 def extract_and_process_images(

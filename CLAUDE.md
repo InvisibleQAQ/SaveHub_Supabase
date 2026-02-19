@@ -190,7 +190,7 @@ ENCRYPTION_KEY=              # AES-256 key for API config encryption
 - **Date handling**: App uses `Date` objects; DB uses ISO strings
 - **Two client types** (backend): RLS client (user requests) vs Service client (background tasks)
 - **Vector search**: pgvector for semantic similarity (`search_embeddings()`)
-- **Feed image**: `feeds.feed_image` stores RSS channel image URL, updated by Celery `do_refresh_feed` on each successful refresh. Frontend fallback: `feed_image` → Google Favicons API → hide
+- **Feed image**: `feeds.feed_image` stores Supabase Storage URL (transferred from RSS channel image or Google Favicons). `do_refresh_feed` downloads → compresses → uploads to `feed-images` bucket; already-transferred URLs (containing `supabase.co/storage`) are skipped. Frontend fallback: `feed_image` → Google Favicons API → hide
 
 ### AI Integration
 

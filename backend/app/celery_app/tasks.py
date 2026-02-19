@@ -111,6 +111,21 @@ def do_refresh_feed(
         except Exception as exc:
             logger.debug("Failed to build favicon URL for %s: %s", feed_url, exc)
 
+    # 2.6 Transfer feed image to Supabase Storage (skip if already transferred)
+    if feed_image:
+        # Check DB: if current feed_image is already a Supabase URL, skip transfer
+        current = supabase.table("feeds").select("feed_image").eq(
+            "id", feed_id
+        ).eq("user_id", user_id).maybe_single().execute()
+        current_image = (current.data or {}).get("feed_image") or ""
+        if "supabase.co/storage" not in current_image:
+            from .image_processor import transfer_feed_image
+            transferred = transfer_feed_image(feed_image, user_id, feed_id)
+            if transferred:
+                feed_image = transferred
+        else:
+            feed_image = current_image
+
     # 3. Save articles to database
     logger.info(f"[IMAGE_DEBUG] Parsed {len(articles)} articles from feed {feed_id}")
     if articles:

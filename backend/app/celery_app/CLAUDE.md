@@ -84,7 +84,7 @@ schedule_rag_for_articles (reuse existing)
 |------|---------|
 | `celery.py` | Celery app configuration, beat_schedule |
 | `tasks.py` | Feed refresh tasks, batch scheduling orchestration |
-| `image_processor.py` | Image processing tasks (single + batch) |
+| `image_processor.py` | Image processing tasks (single + batch) + feed image transfer |
 | `rag_processor.py` | RAG embedding tasks |
 | `task_lock.py` | Redis-based task locking (prevent duplicates) |
 | `rate_limiter.py` | Domain-based rate limiting for RSS fetches |
@@ -110,6 +110,7 @@ schedule_rag_for_articles (reuse existing)
 | `schedule_image_processing` | Single | Create chord with feed_id, callback to RAG |
 | `schedule_batch_image_processing` | Batch | Create chord with user_id, callback to RAG |
 | `on_batch_images_complete` | Batch | Chord callback, trigger RAG processing |
+| `transfer_feed_image` | Both | Download feed icon → compress → upload to `feed-images` bucket (not a Celery task, called sync in `do_refresh_feed`) |
 
 ### rag_processor.py
 
