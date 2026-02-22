@@ -12,12 +12,14 @@ import { Switch } from "@/components/ui/switch"
 import { useRSSStore } from "@/lib/store"
 import { useToast } from "@/hooks/use-toast"
 import { validateRSSUrl } from "@/lib/rss-parser"
+import { useTranslations } from "next-intl"
 
 interface EditFeedFormProps {
   feedId: string
 }
 
 export function EditFeedForm({ feedId }: EditFeedFormProps) {
+  const t = useTranslations("reader.editFeedForm")
   const router = useRouter()
   const { toast } = useToast()
   const { feeds, folders, settings, updateFeed } = useRSSStore()
@@ -54,13 +56,13 @@ export function EditFeedForm({ feedId }: EditFeedFormProps) {
   if (!feed) {
     return (
       <div className="flex flex-col items-center justify-center h-full p-8 text-center">
-        <h2 className="text-2xl font-bold mb-2">Feed Not Found</h2>
+        <h2 className="text-2xl font-bold mb-2">{t("notFound.title")}</h2>
         <p className="text-muted-foreground mb-4">
-          The feed you're looking for doesn't exist.
+          {t("notFound.description")}
         </p>
         <Button onClick={() => router.push("/all")}>
           <ArrowLeft className="h-4 w-4 mr-2" />
-          Back to All Articles
+          {t("notFound.backToAllArticles")}
         </Button>
       </div>
     )
@@ -71,8 +73,8 @@ export function EditFeedForm({ feedId }: EditFeedFormProps) {
 
     if (!formData.title.trim()) {
       toast({
-        title: "Error",
-        description: "Feed title is required",
+        title: t("toasts.errorTitle"),
+        description: t("toasts.feedTitleRequired"),
         variant: "destructive",
       })
       return
@@ -80,8 +82,8 @@ export function EditFeedForm({ feedId }: EditFeedFormProps) {
 
     if (!formData.url.trim()) {
       toast({
-        title: "Error",
-        description: "Feed URL is required",
+        title: t("toasts.errorTitle"),
+        description: t("toasts.feedUrlRequired"),
         variant: "destructive",
       })
       return
@@ -95,8 +97,8 @@ export function EditFeedForm({ feedId }: EditFeedFormProps) {
         const isValid = await validateRSSUrl(formData.url)
         if (!isValid) {
           toast({
-            title: "Invalid URL",
-            description: "The provided URL is not a valid RSS feed",
+            title: t("toasts.invalidUrlTitle"),
+            description: t("toasts.invalidRssUrl"),
             variant: "destructive",
           })
           setIsLoading(false)
@@ -119,12 +121,12 @@ export function EditFeedForm({ feedId }: EditFeedFormProps) {
       // updateFeed 已包含后端 API 持久化，这里避免重复请求
       const result = await updateFeed(feedId, updates)
       if (!result.success) {
-        throw new Error(result.error || "Failed to update feed")
+        throw new Error(result.error || t("toasts.failedToUpdateFeed"))
       }
 
       toast({
-        title: "Success",
-        description: "Feed properties updated successfully",
+        title: t("toasts.successTitle"),
+        description: t("toasts.feedUpdated"),
       })
 
       // Navigate back to the feed
@@ -134,14 +136,14 @@ export function EditFeedForm({ feedId }: EditFeedFormProps) {
       // Handle duplicate URL error
       if (error instanceof Error && error.message === "duplicate") {
         toast({
-          title: "Duplicate Feed",
-          description: "A feed with this URL already exists",
+          title: t("toasts.duplicateFeedTitle"),
+          description: t("toasts.duplicateFeedDescription"),
           variant: "destructive",
         })
       } else {
         toast({
-          title: "Error",
-          description: error instanceof Error ? error.message : "Failed to update feed",
+          title: t("toasts.errorTitle"),
+          description: error instanceof Error ? error.message : t("toasts.failedToUpdateFeed"),
           variant: "destructive",
         })
       }
@@ -166,10 +168,10 @@ export function EditFeedForm({ feedId }: EditFeedFormProps) {
           >
             <ArrowLeft className="h-4 w-4" />
           </Button>
-          <h1 className="text-2xl font-bold">Edit Feed Properties</h1>
+          <h1 className="text-2xl font-bold">{t("header.title")}</h1>
         </div>
         <p className="text-sm text-muted-foreground ml-10">
-          Update the properties of "{feed.title}"
+          {t("header.subtitle", { feedTitle: feed.title })}
         </p>
       </div>
 
@@ -177,7 +179,7 @@ export function EditFeedForm({ feedId }: EditFeedFormProps) {
         <form onSubmit={handleSubmit} className="max-w-2xl space-y-6">
           <div className="space-y-2">
             <Label htmlFor="title">
-              Title <span className="text-destructive">*</span>
+              {t("fields.title")} <span className="text-destructive">*</span>
             </Label>
             <Input
               id="title"
@@ -185,13 +187,13 @@ export function EditFeedForm({ feedId }: EditFeedFormProps) {
               value={formData.title}
               onChange={(e) => setFormData({ ...formData, title: e.target.value })}
               disabled={isLoading}
-              placeholder="Feed title"
+              placeholder={t("fields.titlePlaceholder")}
             />
           </div>
 
           <div className="space-y-2">
             <Label htmlFor="url">
-              RSS Feed URL <span className="text-destructive">*</span>
+              {t("fields.rssUrl")} <span className="text-destructive">*</span>
             </Label>
             <Input
               id="url"
@@ -199,49 +201,49 @@ export function EditFeedForm({ feedId }: EditFeedFormProps) {
               value={formData.url}
               onChange={(e) => setFormData({ ...formData, url: e.target.value })}
               disabled={isLoading}
-              placeholder="https://example.com/feed.xml"
+              placeholder={t("fields.rssUrlPlaceholder")}
             />
             <p className="text-xs text-muted-foreground">
-              Changing the URL will validate the new feed URL
+              {t("fields.rssUrlHint")}
             </p>
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="description">Description</Label>
+            <Label htmlFor="description">{t("fields.description")}</Label>
             <Textarea
               id="description"
               value={formData.description}
               onChange={(e) => setFormData({ ...formData, description: e.target.value })}
               disabled={isLoading}
-              placeholder="Feed description (optional)"
+              placeholder={t("fields.descriptionPlaceholder")}
               rows={3}
             />
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="category">Category</Label>
+            <Label htmlFor="category">{t("fields.category")}</Label>
             <Input
               id="category"
               type="text"
               value={formData.category}
               onChange={(e) => setFormData({ ...formData, category: e.target.value })}
               disabled={isLoading}
-              placeholder="Category (optional)"
+              placeholder={t("fields.categoryPlaceholder")}
             />
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="folder">Folder</Label>
+            <Label htmlFor="folder">{t("fields.folder")}</Label>
             <Select
               value={formData.folderId}
               onValueChange={(value) => setFormData({ ...formData, folderId: value })}
               disabled={isLoading}
             >
               <SelectTrigger>
-                <SelectValue placeholder="Select a folder" />
+                <SelectValue placeholder={t("fields.selectFolder")} />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="none">No Folder</SelectItem>
+                <SelectItem value="none">{t("fields.noFolder")}</SelectItem>
                 {folders.map((folder) => (
                   <SelectItem key={folder.id} value={folder.id}>
                     {folder.name}
@@ -253,7 +255,7 @@ export function EditFeedForm({ feedId }: EditFeedFormProps) {
 
           <div className="space-y-2">
             <Label htmlFor="refreshInterval">
-              Refresh Interval (minutes) <span className="text-destructive">*</span>
+              {t("fields.refreshInterval")} <span className="text-destructive">*</span>
             </Label>
             <Input
               id="refreshInterval"
@@ -263,10 +265,10 @@ export function EditFeedForm({ feedId }: EditFeedFormProps) {
               value={formData.refreshInterval}
               onChange={(e) => setFormData({ ...formData, refreshInterval: parseInt(e.target.value) || 60 })}
               disabled={isLoading}
-              placeholder={`Default: ${settings.refreshInterval} minutes`}
+              placeholder={t("fields.refreshIntervalPlaceholder", { minutes: settings.refreshInterval })}
             />
             <p className="text-xs text-muted-foreground">
-              How often to check for new articles (1 minute to 1 week). Default: {settings.refreshInterval} minutes
+              {t("fields.refreshIntervalHint", { minutes: settings.refreshInterval })}
             </p>
           </div>
 
@@ -274,10 +276,10 @@ export function EditFeedForm({ feedId }: EditFeedFormProps) {
             <div className="flex items-center justify-between">
               <div className="space-y-0.5">
                 <Label htmlFor="enableDeduplication">
-                  Enable Article Deduplication
+                  {t("toggles.enableDeduplication")}
                 </Label>
                 <p className="text-xs text-muted-foreground">
-                  Automatically filter out articles with identical title and content
+                  {t("toggles.enableDeduplicationDescription")}
                 </p>
               </div>
               <Switch
@@ -293,10 +295,10 @@ export function EditFeedForm({ feedId }: EditFeedFormProps) {
             <div className="flex items-center justify-between">
               <div className="space-y-0.5">
                 <Label htmlFor="enableAutoFetchFullContent">
-                  Auto Fetch Full Content on Refresh
+                  {t("toggles.enableAutoFetch")}
                 </Label>
                 <p className="text-xs text-muted-foreground">
-                  Automatically extract full content from source URLs when this feed is refreshed
+                  {t("toggles.enableAutoFetchDescription")}
                 </p>
               </div>
               <Switch
@@ -316,12 +318,12 @@ export function EditFeedForm({ feedId }: EditFeedFormProps) {
               {isLoading ? (
                 <>
                   <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                  Saving...
+                  {t("actions.saving")}
                 </>
               ) : (
                 <>
                   <Save className="h-4 w-4 mr-2" />
-                  Save Changes
+                  {t("actions.saveChanges")}
                 </>
               )}
             </Button>
@@ -331,7 +333,7 @@ export function EditFeedForm({ feedId }: EditFeedFormProps) {
               onClick={handleCancel}
               disabled={isLoading}
             >
-              Cancel
+              {t("actions.cancel")}
             </Button>
           </div>
         </form>

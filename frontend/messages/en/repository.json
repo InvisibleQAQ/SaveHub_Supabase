@@ -1,0 +1,105 @@
+{
+  "page": {
+    "title": "GitHub Stars",
+    "tokenMissingTitle": "GitHub Token not configured",
+    "tokenMissingDescription": "Please add a GitHub Token in Settings",
+    "tokenMissingHint": "Please add a GitHub Personal Access Token in Settings to sync your Starred repositories",
+    "repositoryCount": "{count} repositories",
+    "searchPlaceholder": "Search repositories...",
+    "sync": "Sync",
+    "syncing": "Syncing..."
+  },
+  "sort": {
+    "stars": "Stars",
+    "starredAt": "Starred Time",
+    "updatedAt": "Last Updated",
+    "pushedAt": "Last Pushed",
+    "name": "Name",
+    "openRank": "OpenRank",
+    "ascending": "Ascending",
+    "descending": "Descending"
+  },
+  "syncProgress": {
+    "fetching": "Fetching all repositories",
+    "fetched": "Fetch complete, {total} repositories in total",
+    "analyzing": "Analyzing: {current}",
+    "saving": "Saving analysis results...",
+    "openRank": "Fetching OpenRank metrics...",
+    "embedding": "Generating vectors: {current}",
+    "savedCount": "Saved {savedCount} / {saveTotal}"
+  },
+  "states": {
+    "loading": "Loading...",
+    "emptyNoRepository": "No repositories yet, click Sync to fetch",
+    "emptyNoMatch": "No matching repositories found",
+    "emptyNoCategory": "No repositories in this category"
+  },
+  "toast": {
+    "syncCompletedTitle": "Sync completed",
+    "syncCompletedDescription": "{total} repositories total, {newCount} new",
+    "syncFailedTitle": "Sync failed",
+    "unknownError": "Unknown error",
+    "aiAnalyzeCompleted": "AI analysis completed",
+    "aiAnalyzeFailed": "AI analysis failed",
+    "saveSuccess": "Saved successfully",
+    "saveFailed": "Save failed"
+  },
+  "card": {
+    "noDescription": "No description",
+    "tooltipAnalyzeRetryFailed": "Analysis failed, click to retry",
+    "tooltipAnalyzeAgain": "Already analyzed, click to re-analyze",
+    "tooltipAnalyze": "AI Analyze",
+    "tooltipEdit": "Edit repository info",
+    "tooltipViewInZread": "View in Zread",
+    "tooltipViewOnGitHub": "View on GitHub",
+    "platformSupported": "Supported platforms:",
+    "openRankScore": "OpenRank Score",
+    "badgeCustom": "Custom",
+    "badgeAiSummary": "AI Summary",
+    "badgeEdited": "Edited",
+    "badgeAnalyzeFailed": "Analysis failed",
+    "badgeAiAnalyzed": "AI analyzed",
+    "updatedAt": "Updated {time}"
+  },
+  "detailDialog": {
+    "renderFailed": "Render failed: {error}",
+    "noReadme": "This repository has no README file"
+  },
+  "editDialog": {
+    "title": "Edit repository info",
+    "rawDescription": "Original description: {description}",
+    "customDescription": "Custom description",
+    "customDescriptionPlaceholder": "Enter custom description...",
+    "category": "Category",
+    "categoryPlaceholder": "Select category...",
+    "customTags": "Custom tags",
+    "addTagPlaceholder": "Add tag...",
+    "cancel": "Cancel",
+    "saving": "Saving...",
+    "save": "Save"
+  },
+  "sidebar": {
+    "searchCategoryPlaceholder": "Search categories...",
+    "category": "Category",
+    "platform": "Platform",
+    "tag": "Tag",
+    "collapse": "Collapse",
+    "showAll": "Show all {count}"
+  },
+  "categories": {
+    "all": "All Categories",
+    "web": "Web Apps",
+    "mobile": "Mobile Apps",
+    "desktop": "Desktop Apps",
+    "database": "Databases",
+    "ai": "AI/Machine Learning",
+    "devtools": "Developer Tools",
+    "security": "Security Tools",
+    "game": "Games",
+    "design": "Design Tools",
+    "productivity": "Productivity Tools",
+    "education": "Education & Learning",
+    "social": "Social Networks",
+    "analytics": "Data Analytics"
+  }
+}

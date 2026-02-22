@@ -15,6 +15,7 @@ import {
 import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { useRSSStore } from "@/lib/store"
+import { useTranslations } from "next-intl"
 
 interface MoveToFolderDialogProps {
   open: boolean
@@ -31,6 +32,7 @@ export function MoveToFolderDialog({
   feedTitle,
   currentFolderId,
 }: MoveToFolderDialogProps) {
+  const t = useTranslations("reader.moveToFolderDialog")
   const [selectedFolderId, setSelectedFolderId] = useState<string>(currentFolderId || "")
   const [isLoading, setIsLoading] = useState(false)
   const { folders, updateFeed } = useRSSStore()
@@ -59,21 +61,21 @@ export function MoveToFolderDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-[425px]">
         <DialogHeader>
-          <DialogTitle>Move Feed to Folder</DialogTitle>
-          <DialogDescription>Move "{feedTitle}" to a different folder or remove it from folders.</DialogDescription>
+          <DialogTitle>{t("title")}</DialogTitle>
+          <DialogDescription>{t("description", { feedTitle })}</DialogDescription>
         </DialogHeader>
         <form onSubmit={handleSubmit}>
           <div className="grid gap-4 py-4">
             <div className="grid grid-cols-4 items-center gap-4">
               <Label htmlFor="folder" className="text-right">
-                Folder
+                {t("fields.folder")}
               </Label>
               <Select value={selectedFolderId} onValueChange={setSelectedFolderId}>
                 <SelectTrigger className="col-span-3">
-                  <SelectValue placeholder="Select a folder" />
+                  <SelectValue placeholder={t("fields.selectFolder")} />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="none">No Folder</SelectItem>
+                  <SelectItem value="none">{t("fields.noFolder")}</SelectItem>
                   {folders.map((folder) => (
                     <SelectItem key={folder.id} value={folder.id}>
                       {folder.name}
@@ -85,10 +87,10 @@ export function MoveToFolderDialog({
           </div>
           <DialogFooter>
             <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
-              Cancel
+              {t("actions.cancel")}
             </Button>
             <Button type="submit" disabled={isLoading}>
-              {isLoading ? "Moving..." : "Move"}
+              {isLoading ? t("actions.moving") : t("actions.move")}
             </Button>
           </DialogFooter>
         </form>

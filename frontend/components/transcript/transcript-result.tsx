@@ -9,6 +9,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
 import { useToast } from "@/hooks/use-toast"
 import { TranscriptResultData } from "@/lib/api/transcript"
+import { useTranslations } from "next-intl"
 
 interface TranscriptResultProps {
   data: TranscriptResultData
@@ -16,8 +17,12 @@ interface TranscriptResultProps {
 }
 
 export function TranscriptResult({ data, videoTitle }: TranscriptResultProps) {
+  const t = useTranslations("transcript")
   const { toast } = useToast()
   const [copiedSection, setCopiedSection] = useState<string | null>(null)
+  const transcriptLabel = t("result.tabs.transcript")
+  const summaryLabel = t("result.tabs.summary")
+  const translationLabel = t("result.tabs.translation")
 
   const renderMarkdown = (content: string) => {
     if (!content) return { __html: "" }
@@ -30,34 +35,34 @@ export function TranscriptResult({ data, videoTitle }: TranscriptResultProps) {
       await navigator.clipboard.writeText(text)
       setCopiedSection(section)
       toast({
-        title: "Copied!",
-        description: `${section} copied to clipboard.`,
+        title: t("toast.copiedTitle"),
+        description: t("toast.copiedDescription", { section }),
       })
       setTimeout(() => setCopiedSection(null), 2000)
     } catch (err) {
       toast({
-        title: "Failed to copy",
-        description: "Please try again.",
+        title: t("toast.copyFailedTitle"),
+        description: t("toast.copyFailedDescription"),
         variant: "destructive",
       })
     }
   }
 
   const handleDownload = () => {
-    const content = `# ${videoTitle || "Transcript"}
+    const content = `# ${videoTitle || t("result.markdownTitleFallback")}
 
 ` +
-      `## Summary
+      `## ${summaryLabel}
 
 ${data.summary}
 
 ` +
-      `## Transcript
+      `## ${transcriptLabel}
 
 ${data.transcript_optimized || data.transcript_raw}
 
 ` +
-      `## Translation
+      `## ${translationLabel}
 
 ${data.translation}`
 
@@ -72,8 +77,8 @@ ${data.translation}`
     URL.revokeObjectURL(url)
     
     toast({
-      title: "Downloaded",
-      description: "Transcript saved as Markdown file.",
+      title: t("toast.downloadedTitle"),
+      description: t("toast.downloadedDescription"),
     })
   }
 
@@ -81,38 +86,38 @@ ${data.translation}`
     <div className="w-full max-w-4xl mx-auto mt-6 space-y-6">
       <div className="flex justify-between items-center">
         <h2 className="text-xl font-semibold truncate max-w-[70%]">
-          {videoTitle || "Transcription Result"}
+          {videoTitle || t("result.titleFallback")}
         </h2>
         <Button variant="outline" size="sm" onClick={handleDownload} className="gap-2">
           <Download className="w-4 h-4" />
-          Download MD
+          {t("result.downloadMd")}
         </Button>
       </div>
 
       <Tabs defaultValue="transcript" className="w-full">
         <TabsList className="grid w-full grid-cols-3">
           <TabsTrigger value="transcript" className="gap-2">
-            <AlignLeft className="w-4 h-4" /> Transcript
+            <AlignLeft className="w-4 h-4" /> {transcriptLabel}
           </TabsTrigger>
           <TabsTrigger value="summary" className="gap-2">
-            <FileText className="w-4 h-4" /> Summary
+            <FileText className="w-4 h-4" /> {summaryLabel}
           </TabsTrigger>
           <TabsTrigger value="translation" className="gap-2">
-            <Languages className="w-4 h-4" /> Translation
+            <Languages className="w-4 h-4" /> {translationLabel}
           </TabsTrigger>
         </TabsList>
 
         {/* Content Renderer Helper */}
         {([
-          { key: "transcript", content: data.transcript_optimized || data.transcript_raw, label: "Transcript" },
-          { key: "summary", content: data.summary, label: "Summary" },
-          { key: "translation", content: data.translation, label: "Translation" },
+          { key: "transcript", content: data.transcript_optimized || data.transcript_raw, label: transcriptLabel },
+          { key: "summary", content: data.summary, label: summaryLabel },
+          { key: "translation", content: data.translation, label: translationLabel },
         ] as const).map(({ key, content, label }) => (
           <TabsContent key={key} value={key}>
             <Card>
               <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                 <CardTitle className="text-sm font-medium">
-                  {label} Content
+                  {t("result.contentTitle", { label })}
                 </CardTitle>
                 <Button
                   variant="ghost"
@@ -125,13 +130,13 @@ ${data.translation}`
                   ) : (
                     <Copy className="h-4 w-4" />
                   )}
-                  <span className="sr-only">Copy {label}</span>
+                  <span className="sr-only">{t("result.copySrOnly", { label })}</span>
                 </Button>
               </CardHeader>
               <CardContent>
                 <div 
                   className="prose prose-sm dark:prose-invert max-w-none prose-pre:bg-muted prose-pre:p-4 rounded-md overflow-x-auto"
-                  dangerouslySetInnerHTML={renderMarkdown(content || "*No content generated*")}
+                  dangerouslySetInnerHTML={renderMarkdown(content || t("result.noContent"))}
                 />
               </CardContent>
             </Card>

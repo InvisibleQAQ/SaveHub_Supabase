@@ -1,0 +1,143 @@
+{
+  "brand": {
+    "name": "SaveHub"
+  },
+  "tooltips": {
+    "pinSidebar": "Pin sidebar",
+    "unpinSidebar": "Unpin sidebar",
+    "collapseSidebar": "Collapse sidebar",
+    "expandSidebar": "Expand sidebar",
+    "logout": "Logout",
+    "helpShortcuts": "Help & Shortcuts"
+  },
+  "search": {
+    "placeholder": "Search feeds and folders..."
+  },
+  "views": {
+    "allArticles": "All Articles",
+    "unread": "Unread",
+    "starred": "Starred",
+    "chat": "Chat",
+    "transcript": "Transcript",
+    "repository": "Repository",
+    "feedsCount": "Feeds ({count})"
+  },
+  "actions": {
+    "addFeed": "Add Feed",
+    "addFolder": "Add Folder",
+    "addFirstFeed": "Add your first feed",
+    "settings": "Settings",
+    "logout": "Logout"
+  },
+  "feeds": {
+    "dropToRoot": "Drop here to move to root level",
+    "noMatchSearch": "No feeds match your search",
+    "empty": "No feeds added yet",
+    "menu": {
+      "refreshFeed": "Refresh Feed",
+      "moveToFolder": "Move to Folder",
+      "editProperties": "Edit Feed Properties",
+      "rename": "Rename",
+      "delete": "Delete",
+      "markAllAsRead": "Mark all as read",
+      "openFeedUrl": "Open Feed URL"
+    },
+    "status": {
+      "lastRefreshFailed": "Last refresh failed",
+      "lastRefreshFailedWithError": "Last refresh failed: {error}",
+      "unknownError": "Unknown error"
+    }
+  },
+  "folders": {
+    "noFolder": "No Folder",
+    "menu": {
+      "addFeedToFolder": "Add Feed to Folder",
+      "renameFolder": "Rename Folder",
+      "deleteFolder": "Delete Folder"
+    }
+  },
+  "renameDialog": {
+    "renameFolderTitle": "Rename Folder",
+    "renameFeedTitle": "Rename Feed",
+    "description": "Enter a new name for this {type}."
+  },
+  "deleteFeedDialog": {
+    "title": "Delete Feed",
+    "description": "Are you sure you want to delete {feedTitle}? This action cannot be undone.",
+    "errorPrefix": "Error: {error}",
+    "cancel": "Cancel",
+    "deleting": "Deleting...",
+    "confirm": "Delete Feed",
+    "failedToDeleteFeed": "Failed to delete feed",
+    "unexpectedError": "An unexpected error occurred"
+  },
+  "deleteFolderDialog": {
+    "title": "Delete Folder",
+    "description": "How would you like to handle the feeds in {folderName}?",
+    "options": {
+      "keepFeedsTitle": "Keep feeds (Dissolve folder)",
+      "keepFeedsDescription": "Delete only the folder, keep all feeds and move them to No Folder",
+      "deleteAllFeedsTitle": "Delete all feeds",
+      "deleteAllFeedsDescription": "Delete the folder and all {feedCount} feed(s) inside it permanently"
+    },
+    "confirmTitle": "Confirm Deletion",
+    "confirmDissolveDescription": "Folder {folderName} will be deleted, but its {feedCount} feed(s) will be kept and moved to No Folder.",
+    "confirmDeleteAllDescription": "Folder {folderName} and all its {feedCount} feed(s) will be permanently deleted. This cannot be undone.",
+    "buttons": {
+      "cancel": "Cancel",
+      "next": "Next",
+      "back": "Back",
+      "deleteAll": "Delete All",
+      "deleteFolder": "Delete Folder"
+    }
+  },
+  "refresh": {
+    "feedNotFound": "Feed not found",
+    "feedRefreshedTitle": "Feed refreshed",
+    "feedNoNewArticles": "{feedTitle} has no new articles",
+    "feedFoundNewArticles": "Found {articleCount} new articles in {feedTitle}",
+    "allFeedsRefreshedTitle": "All feeds refreshed",
+    "allFeedsNoNewArticles": "No new articles found across {feedCount} feeds",
+    "allFeedsFoundNewArticles": "Found {articleCount} new articles across {feedCount} feeds",
+    "feedsRefreshedWithErrorsTitle": "Feeds refreshed with errors",
+    "partialUpdateNoNewArticles": "{successCount} feeds updated, {errorCount} failed. No new articles found.",
+    "partialUpdateFoundNewArticles": "{successCount} feeds updated, {errorCount} failed. Found {articleCount} new articles.",
+    "refreshFailedTitle": "Refresh failed",
+    "failedToRefreshFeed": "Failed to refresh feed",
+    "failedToRefreshFeeds": "Failed to refresh feeds"
+  },
+  "helpDialog": {
+    "title": "Keyboard Shortcuts",
+    "description": "Use these shortcuts to navigate quickly through your RSS feeds",
+    "sections": {
+      "navigation": "Navigation",
+      "actions": "Actions",
+      "views": "Views",
+      "other": "Other"
+    },
+    "shortcuts": {
+      "nextArticle": "Next article",
+      "previousArticle": "Previous article",
+      "toggleReadUnread": "Toggle read/unread",
+      "toggleStar": "Toggle star",
+      "openOriginalArticle": "Open original article",
+      "showAllArticles": "Show all articles",
+      "showUnreadArticles": "Show unread articles",
+      "showStarredArticles": "Show starred articles",
+      "refreshFeeds": "Refresh feeds"
+    },
+    "shortcutKeys": {
+      "nextArticle": "j / ↓",
+      "previousArticle": "k / ↑",
+      "toggleReadUnread": "m",
+      "toggleStar": "s",
+      "openOriginalArticle": "o / Enter",
+      "showAllArticles": "1",
+      "showUnreadArticles": "2",
+      "showStarredArticles": "3",
+      "refreshFeeds": "Ctrl+R"
+    },
+    "tipLabel": "Tip:",
+    "tipDescription": "These shortcuts work when you're not typing in a search box or input field."
+  }
+}

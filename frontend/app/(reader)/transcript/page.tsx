@@ -5,11 +5,13 @@ import { useToast } from "@/hooks/use-toast"
 import { TranscriptForm } from "@/components/transcript/transcript-form"
 import { ProgressDisplay } from "@/components/transcript/progress-display"
 import { TranscriptResult } from "@/components/transcript/transcript-result"
-import { transcriptApi, TranscriptEventData, TranscriptResultData } from "@/lib/api/transcript"
+import { transcriptApi, TranscriptResultData } from "@/lib/api/transcript"
+import { useTranslations } from "next-intl"
 
 type ProcessingStatus = "idle" | "starting" | "processing" | "completed" | "error"
 
 export default function TranscriptPage() {
+  const t = useTranslations("transcript")
   const { toast } = useToast()
   
   // State Machine
@@ -35,7 +37,7 @@ export default function TranscriptPage() {
     try {
       setStatus("starting")
       setProgress(0)
-      setStage("Initializing task...")
+      setStage(t("progress.stageInitializing"))
       setResult(null)
       setErrorMessage(null)
 
@@ -43,7 +45,7 @@ export default function TranscriptPage() {
       const task = await transcriptApi.startTask(url, language)
       
       setStatus("processing")
-      setStage("Task started, waiting for stream...")
+      setStage(t("progress.stageStarted"))
 
       // 2. Stream Task
       abortControllerRef.current = new AbortController()
@@ -60,7 +62,7 @@ export default function TranscriptPage() {
 
           switch (type) {
             case "accepted":
-              setStage("Task accepted by server...")
+              setStage(t("progress.stageAccepted"))
               break
             
             case "progress":
@@ -78,10 +80,10 @@ export default function TranscriptPage() {
                 setResult(data.result)
                 setStatus("completed")
                 setProgress(100)
-                setStage("Completed")
+                setStage(t("progress.stageCompleted"))
                 toast({
-                  title: "Success",
-                  description: "Transcription completed successfully.",
+                  title: t("toast.successTitle"),
+                  description: t("toast.successDescription"),
                 })
               }
               break
@@ -89,10 +91,10 @@ export default function TranscriptPage() {
             case "error":
               console.error("Task Error:", data)
               setStatus("error")
-              setErrorMessage(data.message || "An unknown error occurred")
+              setErrorMessage(data.message || t("errors.unknownError"))
               toast({
-                title: "Error",
-                description: data.message || "Task failed",
+                title: t("toast.errorTitle"),
+                description: data.message || t("toast.taskFailed"),
                 variant: "destructive",
               })
               break
@@ -110,9 +112,9 @@ export default function TranscriptPage() {
 
       console.error("Transcription failed:", error)
       setStatus("error")
-      setErrorMessage(error.message || "Failed to connect to transcription service")
+      setErrorMessage(error.message || t("errors.connectFailed"))
       toast({
-        title: "Connection Error",
+        title: t("toast.connectionErrorTitle"),
         description: error.message,
         variant: "destructive",
       })
@@ -123,9 +125,9 @@ export default function TranscriptPage() {
     <div className="flex-1 overflow-y-auto">
       <div className="container py-8 mx-auto space-y-8 animate-in fade-in duration-500">
         <div className="space-y-2 text-center mb-8">
-          <h1 className="text-3xl font-bold tracking-tight">AI Video Transcript</h1>
+          <h1 className="text-3xl font-bold tracking-tight">{t("page.title")}</h1>
           <p className="text-muted-foreground">
-            Turn video content into structured notes with AI-powered transcription and summarization.
+            {t("page.subtitle")}
           </p>
         </div>
 
@@ -142,8 +144,8 @@ export default function TranscriptPage() {
 
         {status === "error" && errorMessage && (
           <div className="w-full max-w-4xl mx-auto p-4 border border-destructive/50 rounded-lg bg-destructive/10 text-destructive text-center">
-            <p className="font-medium">Error: {errorMessage}</p>
-            <p className="text-sm opacity-80 mt-1">Please check the URL and try again.</p>
+            <p className="font-medium">{t("errors.errorWithMessage", { message: errorMessage })}</p>
+            <p className="text-sm opacity-80 mt-1">{t("errors.checkUrlAndRetry")}</p>
           </div>
         )}
 

@@ -1,19 +1,21 @@
-'use client'
+"use client"
 
-import { useState } from 'react'
-import { useAuth } from '@/lib/context/auth-context'
-import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
-import { Label } from '@/components/ui/label'
-import { Loader2 } from 'lucide-react'
+import { useState } from "react"
+import { useTranslations } from "next-intl"
+import { useAuth } from "@/lib/context/auth-context"
+import { Button } from "@/components/ui/button"
+import { Input } from "@/components/ui/input"
+import { Label } from "@/components/ui/label"
+import { Loader2 } from "lucide-react"
 
-type AuthMode = 'login' | 'register'
+type AuthMode = "login" | "register"
 
 export default function LoginPage() {
+  const t = useTranslations("common")
   const { login, register } = useAuth()
-  const [mode, setMode] = useState<AuthMode>('login')
-  const [email, setEmail] = useState('')
-  const [password, setPassword] = useState('')
+  const [mode, setMode] = useState<AuthMode>("login")
+  const [email, setEmail] = useState("")
+  const [password, setPassword] = useState("")
   const [error, setError] = useState<string | null>(null)
   const [isLoading, setIsLoading] = useState(false)
 
@@ -23,20 +25,20 @@ export default function LoginPage() {
     setIsLoading(true)
 
     try {
-      if (mode === 'login') {
+      if (mode === "login") {
         await login(email, password)
       } else {
         await register(email, password)
       }
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Authentication failed')
+      setError(err instanceof Error ? err.message : t("auth.errors.authenticationFailed"))
     } finally {
       setIsLoading(false)
     }
   }
 
   const toggleMode = () => {
-    setMode(mode === 'login' ? 'register' : 'login')
+    setMode(mode === "login" ? "register" : "login")
     setError(null)
   }
 
@@ -44,19 +46,19 @@ export default function LoginPage() {
     <div className="flex min-h-screen items-center justify-center bg-background">
       <div className="w-full max-w-md space-y-8 px-4">
         <div className="text-center">
-          <h1 className="text-3xl font-bold tracking-tight">SaveHub</h1>
+          <h1 className="text-3xl font-bold tracking-tight">{t("app.name")}</h1>
           <p className="mt-2 text-sm text-muted-foreground">
-            {mode === 'login' ? 'Sign in to access your feeds' : 'Create a new account'}
+            {mode === "login" ? t("auth.subtitleSignIn") : t("auth.subtitleRegister")}
           </p>
         </div>
         <div className="rounded-lg border bg-card p-6 shadow-sm">
           <form onSubmit={handleSubmit} className="space-y-4">
             <div className="space-y-2">
-              <Label htmlFor="email">Email</Label>
+              <Label htmlFor="email">{t("auth.fields.email")}</Label>
               <Input
                 id="email"
                 type="email"
-                placeholder="you@example.com"
+                placeholder={t("auth.fields.emailPlaceholder")}
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 required
@@ -64,11 +66,11 @@ export default function LoginPage() {
               />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="password">Password</Label>
+              <Label htmlFor="password">{t("auth.fields.password")}</Label>
               <Input
                 id="password"
                 type="password"
-                placeholder="••••••••"
+                placeholder={t("auth.fields.passwordPlaceholder")}
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 required
@@ -87,25 +89,25 @@ export default function LoginPage() {
               {isLoading ? (
                 <>
                   <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  {mode === 'login' ? 'Signing in...' : 'Creating account...'}
+                  {mode === "login" ? t("auth.actions.signingIn") : t("auth.actions.creatingAccount")}
                 </>
               ) : (
-                mode === 'login' ? 'Sign In' : 'Create Account'
+                mode === "login" ? t("auth.actions.signIn") : t("auth.actions.createAccount")
               )}
             </Button>
           </form>
 
           <div className="mt-4 text-center text-sm">
             <span className="text-muted-foreground">
-              {mode === 'login' ? "Don't have an account?" : 'Already have an account?'}
-            </span>{' '}
+              {mode === "login" ? t("auth.prompts.noAccount") : t("auth.prompts.hasAccount")}
+            </span>{" "}
             <button
               type="button"
               onClick={toggleMode}
               className="text-primary hover:underline"
               disabled={isLoading}
             >
-              {mode === 'login' ? 'Sign up' : 'Sign in'}
+              {mode === "login" ? t("auth.actions.signUp") : t("auth.actions.signInLower")}
             </button>
           </div>
         </div>

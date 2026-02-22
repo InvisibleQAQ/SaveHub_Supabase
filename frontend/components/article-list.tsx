@@ -16,6 +16,7 @@ import {
 import { useRSSStore } from "@/lib/store"
 import { cn } from "@/lib/utils"
 import { formatDistanceToNow, estimateReadingTime, getProxiedImageUrl } from "@/lib/utils"
+import { useTranslations } from "next-intl"
 
 type SortOption = "date" | "title" | "feed" | "readTime"
 type SortDirection = "asc" | "desc"
@@ -26,6 +27,8 @@ interface ArticleListProps {
 }
 
 export function ArticleList({ viewMode = "all", feedId = null }: ArticleListProps) {
+  const t = useTranslations("reader.articleList")
+  const tSidebar = useTranslations("sidebar")
   const [searchQuery, setSearchQuery] = useState("")
   const [sortBy, setSortBy] = useState<SortOption>("date")
   const [sortDirection, setSortDirection] = useState<SortDirection>("desc")
@@ -54,7 +57,7 @@ export function ArticleList({ viewMode = "all", feedId = null }: ArticleListProp
 
   const getFeedTitle = (feedId: string) => {
     const feed = feeds.find((f) => f.id === feedId)
-    return feed?.title || "Unknown Feed"
+    return feed?.title || t("unknownFeed")
   }
 
   // Sort and filter articles
@@ -105,13 +108,19 @@ export function ArticleList({ viewMode = "all", feedId = null }: ArticleListProp
 
   const getSortLabel = () => {
     const labels = {
-      date: "Date",
-      title: "Title",
-      feed: "Feed",
-      readTime: "Read Time",
+      date: t("sort.date"),
+      title: t("sort.title"),
+      feed: t("sort.feed"),
+      readTime: t("sort.readTime"),
     }
     return labels[sortBy]
   }
+
+  const viewModeLabel = viewMode === "all"
+    ? tSidebar("views.allArticles")
+    : viewMode === "unread"
+      ? tSidebar("views.unread")
+      : tSidebar("views.starred")
 
   return (
     <div className="flex flex-col h-full bg-card" onClick={() => !isSidebarCollapsed && !settings.sidebarPinned && setSidebarCollapsed(true)}>
@@ -120,10 +129,10 @@ export function ArticleList({ viewMode = "all", feedId = null }: ArticleListProp
         <div className="flex items-center justify-between mb-4">
           <div>
             <h2 className="text-lg font-semibold text-card-foreground">
-              {selectedFeed ? selectedFeed.title : `${viewMode.charAt(0).toUpperCase() + viewMode.slice(1)} Articles`}
+              {selectedFeed ? selectedFeed.title : viewModeLabel}
             </h2>
             <p className="text-sm text-muted-foreground">
-              {sortedArticles.length} {sortedArticles.length === 1 ? "article" : "articles"}
+              {t("header.articleCount", { count: sortedArticles.length })}
             </p>
           </div>
 
@@ -139,28 +148,28 @@ export function ArticleList({ viewMode = "all", feedId = null }: ArticleListProp
             <DropdownMenuContent align="end">
               <DropdownMenuItem onClick={() => handleSort("date")}>
                 <div className="flex items-center justify-between w-full">
-                  <span>Sort by Date</span>
+                  <span>{t("sort.sortByDate")}</span>
                   {sortBy === "date" &&
                     (sortDirection === "asc" ? <SortAsc className="h-3 w-3" /> : <SortDesc className="h-3 w-3" />)}
                 </div>
               </DropdownMenuItem>
               <DropdownMenuItem onClick={() => handleSort("title")}>
                 <div className="flex items-center justify-between w-full">
-                  <span>Sort by Title</span>
+                  <span>{t("sort.sortByTitle")}</span>
                   {sortBy === "title" &&
                     (sortDirection === "asc" ? <SortAsc className="h-3 w-3" /> : <SortDesc className="h-3 w-3" />)}
                 </div>
               </DropdownMenuItem>
               <DropdownMenuItem onClick={() => handleSort("feed")}>
                 <div className="flex items-center justify-between w-full">
-                  <span>Sort by Feed</span>
+                  <span>{t("sort.sortByFeed")}</span>
                   {sortBy === "feed" &&
                     (sortDirection === "asc" ? <SortAsc className="h-3 w-3" /> : <SortDesc className="h-3 w-3" />)}
                 </div>
               </DropdownMenuItem>
               <DropdownMenuItem onClick={() => handleSort("readTime")}>
                 <div className="flex items-center justify-between w-full">
-                  <span>Sort by Read Time</span>
+                  <span>{t("sort.sortByReadTime")}</span>
                   {sortBy === "readTime" &&
                     (sortDirection === "asc" ? <SortAsc className="h-3 w-3" /> : <SortDesc className="h-3 w-3" />)}
                 </div>
@@ -173,7 +182,7 @@ export function ArticleList({ viewMode = "all", feedId = null }: ArticleListProp
         <div className="relative">
           <Search className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
           <Input
-            placeholder="Search articles..."
+            placeholder={t("search.placeholder")}
             value={searchQuery}
             onChange={(e) => handleSearch(e.target.value)}
             className="pl-9"
@@ -247,12 +256,12 @@ export function ArticleList({ viewMode = "all", feedId = null }: ArticleListProp
                               {article.isRead ? (
                                 <>
                                   <Clock className="h-4 w-4 mr-2" />
-                                  Mark as Unread
+                                  {t("menu.markAsUnread")}
                                 </>
                               ) : (
                                 <>
                                   <Check className="h-4 w-4 mr-2" />
-                                  Mark as Read
+                                  {t("menu.markAsRead")}
                                 </>
                               )}
                             </DropdownMenuItem>
@@ -265,7 +274,7 @@ export function ArticleList({ viewMode = "all", feedId = null }: ArticleListProp
                               <Star
                                 className={cn("h-4 w-4 mr-2", article.isStarred && "fill-current text-yellow-500")}
                               />
-                              {article.isStarred ? "Remove Star" : "Add Star"}
+                              {article.isStarred ? t("menu.removeStar") : t("menu.addStar")}
                             </DropdownMenuItem>
                             <DropdownMenuSeparator />
                             <DropdownMenuItem
@@ -274,7 +283,7 @@ export function ArticleList({ viewMode = "all", feedId = null }: ArticleListProp
                                 window.open(article.url, "_blank")
                               }}
                             >
-                              Open Original
+                              {t("menu.openOriginal")}
                             </DropdownMenuItem>
                           </DropdownMenuContent>
                         </DropdownMenu>
@@ -303,8 +312,7 @@ export function ArticleList({ viewMode = "all", feedId = null }: ArticleListProp
                         )}
                         <span>{formatDistanceToNow(article.publishedAt)}</span>
                         <span>•</span>
-                        <span>{readingTime} min read</span>
-
+                        <span>{t("meta.readingTime", { minutes: readingTime })}</span>
                         {/* Status indicators */}
                         <div className="flex items-center gap-1 ml-auto">
                           {article.repositoryCount > 0 && (
@@ -326,10 +334,10 @@ export function ArticleList({ viewMode = "all", feedId = null }: ArticleListProp
             {sortedArticles.length === 0 && (
               <div className="text-center py-12 text-muted-foreground">
                 <Search className="h-8 w-8 mx-auto mb-2 opacity-50" />
-                <p className="text-sm">No articles found</p>
-                {searchQuery && <p className="text-xs mt-1">Try adjusting your search terms</p>}
+                <p className="text-sm">{t("empty.title")}</p>
+                {searchQuery && <p className="text-xs mt-1">{t("empty.adjustSearch")}</p>}
                 {!searchQuery && feeds.length === 0 && (
-                  <p className="text-xs mt-1">Add some RSS feeds to get started</p>
+                  <p className="text-xs mt-1">{t("empty.addFeeds")}</p>
                 )}
               </div>
             )}

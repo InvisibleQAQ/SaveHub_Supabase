@@ -14,6 +14,7 @@ import {
 import { Button } from "@/components/ui/button"
 import { useRSSStore } from "@/lib/store"
 import type { DeleteFolderDialogState } from "./types"
+import { useTranslations } from "next-intl"
 
 interface DeleteFolderDialogProps {
   state: DeleteFolderDialogState
@@ -23,6 +24,7 @@ interface DeleteFolderDialogProps {
 type DeleteMode = "dissolve" | "delete-all"
 
 export function DeleteFolderDialog({ state, onOpenChange }: DeleteFolderDialogProps) {
+  const t = useTranslations("sidebar.deleteFolderDialog")
   const { removeFolder } = useRSSStore()
   const [deleteMode, setDeleteMode] = useState<DeleteMode>("dissolve")
   const [showConfirmation, setShowConfirmation] = useState(false)
@@ -46,9 +48,15 @@ export function DeleteFolderDialog({ state, onOpenChange }: DeleteFolderDialogPr
 
   const getModeDescription = () => {
     if (deleteMode === "dissolve") {
-      return `Folder "${state.folderName}" will be deleted, but its ${state.feedCount} feed(s) will be kept and moved to "No Folder".`
+      return t("confirmDissolveDescription", {
+        folderName: state.folderName,
+        feedCount: state.feedCount,
+      })
     } else {
-      return `Folder "${state.folderName}" and all its ${state.feedCount} feed(s) will be permanently deleted. This cannot be undone.`
+      return t("confirmDeleteAllDescription", {
+        folderName: state.folderName,
+        feedCount: state.feedCount,
+      })
     }
   }
 
@@ -58,9 +66,9 @@ export function DeleteFolderDialog({ state, onOpenChange }: DeleteFolderDialogPr
         {!showConfirmation ? (
           <>
             <AlertDialogHeader>
-              <AlertDialogTitle>Delete Folder</AlertDialogTitle>
+              <AlertDialogTitle>{t("title")}</AlertDialogTitle>
               <AlertDialogDescription>
-                How would you like to handle the feeds in "{state.folderName}"?
+                {t("description", { folderName: state.folderName })}
               </AlertDialogDescription>
             </AlertDialogHeader>
 
@@ -74,9 +82,9 @@ export function DeleteFolderDialog({ state, onOpenChange }: DeleteFolderDialogPr
                 }`}
               >
                 <div className="space-y-1">
-                  <div className="font-medium">Keep feeds (Dissolve folder)</div>
+                  <div className="font-medium">{t("options.keepFeedsTitle")}</div>
                   <p className="text-sm text-muted-foreground">
-                    Delete only the folder, keep all feeds and move them to "No Folder"
+                    {t("options.keepFeedsDescription")}
                   </p>
                 </div>
               </div>
@@ -90,33 +98,33 @@ export function DeleteFolderDialog({ state, onOpenChange }: DeleteFolderDialogPr
                 }`}
               >
                 <div className="space-y-1">
-                  <div className="font-medium text-destructive">Delete all feeds</div>
+                  <div className="font-medium text-destructive">{t("options.deleteAllFeedsTitle")}</div>
                   <p className="text-sm text-muted-foreground">
-                    Delete the folder and all {state.feedCount} feed(s) inside it permanently
+                    {t("options.deleteAllFeedsDescription", { feedCount: state.feedCount })}
                   </p>
                 </div>
               </div>
             </div>
 
             <AlertDialogFooter>
-              <AlertDialogCancel>Cancel</AlertDialogCancel>
-              <Button onClick={handleNext}>Next</Button>
+              <AlertDialogCancel>{t("buttons.cancel")}</AlertDialogCancel>
+              <Button onClick={handleNext}>{t("buttons.next")}</Button>
             </AlertDialogFooter>
           </>
         ) : (
           <>
             <AlertDialogHeader>
-              <AlertDialogTitle>Confirm Deletion</AlertDialogTitle>
+              <AlertDialogTitle>{t("confirmTitle")}</AlertDialogTitle>
               <AlertDialogDescription>{getModeDescription()}</AlertDialogDescription>
             </AlertDialogHeader>
 
             <AlertDialogFooter>
-              <Button variant="outline" onClick={() => setShowConfirmation(false)}>Back</Button>
+              <Button variant="outline" onClick={() => setShowConfirmation(false)}>{t("buttons.back")}</Button>
               <Button
                 onClick={handleConfirm}
                 variant={deleteMode === "delete-all" ? "destructive" : "default"}
               >
-                {deleteMode === "delete-all" ? "Delete All" : "Delete Folder"}
+                {deleteMode === "delete-all" ? t("buttons.deleteAll") : t("buttons.deleteFolder")}
               </Button>
             </AlertDialogFooter>
           </>

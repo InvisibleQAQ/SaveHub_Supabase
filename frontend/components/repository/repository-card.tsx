@@ -18,11 +18,12 @@ import {
 } from "lucide-react"
 import type { Repository } from "@/lib/types"
 import { formatDistanceToNow } from "date-fns"
-import { zhCN } from "date-fns/locale"
+import { enUS, zhCN } from "date-fns/locale"
 import { getLanguageColor } from "@/lib/language-colors"
 import { useRSSStore } from "@/lib/store"
 import { useToast } from "@/hooks/use-toast"
 import { RepositoryEditModal } from "./repository-edit-modal"
+import { useLocale, useTranslations } from "next-intl"
 
 interface RepositoryCardProps {
   repository: Repository
@@ -35,6 +36,8 @@ export function RepositoryCard({
   onClick,
   searchQuery = "",
 }: RepositoryCardProps) {
+  const t = useTranslations("repository")
+  const locale = useLocale()
   const { analyzeRepository, isAnalyzing } = useRSSStore()
   const { toast } = useToast()
 
@@ -84,12 +87,12 @@ export function RepositoryCard({
       return { content: repository.customDescription, isCustom: true, isAI: false }
     }
     if (repository.analysisFailed) {
-      return { content: repository.description || "暂无描述", isCustom: false, isAI: false, isFailed: true }
+      return { content: repository.description || t("card.noDescription"), isCustom: false, isAI: false, isFailed: true }
     }
     if (repository.aiSummary) {
       return { content: repository.aiSummary, isCustom: false, isAI: true }
     }
-    return { content: repository.description || "暂无描述", isCustom: false, isAI: false }
+    return { content: repository.description || t("card.noDescription"), isCustom: false, isAI: false }
   }
 
   // Get display tags (merge all sources with deduplication)
@@ -133,11 +136,11 @@ export function RepositoryCard({
     e.stopPropagation()
     try {
       await analyzeRepository(repository.id)
-      toast({ title: "AI 分析完成" })
+      toast({ title: t("toast.aiAnalyzeCompleted") })
     } catch (error) {
       toast({
-        title: "AI 分析失败",
-        description: error instanceof Error ? error.message : "未知错误",
+        title: t("toast.aiAnalyzeFailed"),
+        description: error instanceof Error ? error.message : t("toast.unknownError"),
         variant: "destructive",
       })
     }
@@ -149,7 +152,10 @@ export function RepositoryCard({
   const displayContent = getDisplayContent()
   const displayTags = getDisplayTags()
   const updatedAt = repository.githubUpdatedAt
-    ? formatDistanceToNow(new Date(repository.githubUpdatedAt), { addSuffix: true, locale: zhCN })
+    ? formatDistanceToNow(new Date(repository.githubUpdatedAt), {
+        addSuffix: true,
+        locale: locale === "zh" ? zhCN : enUS,
+      })
     : null
 
   return (
@@ -186,7 +192,13 @@ export function RepositoryCard({
                 ? "bg-green-100 text-green-600 dark:bg-green-900/30 dark:text-green-400 hover:bg-green-200"
                 : "bg-purple-100 text-purple-600 dark:bg-purple-900/30 dark:text-purple-400 hover:bg-purple-200"
             } disabled:opacity-50`}
-            title={repository.analysisFailed ? "分析失败，点击重试" : repository.analyzedAt ? "已分析，点击重新分析" : "AI 分析"}
+            title={
+              repository.analysisFailed
+                ? t("card.tooltipAnalyzeRetryFailed")
+                : repository.analyzedAt
+                  ? t("card.tooltipAnalyzeAgain")
+                  : t("card.tooltipAnalyze")
+            }
           >
             <Bot className="w-4 h-4" />
           </button>
@@ -194,7 +206,7 @@ export function RepositoryCard({
           <button
             onClick={(e) => { e.stopPropagation(); setEditModalOpen(true) }}
             className="p-2 rounded-lg bg-orange-100 text-orange-600 dark:bg-orange-900/30 dark:text-orange-400 hover:bg-orange-200 transition-colors"
-            title="编辑仓库信息"
+            title={t("card.tooltipEdit")}
           >
             <Edit3 className="w-4 h-4" />
           </button>
@@ -207,7 +219,7 @@ export function RepositoryCard({
             rel="noopener noreferrer"
             onClick={(e) => e.stopPropagation()}
             className="p-2 rounded-lg bg-indigo-100 text-indigo-600 dark:bg-indigo-900/30 dark:text-indigo-400 hover:bg-indigo-200 transition-colors"
-            title="在 Zread 中查看"
+            title={t("card.tooltipViewInZread")}
           >
             <BookOpen className="w-4 h-4" />
           </a>
@@ -218,7 +230,7 @@ export function RepositoryCard({
             rel="noopener noreferrer"
             onClick={(e) => e.stopPropagation()}
             className="p-2 rounded-lg bg-muted text-muted-foreground hover:bg-muted/80 transition-colors"
-            title="在 GitHub 查看"
+            title={t("card.tooltipViewOnGitHub")}
           >
             <ExternalLink className="w-4 h-4" />
           </a>
@@ -249,13 +261,13 @@ export function RepositoryCard({
           {displayContent.isCustom && (
             <span className="flex items-center gap-1 text-xs text-orange-600 dark:text-orange-400">
               <Edit3 className="w-3 h-3" />
-              自定义
+              {t("card.badgeCustom")}
             </span>
           )}
           {displayContent.isAI && (
             <span className="flex items-center gap-1 text-xs text-green-600 dark:text-green-400">
               <Bot className="w-3 h-3" />
-              AI 总结
+              {t("card.badgeAiSummary")}
             </span>
           )}
         </div>
@@ -293,7 +305,7 @@ export function RepositoryCard({
       {/* Platform Icons */}
       {repository.aiPlatforms && repository.aiPlatforms.length > 0 && (
         <div className="flex items-center gap-2 mb-4">
-          <span className="text-xs text-muted-foreground">支持平台:</span>
+          <span className="text-xs text-muted-foreground">{t("card.platformSupported")}</span>
           <div className="flex gap-1">
             {repository.aiPlatforms.slice(0, 6).map((platform, index) => {
               const IconComponent = getPlatformIcon(platform)
@@ -329,7 +341,7 @@ export function RepositoryCard({
               {formatNumber(repository.stargazersCount)}
             </span>
             {repository.openrank != null && (
-              <span className="flex items-center gap-1" title="OpenRank Score">
+              <span className="flex items-center gap-1" title={t("card.openRankScore")}>
                 <TrendingUp className="w-4 h-4 text-blue-500" />
                 {repository.openrank.toFixed(2)}
               </span>
@@ -339,18 +351,18 @@ export function RepositoryCard({
             {repository.lastEdited && (
               <span className="flex items-center gap-1 text-xs">
                 <Edit3 className="w-3 h-3 text-orange-500" />
-                已编辑
+                {t("card.badgeEdited")}
               </span>
             )}
             {repository.analysisFailed ? (
               <span className="flex items-center gap-1 text-xs">
                 <span className="w-2 h-2 bg-destructive rounded-full" />
-                分析失败
+                {t("card.badgeAnalyzeFailed")}
               </span>
             ) : repository.analyzedAt && (
               <span className="flex items-center gap-1 text-xs">
                 <span className="w-2 h-2 bg-green-500 rounded-full" />
-                AI已分析
+                {t("card.badgeAiAnalyzed")}
               </span>
             )}
           </div>
@@ -360,7 +372,7 @@ export function RepositoryCard({
         {updatedAt && (
           <div className="flex items-center text-sm text-muted-foreground pt-2 border-t">
             <Calendar className="w-4 h-4 mr-1 flex-shrink-0" />
-            <span className="truncate">更新于 {updatedAt}</span>
+            <span className="truncate">{t("card.updatedAt", { time: updatedAt })}</span>
           </div>
         )}
       </div>

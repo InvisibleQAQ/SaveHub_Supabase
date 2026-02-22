@@ -12,6 +12,7 @@ import {
   Sparkles,
   Wrench,
 } from "lucide-react"
+import { useLocale, useTranslations } from "next-intl"
 
 export type AgentStageStatus = "pending" | "active" | "completed"
 
@@ -38,16 +39,6 @@ interface ChatStatusProps {
   defaultCollapsed?: boolean
   isRunning?: boolean
 }
-
-const STAGE_DEFINITIONS: Array<{
-  key: keyof AgentStageProgress
-  label: string
-}> = [
-  { key: "rewrite", label: "重写" },
-  { key: "toolCall", label: "调用工具" },
-  { key: "expandContext", label: "二次检索" },
-  { key: "aggregation", label: "聚合" },
-]
 
 function StageIcon({ status }: { status: AgentStageStatus }) {
   if (status === "completed") {
@@ -81,23 +72,6 @@ function TimelineStageIcon({ stage }: { stage: AgentStageLogStage }) {
   return <Circle className="w-3.5 h-3.5 text-muted-foreground" />
 }
 
-function stageLabel(stage: AgentStageLogStage): string {
-  if (stage === "rewrite") return "重写"
-  if (stage === "toolCall") return "调用工具"
-  if (stage === "expandContext") return "二次检索"
-  if (stage === "aggregation") return "聚合"
-  return "系统"
-}
-
-function formatTimelineTime(timestamp: number): string {
-  return new Date(timestamp).toLocaleTimeString("zh-CN", {
-    hour: "2-digit",
-    minute: "2-digit",
-    second: "2-digit",
-    hour12: false,
-  })
-}
-
 export function ChatStatus({
   status,
   stages,
@@ -105,9 +79,34 @@ export function ChatStatus({
   defaultCollapsed = false,
   isRunning = true,
 }: ChatStatusProps) {
+  const t = useTranslations("chat")
+  const locale = useLocale()
   const [isTimelineOpen, setIsTimelineOpen] = useState(!defaultCollapsed)
   const timelineRef = useRef<HTMLDivElement>(null)
   const shouldStickToBottomRef = useRef(true)
+  const stageDefinitions: Array<{ key: keyof AgentStageProgress; label: string }> = [
+    { key: "rewrite", label: t("stages.rewrite") },
+    { key: "toolCall", label: t("stages.toolCall") },
+    { key: "expandContext", label: t("stages.expandContext") },
+    { key: "aggregation", label: t("stages.aggregation") },
+  ]
+
+  const stageLabel = (stage: AgentStageLogStage): string => {
+    if (stage === "rewrite") return t("stages.rewrite")
+    if (stage === "toolCall") return t("stages.toolCall")
+    if (stage === "expandContext") return t("stages.expandContext")
+    if (stage === "aggregation") return t("stages.aggregation")
+    return t("agent.system")
+  }
+
+  const formatTimelineTime = (timestamp: number): string => {
+    return new Date(timestamp).toLocaleTimeString(locale === "zh" ? "zh-CN" : "en-US", {
+      hour: "2-digit",
+      minute: "2-digit",
+      second: "2-digit",
+      hour12: false,
+    })
+  }
 
   useEffect(() => {
     setIsTimelineOpen(!defaultCollapsed)
@@ -151,13 +150,13 @@ export function ChatStatus({
           ) : (
             <CheckCircle2 className="w-3.5 h-3.5" />
           )}
-          Agent
+          {t("agent.label")}
         </span>
         <span>{status}</span>
       </div>
 
       <div className="flex flex-wrap gap-2">
-        {STAGE_DEFINITIONS.map((stage) => {
+        {stageDefinitions.map((stage) => {
           const stageStatus = stages[stage.key]
 
           const itemClass =
@@ -187,9 +186,9 @@ export function ChatStatus({
             className="flex w-full items-center justify-between rounded-md px-1 py-1 text-xs text-muted-foreground transition-colors hover:text-foreground"
             aria-expanded={isTimelineOpen}
           >
-            <span>流程日志（{stageLogs.length}）</span>
+            <span>{t("timeline.label", { count: stageLogs.length })}</span>
             <span className="inline-flex items-center gap-1">
-              {isTimelineOpen ? "收起" : "展开"}
+              {isTimelineOpen ? t("timeline.collapse") : t("timeline.expand")}
               {isTimelineOpen ? (
                 <ChevronDown className="w-3.5 h-3.5" />
               ) : (

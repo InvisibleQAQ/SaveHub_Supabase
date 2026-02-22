@@ -23,6 +23,7 @@ import type { Repository } from "@/lib/types"
 import { useRSSStore } from "@/lib/store"
 import { useToast } from "@/hooks/use-toast"
 import { REPOSITORY_CATEGORIES } from "@/lib/repository-categories"
+import { useTranslations } from "next-intl"
 
 interface RepositoryEditModalProps {
   repository: Repository
@@ -35,6 +36,7 @@ export function RepositoryEditModal({
   open,
   onOpenChange,
 }: RepositoryEditModalProps) {
+  const t = useTranslations("repository")
   const { updateRepository } = useRSSStore()
   const { toast } = useToast()
 
@@ -69,12 +71,12 @@ export function RepositoryEditModal({
         customTags: formData.tags.length > 0 ? formData.tags : undefined,
         customCategory: formData.category || null,
       })
-      toast({ title: "保存成功" })
+      toast({ title: t("toast.saveSuccess") })
       onOpenChange(false)
     } catch (error) {
       toast({
-        title: "保存失败",
-        description: error instanceof Error ? error.message : "未知错误",
+        title: t("toast.saveFailed"),
+        description: error instanceof Error ? error.message : t("toast.unknownError"),
         variant: "destructive",
       })
     } finally {
@@ -110,7 +112,7 @@ export function RepositoryEditModal({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-lg" onClick={(e) => e.stopPropagation()}>
         <DialogHeader>
-          <DialogTitle>编辑仓库信息</DialogTitle>
+          <DialogTitle>{t("editDialog.title")}</DialogTitle>
         </DialogHeader>
 
         <div className="space-y-6">
@@ -131,31 +133,31 @@ export function RepositoryEditModal({
             </div>
             {repository.description && (
               <p className="text-sm text-muted-foreground">
-                原始描述: {repository.description}
+                {t("editDialog.rawDescription", { description: repository.description })}
               </p>
             )}
           </div>
 
           {/* Description */}
           <div className="space-y-2">
-            <Label>自定义描述</Label>
+            <Label>{t("editDialog.customDescription")}</Label>
             <Textarea
               value={formData.description}
               onChange={(e) => setFormData((prev) => ({ ...prev, description: e.target.value }))}
-              placeholder="输入自定义描述..."
+              placeholder={t("editDialog.customDescriptionPlaceholder")}
               rows={3}
             />
           </div>
 
           {/* Category */}
           <div className="space-y-2">
-            <Label>分类</Label>
+            <Label>{t("editDialog.category")}</Label>
             <Select
               value={formData.category}
               onValueChange={(value) => setFormData((prev) => ({ ...prev, category: value }))}
             >
               <SelectTrigger>
-                <SelectValue placeholder="选择分类..." />
+                <SelectValue placeholder={t("editDialog.categoryPlaceholder")} />
               </SelectTrigger>
               <SelectContent>
                 {REPOSITORY_CATEGORIES.filter((cat) => cat.id !== "all").map((category) => (
@@ -169,7 +171,7 @@ export function RepositoryEditModal({
 
           {/* Tags */}
           <div className="space-y-2">
-            <Label>自定义标签</Label>
+            <Label>{t("editDialog.customTags")}</Label>
             {formData.tags.length > 0 && (
               <div className="flex flex-wrap gap-2 mb-3">
                 {formData.tags.map((tag, index) => (
@@ -193,7 +195,7 @@ export function RepositoryEditModal({
                 value={newTag}
                 onChange={(e) => setNewTag(e.target.value)}
                 onKeyPress={handleKeyPress}
-                placeholder="添加标签..."
+                placeholder={t("editDialog.addTagPlaceholder")}
                 className="flex-1"
               />
               <Button onClick={handleAddTag} disabled={!newTag.trim()} size="icon">
@@ -205,11 +207,11 @@ export function RepositoryEditModal({
           {/* Action Buttons */}
           <div className="flex justify-end gap-3 pt-4 border-t">
             <Button variant="outline" onClick={() => onOpenChange(false)}>
-              取消
+              {t("editDialog.cancel")}
             </Button>
             <Button onClick={handleSave} disabled={isSaving}>
               <Save className="w-4 h-4 mr-2" />
-              {isSaving ? "保存中..." : "保存"}
+              {isSaving ? t("editDialog.saving") : t("editDialog.save")}
             </Button>
           </div>
         </div>

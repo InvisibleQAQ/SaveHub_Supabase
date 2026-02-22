@@ -14,6 +14,7 @@ import {
 } from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
+import { useTranslations } from "next-intl"
 
 interface RenameDialogProps {
   open: boolean
@@ -25,6 +26,7 @@ interface RenameDialogProps {
 }
 
 export function RenameDialog({ open, onOpenChange, title, description, currentName, onRename }: RenameDialogProps) {
+  const t = useTranslations("reader.renameDialog")
   const [name, setName] = useState(currentName)
   const [isLoading, setIsLoading] = useState(false)
 
@@ -58,13 +60,13 @@ export function RenameDialog({ open, onOpenChange, title, description, currentNa
           <div className="grid gap-4 py-4">
             <div className="grid grid-cols-4 items-center gap-4">
               <Label htmlFor="name" className="text-right">
-                Name
+                {t("name")}
               </Label>
               <Input
                 id="name"
                 value={name}
                 onChange={(e) => setName(e.target.value)}
-                placeholder="Enter new name"
+                placeholder={t("namePlaceholder")}
                 className="col-span-3"
                 required
               />
@@ -72,10 +74,10 @@ export function RenameDialog({ open, onOpenChange, title, description, currentNa
           </div>
           <DialogFooter>
             <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
-              Cancel
+              {t("actions.cancel")}
             </Button>
             <Button type="submit" disabled={isLoading || !name.trim() || name.trim() === currentName}>
-              {isLoading ? "Renaming..." : "Rename"}
+              {isLoading ? t("actions.renaming") : t("actions.rename")}
             </Button>
           </DialogFooter>
         </form>

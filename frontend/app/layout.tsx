@@ -3,6 +3,8 @@ import type { Metadata } from "next"
 import { GeistSans } from "geist/font/sans"
 import { GeistMono } from "geist/font/mono"
 import { Analytics } from "@vercel/analytics/next"
+import { NextIntlClientProvider } from "next-intl"
+import { getLocale, getMessages } from "next-intl/server"
 import { Toaster } from "@/components/ui/toaster"
 import { ThemeProvider } from "@/components/theme-provider"
 import { AuthProvider } from "@/lib/context/auth-context"
@@ -15,22 +17,27 @@ export const metadata: Metadata = {
   generator: "v0.app",
 }
 
-export default function RootLayout({
+export default async function RootLayout({
   children,
 }: Readonly<{
   children: React.ReactNode
 }>) {
+  const locale = await getLocale()
+  const messages = await getMessages()
+
   return (
-    <html lang="en">
+    <html lang={locale}>
       <body className={`font-sans ${GeistSans.variable} ${GeistMono.variable}`}>
-        <ThemeProvider attribute="class" defaultTheme="system" enableSystem disableTransitionOnChange>
-          <AuthProvider>
-            <Suspense fallback={null}>
-              {children}
-              <Toaster />
-            </Suspense>
-          </AuthProvider>
-        </ThemeProvider>
+        <NextIntlClientProvider locale={locale} messages={messages}>
+          <ThemeProvider attribute="class" defaultTheme="system" enableSystem disableTransitionOnChange>
+            <AuthProvider>
+              <Suspense fallback={null}>
+                {children}
+                <Toaster />
+              </Suspense>
+            </AuthProvider>
+          </ThemeProvider>
+        </NextIntlClientProvider>
         <Analytics />
       </body>
     </html>

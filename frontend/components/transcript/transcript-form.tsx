@@ -12,25 +12,26 @@ import {
   SelectValue,
 } from "@/components/ui/select"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { useTranslations } from "next-intl"
 
 interface TranscriptFormProps {
   isLoading: boolean
   onSubmit: (data: { url: string; language: string }) => void
 }
 
-const LANGUAGES = [
-  { value: "zh", label: "Chinese (Simplified)" },
-  { value: "en", label: "English" },
-  { value: "ja", label: "Japanese" },
-  { value: "ko", label: "Korean" },
-  { value: "es", label: "Spanish" },
-  { value: "fr", label: "French" },
-  { value: "de", label: "German" },
-]
-
 export function TranscriptForm({ isLoading, onSubmit }: TranscriptFormProps) {
+  const t = useTranslations("transcript")
   const [url, setUrl] = useState("")
   const [language, setLanguage] = useState("zh")
+  const languages = [
+    { value: "zh", label: t("form.languages.zh") },
+    { value: "en", label: t("form.languages.en") },
+    { value: "ja", label: t("form.languages.ja") },
+    { value: "ko", label: t("form.languages.ko") },
+    { value: "es", label: t("form.languages.es") },
+    { value: "fr", label: t("form.languages.fr") },
+    { value: "de", label: t("form.languages.de") },
+  ]
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
@@ -42,16 +43,16 @@ export function TranscriptForm({ isLoading, onSubmit }: TranscriptFormProps) {
   return (
     <Card className="w-full max-w-4xl mx-auto shadow-sm">
       <CardHeader>
-        <CardTitle>Video Transcript</CardTitle>
+        <CardTitle>{t("form.title")}</CardTitle>
         <CardDescription>
-          Generate transcript, summary, and translation from video URL.
+          {t("form.description")}
         </CardDescription>
       </CardHeader>
       <CardContent>
         <form onSubmit={handleSubmit} className="flex flex-col md:flex-row gap-4">
           <div className="flex-1 relative">
             <Input
-              placeholder="Enter video URL (e.g., YouTube, Bilibili)"
+              placeholder={t("form.urlPlaceholder")}
               value={url}
               onChange={(e) => setUrl(e.target.value)}
               disabled={isLoading}
@@ -68,10 +69,10 @@ export function TranscriptForm({ isLoading, onSubmit }: TranscriptFormProps) {
             >
               <SelectTrigger>
                 <Globe className="w-4 h-4 mr-2 text-muted-foreground" />
-                <SelectValue placeholder="Target Language" />
+                <SelectValue placeholder={t("form.targetLanguagePlaceholder")} />
               </SelectTrigger>
               <SelectContent>
-                {LANGUAGES.map((lang) => (
+                {languages.map((lang) => (
                   <SelectItem key={lang.value} value={lang.value}>
                     {lang.label}
                   </SelectItem>
@@ -81,7 +82,7 @@ export function TranscriptForm({ isLoading, onSubmit }: TranscriptFormProps) {
           </div>
 
           <Button type="submit" disabled={isLoading || !url.trim()}>
-            {isLoading ? "Processing..." : "Start"}
+            {isLoading ? t("form.submitProcessing") : t("form.submitStart")}
             {!isLoading && <Send className="w-4 h-4 ml-2" />}
           </Button>
         </form>

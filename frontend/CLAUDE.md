@@ -492,12 +492,4 @@ logger.info({ duration, operationType: 'rss_parse' }, 'Operation completed')
 - Fire-and-forget async operations without error handling
 - Optimistic updates without rollback mechanisms
 
----
-
-## 🔗 Quick Links to Detailed Docs
-
-- **Need to understand data flow?** → [Data Flow Guide](./docs/04-data-flow.md)
-- **Adding a new feature?** → [Development Guide](./docs/05-development-guide.md) + [Common Tasks](./docs/06-common-tasks.md) + [Advanced Tasks](./docs/06-advanced-tasks.md)
-- **Encountering an error?** → [Troubleshooting](./docs/07-troubleshooting.md)
-- **Looking for a specific file?** → [File Structure](./docs/03-file-structure.md)
-- **Setting up for first time?** → [Getting Started](./docs/01-getting-started.md)
+```

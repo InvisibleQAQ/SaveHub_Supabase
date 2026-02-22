@@ -1,0 +1,229 @@
+{
+  "articleList": {
+    "unknownFeed": "Unknown Feed",
+    "header": {
+      "viewModeArticles": "{viewMode} Articles",
+      "articleCount": "{count, plural, one {# article} other {# articles}}"
+    },
+    "sort": {
+      "date": "Date",
+      "title": "Title",
+      "feed": "Feed",
+      "readTime": "Read Time",
+      "sortByDate": "Sort by Date",
+      "sortByTitle": "Sort by Title",
+      "sortByFeed": "Sort by Feed",
+      "sortByReadTime": "Sort by Read Time"
+    },
+    "search": {
+      "placeholder": "Search articles..."
+    },
+    "menu": {
+      "markAsUnread": "Mark as Unread",
+      "markAsRead": "Mark as Read",
+      "removeStar": "Remove Star",
+      "addStar": "Add Star",
+      "openOriginal": "Open Original"
+    },
+    "meta": {
+      "readingTime": "{minutes} min read"
+    },
+    "empty": {
+      "title": "No articles found",
+      "adjustSearch": "Try adjusting your search terms",
+      "addFeeds": "Add some RSS feeds to get started"
+    }
+  },
+  "articleContent": {
+    "errors": {
+      "failedToFetchFullContent": "Failed to fetch full content"
+    },
+    "toasts": {
+      "linkCopiedTitle": "Link copied",
+      "linkCopiedDescription": "Article link copied to clipboard",
+      "errorTitle": "Error",
+      "failedToCopyLink": "Failed to copy link"
+    },
+    "empty": {
+      "title": "Select an article to read",
+      "description": "Choose an article from the list to view its content here. You can browse by feed, search for specific topics, or filter by read status."
+    },
+    "meta": {
+      "byAuthor": "By {author}",
+      "readingTime": "{minutes} min read"
+    },
+    "tooltips": {
+      "decreaseFontSize": "Decrease font size",
+      "increaseFontSize": "Increase font size",
+      "removeStar": "Remove star",
+      "addStar": "Add star",
+      "openOriginalArticle": "Open original article"
+    },
+    "menu": {
+      "markAsUnread": "Mark as Unread",
+      "markAsRead": "Mark as Read",
+      "shareArticle": "Share Article",
+      "copyLink": "Copy Link"
+    },
+    "status": {
+      "unread": "Unread",
+      "starred": "Starred"
+    },
+    "fullContent": {
+      "fetch": "Fetch Full Content",
+      "fetching": "Fetching...",
+      "showRss": "Show RSS Content",
+      "showFull": "Show Full Content",
+      "refetch": "Re-fetch full content"
+    },
+    "footer": {
+      "published": "Published {date}",
+      "fromFeed": "From {feedTitle}",
+      "readOriginal": "Read Original"
+    }
+  },
+  "repositories": {
+    "relatedGithubRepositories": "Related GitHub Repositories"
+  },
+  "addFeedDialog": {
+    "title": "Add RSS Feed",
+    "description": "Add an RSS feed by entering its URL directly or by discovering feeds from a website.",
+    "tabs": {
+      "directUrl": "Direct URL",
+      "discover": "Discover"
+    },
+    "fields": {
+      "feedUrlLabel": "RSS Feed URL",
+      "feedUrlPlaceholder": "https://example.com/feed.xml",
+      "websiteUrlLabel": "Website URL",
+      "websiteUrlPlaceholder": "https://example.com",
+      "folderOptional": "Folder (Optional)",
+      "selectFolder": "Select a folder",
+      "noFolder": "No Folder",
+      "refreshIntervalLabel": "Refresh Interval (minutes)",
+      "defaultPlaceholder": "Default: {minutes} minutes",
+      "defaultHint": "Leave empty to use default ({minutes} minutes)",
+      "discoveredFeeds": "Discovered Feeds"
+    },
+    "toggles": {
+      "enableDeduplication": "Enable Article Deduplication",
+      "enableDeduplicationDescription": "Filter out articles with identical title and content",
+      "enableAutoFetch": "Auto Fetch Full Content on Refresh",
+      "enableAutoFetchDescription": "Automatically extract full content from source URLs when this feed is refreshed"
+    },
+    "actions": {
+      "cancel": "Cancel",
+      "adding": "Adding...",
+      "addFeed": "Add Feed"
+    },
+    "toasts": {
+      "errorTitle": "Error",
+      "invalidFeedUrl": "Please enter a valid RSS feed URL",
+      "feedAlreadyExistsTitle": "Feed Already Exists",
+      "feedAlreadyExistsDescription": "{feedTitle} is already in your feed list",
+      "failedToAddFeedTitle": "Failed to Add Feed",
+      "unexpectedError": "An unexpected error occurred",
+      "successTitle": "Success",
+      "addedFeedWithArticles": "Added {feedTitle} with {count} articles",
+      "failedToAddRssFeed": "Failed to add RSS feed",
+      "websiteUrlRequired": "Please enter a website URL to discover feeds",
+      "noFeedsFoundTitle": "No feeds found",
+      "noFeedsFoundDescription": "Could not discover any RSS feeds for this website",
+      "failedToDiscoverFeeds": "Failed to discover RSS feeds"
+    }
+  },
+  "addFolderDialog": {
+    "title": "Add New Folder",
+    "description": "Create a new folder to organize your RSS feeds.",
+    "fields": {
+      "name": "Name",
+      "namePlaceholder": "Enter folder name"
+    },
+    "actions": {
+      "cancel": "Cancel",
+      "adding": "Adding...",
+      "addFolder": "Add Folder"
+    },
+    "toasts": {
+      "successTitle": "Success",
+      "errorTitle": "Error",
+      "folderCreated": "Folder {folderName} created successfully.",
+      "folderAlreadyExists": "Folder {folderName} already exists.",
+      "failedToCreateFolder": "Failed to create folder. Please try again."
+    }
+  },
+  "editFeedForm": {
+    "notFound": {
+      "title": "Feed Not Found",
+      "description": "The feed you're looking for doesn't exist.",
+      "backToAllArticles": "Back to All Articles"
+    },
+    "header": {
+      "title": "Edit Feed Properties",
+      "subtitle": "Update the properties of {feedTitle}"
+    },
+    "fields": {
+      "title": "Title",
+      "titlePlaceholder": "Feed title",
+      "rssUrl": "RSS Feed URL",
+      "rssUrlPlaceholder": "https://example.com/feed.xml",
+      "rssUrlHint": "Changing the URL will validate the new feed URL",
+      "description": "Description",
+      "descriptionPlaceholder": "Feed description (optional)",
+      "category": "Category",
+      "categoryPlaceholder": "Category (optional)",
+      "folder": "Folder",
+      "selectFolder": "Select a folder",
+      "noFolder": "No Folder",
+      "refreshInterval": "Refresh Interval (minutes)",
+      "refreshIntervalPlaceholder": "Default: {minutes} minutes",
+      "refreshIntervalHint": "How often to check for new articles (1 minute to 1 week). Default: {minutes} minutes"
+    },
+    "toggles": {
+      "enableDeduplication": "Enable Article Deduplication",
+      "enableDeduplicationDescription": "Automatically filter out articles with identical title and content",
+      "enableAutoFetch": "Auto Fetch Full Content on Refresh",
+      "enableAutoFetchDescription": "Automatically extract full content from source URLs when this feed is refreshed"
+    },
+    "actions": {
+      "saving": "Saving...",
+      "saveChanges": "Save Changes",
+      "cancel": "Cancel"
+    },
+    "toasts": {
+      "errorTitle": "Error",
+      "successTitle": "Success",
+      "invalidUrlTitle": "Invalid URL",
+      "duplicateFeedTitle": "Duplicate Feed",
+      "feedTitleRequired": "Feed title is required",
+      "feedUrlRequired": "Feed URL is required",
+      "invalidRssUrl": "The provided URL is not a valid RSS feed",
+      "feedUpdated": "Feed properties updated successfully",
+      "duplicateFeedDescription": "A feed with this URL already exists",
+      "failedToUpdateFeed": "Failed to update feed"
+    }
+  },
+  "renameDialog": {
+    "name": "Name",
+    "namePlaceholder": "Enter new name",
+    "actions": {
+      "cancel": "Cancel",
+      "renaming": "Renaming...",
+      "rename": "Rename"
+    }
+  },
+  "moveToFolderDialog": {
+    "title": "Move Feed to Folder",
+    "description": "Move {feedTitle} to a different folder or remove it from folders.",
+    "fields": {
+      "folder": "Folder",
+      "selectFolder": "Select a folder",
+      "noFolder": "No Folder"
+    },
+    "actions": {
+      "cancel": "Cancel",
+      "moving": "Moving...",
+      "move": "Move"
+    }
+  }
+}

@@ -15,6 +15,7 @@ import {
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { REPOSITORY_CATEGORIES, type DynamicCategoryItem } from "@/lib/repository-categories"
+import { useTranslations } from "next-intl"
 
 /** 获取平台图标 - 与 repository-card.tsx 保持一致 */
 function getPlatformIcon(platform: string): LucideIcon {
@@ -58,6 +59,7 @@ function CollapsibleSection({
   defaultVisibleCount = 10,
   getItemIcon,
 }: CollapsibleSectionProps) {
+  const tSidebar = useTranslations("repository.sidebar")
   const [isExpanded, setIsExpanded] = useState(false)
 
   const visibleItems = isExpanded ? items : items.slice(0, defaultVisibleCount)
@@ -109,12 +111,12 @@ function CollapsibleSection({
           {isExpanded ? (
             <>
               <ChevronDown className="w-3 h-3" />
-              收起
+              {tSidebar("collapse")}
             </>
           ) : (
             <>
               <ChevronRight className="w-3 h-3" />
-              显示全部 {items.length} 个
+              {tSidebar("showAll", { count: items.length })}
             </>
           )}
         </button>
@@ -132,11 +134,30 @@ export function CategorySidebar({
   selectedDynamicFilter,
   onSelectDynamicFilter,
 }: CategorySidebarProps) {
+  const t = useTranslations("repository")
   const [searchQuery, setSearchQuery] = useState("")
+  const categoryNameMap: Record<string, string> = {
+    all: t("categories.all"),
+    web: t("categories.web"),
+    mobile: t("categories.mobile"),
+    desktop: t("categories.desktop"),
+    database: t("categories.database"),
+    ai: t("categories.ai"),
+    devtools: t("categories.devtools"),
+    security: t("categories.security"),
+    game: t("categories.game"),
+    design: t("categories.design"),
+    productivity: t("categories.productivity"),
+    education: t("categories.education"),
+    social: t("categories.social"),
+    analytics: t("categories.analytics"),
+  }
+
+  const getCategoryName = (id: string, fallback: string) => categoryNameMap[id] || fallback
 
   // 过滤分类
   const filteredCategories = REPOSITORY_CATEGORIES.filter((category) =>
-    category.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+    getCategoryName(category.id, category.name).toLowerCase().includes(searchQuery.toLowerCase()) ||
     category.id.toLowerCase().includes(searchQuery.toLowerCase())
   )
 
@@ -156,7 +177,7 @@ export function CategorySidebar({
           <Search className="absolute left-2 inset-y-0 my-auto w-4 h-4 text-muted-foreground pointer-events-none" />
           <input
             type="text"
-            placeholder="搜索分类..."
+            placeholder={t("sidebar.searchCategoryPlaceholder")}
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             className="w-full pl-8 pr-3 py-1.5 text-sm bg-muted/50 border-0 rounded-md focus:outline-none focus:ring-1 focus:ring-primary/50 placeholder:text-muted-foreground/60"
@@ -165,7 +186,7 @@ export function CategorySidebar({
       </div>
 
       <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider px-3 py-2">
-        分类
+        {t("sidebar.category")}
       </h3>
       {filteredCategories.map((category) => {
         const count = counts[category.id] || 0
@@ -184,7 +205,7 @@ export function CategorySidebar({
           >
             <div className="flex items-center gap-2.5">
               <span className="text-base">{category.icon}</span>
-              <span className="font-medium">{category.name}</span>
+              <span className="font-medium">{getCategoryName(category.id, category.name)}</span>
             </div>
             <span
               className={cn(
@@ -203,7 +224,7 @@ export function CategorySidebar({
       {/* Platform 分类 */}
       {filteredPlatforms.length > 0 && (
         <CollapsibleSection
-          title="平台"
+          title={t("sidebar.platform")}
           icon="💻"
           items={filteredPlatforms}
           selectedValue={selectedDynamicFilter?.type === "platform" ? selectedDynamicFilter.value : null}
@@ -215,7 +236,7 @@ export function CategorySidebar({
       {/* Tags 分类 */}
       {filteredTags.length > 0 && (
         <CollapsibleSection
-          title="标签"
+          title={t("sidebar.tag")}
           icon="🏷️"
           items={filteredTags}
           selectedValue={selectedDynamicFilter?.type === "tag" ? selectedDynamicFilter.value : null}

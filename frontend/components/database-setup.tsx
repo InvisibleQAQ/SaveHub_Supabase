@@ -6,8 +6,10 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Database, CheckCircle2, AlertCircle, Loader2 } from "lucide-react"
 import { useRSSStore } from "@/lib/store"
+import { useTranslations } from "next-intl"
 
 export function DatabaseSetup() {
+  const t = useTranslations("common.databaseSetup")
   const [isChecking, setIsChecking] = useState(false)
   const { checkDatabaseStatus, setDatabaseReady } = useRSSStore()
 
@@ -36,8 +38,8 @@ export function DatabaseSetup() {
               <Database className="w-6 h-6 text-primary" />
             </div>
             <div>
-              <CardTitle className="text-2xl">Database Setup Required</CardTitle>
-              <CardDescription>Initialize your RSS Reader database to get started</CardDescription>
+              <CardTitle className="text-2xl">{t("title")}</CardTitle>
+              <CardDescription>{t("description")}</CardDescription>
             </div>
           </div>
         </CardHeader>
@@ -45,8 +47,7 @@ export function DatabaseSetup() {
           <Alert>
             <AlertCircle className="h-4 w-4" />
             <AlertDescription>
-              Your Supabase database needs to be initialized before you can use the RSS Reader. Follow the steps below
-              to set up your database.
+              {t("alert")}
             </AlertDescription>
           </Alert>
 
@@ -57,10 +58,9 @@ export function DatabaseSetup() {
                   1
                 </div>
                 <div className="flex-1">
-                  <h3 className="font-medium mb-1">Run the Database Script</h3>
+                  <h3 className="font-medium mb-1">{t("steps.runScriptTitle")}</h3>
                   <p className="text-sm text-muted-foreground mb-3">
-                    Click the "Run Script" button below to execute the database initialization script. This will create
-                    all necessary tables and indexes.
+                    {t("steps.runScriptDescription")}
                   </p>
                   <div className="bg-muted p-3 rounded-md">
                     <code className="text-sm">scripts/001_create_tables.sql</code>
@@ -73,9 +73,9 @@ export function DatabaseSetup() {
                   2
                 </div>
                 <div className="flex-1">
-                  <h3 className="font-medium mb-1">Verify Database Setup</h3>
+                  <h3 className="font-medium mb-1">{t("steps.verifyTitle")}</h3>
                   <p className="text-sm text-muted-foreground">
-                    After running the script, click "Check Database" to verify that everything is set up correctly.
+                    {t("steps.verifyDescription")}
                   </p>
                 </div>
               </div>
@@ -87,12 +87,12 @@ export function DatabaseSetup() {
                   {isChecking ? (
                     <>
                       <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                      Checking Database...
+                      {t("actions.checkingDatabase")}
                     </>
                   ) : (
                     <>
                       <CheckCircle2 className="w-4 h-4 mr-2" />
-                      Check Database
+                      {t("actions.checkDatabase")}
                     </>
                   )}
                 </Button>
@@ -102,8 +102,7 @@ export function DatabaseSetup() {
 
           <Alert className="bg-blue-50 dark:bg-blue-950 border-blue-200 dark:border-blue-800">
             <AlertDescription className="text-sm">
-              <strong>Note:</strong> You can find the database script in the Scripts section. The script will create
-              tables for folders, feeds, articles, and settings with proper indexes and relationships.
+              <strong>{t("noteLabel")}</strong> {t("noteDescription")}
             </AlertDescription>
           </Alert>
         </CardContent>

@@ -2,6 +2,7 @@
 
 import * as React from "react"
 import { Check, ChevronDown } from "lucide-react"
+import { useTranslations } from "next-intl"
 
 import { cn } from "@/lib/utils"
 import { Input } from "@/components/ui/input"
@@ -38,14 +39,16 @@ export function Combobox({
   options,
   value = "",
   onValueChange,
-  placeholder = "选择选项...",
-  searchPlaceholder = "搜索...",
-  emptyText = "未找到选项",
+  placeholder,
+  emptyText,
   className,
   disabled = false,
 }: ComboboxProps) {
+  const t = useTranslations("common.combobox")
   const [open, setOpen] = React.useState(false)
   const inputRef = React.useRef<HTMLInputElement>(null)
+  const resolvedPlaceholder = placeholder ?? t("placeholder")
+  const resolvedEmptyText = emptyText ?? t("emptyText")
 
   const handleSelect = (selectedValue: string) => {
     onValueChange?.(selectedValue)
@@ -75,7 +78,7 @@ export function Combobox({
           value={value}
           onChange={handleInputChange}
           onFocus={() => setOpen(true)}
-          placeholder={placeholder}
+          placeholder={resolvedPlaceholder}
           disabled={disabled}
           className={cn("pr-8", className)}
         />
@@ -97,7 +100,7 @@ export function Combobox({
       >
         <Command>
           <CommandList>
-            <CommandEmpty>{emptyText}</CommandEmpty>
+            <CommandEmpty>{resolvedEmptyText}</CommandEmpty>
             <CommandGroup>
               {filteredOptions.map((option) => (
                 <CommandItem

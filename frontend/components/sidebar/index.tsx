@@ -10,8 +10,10 @@ import { DeleteFolderDialog } from "./delete-folder-dialog"
 import { DeleteFeedDialog } from "./delete-feed-dialog"
 import { useRSSStore } from "@/lib/store"
 import { useSidebarState } from "./use-sidebar-state"
+import { useTranslations } from "next-intl"
 
 export function Sidebar() {
+  const t = useTranslations("sidebar")
   const { articles, repositories, getUnreadCount, isSidebarCollapsed, toggleSidebar, renameFolder, updateFeed, settings, updateSettings } = useRSSStore()
 
   const {
@@ -103,8 +105,13 @@ export function Sidebar() {
       <RenameDialog
         open={renameDialog.open}
         onOpenChange={(open) => setRenameDialog((prev) => ({ ...prev, open }))}
-        title={renameDialog.type === "folder" ? "Rename Folder" : "Rename Feed"}
-        description={`Enter a new name for this ${renameDialog.type}.`}
+        title={renameDialog.type === "folder" ? t("renameDialog.renameFolderTitle") : t("renameDialog.renameFeedTitle")}
+        description={t("renameDialog.description", {
+          type:
+            renameDialog.type === "folder"
+              ? t("renameDialog.folderType")
+              : t("renameDialog.feedType"),
+        })}
         currentName={renameDialog.currentName}
         onRename={renameDialog.type === "folder" ? handleRenameFolder : handleRenameFeed}
       />

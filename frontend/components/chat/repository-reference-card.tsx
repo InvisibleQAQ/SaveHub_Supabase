@@ -3,12 +3,14 @@
 import { Star, ExternalLink } from "lucide-react"
 import type { RetrievedSource } from "@/lib/api/agentic-rag"
 import { getLanguageColor } from "@/lib/language-colors"
+import { useTranslations } from "next-intl"
 
 interface RepositoryReferenceCardProps {
   source: RetrievedSource
 }
 
 export function RepositoryReferenceCard({ source }: RepositoryReferenceCardProps) {
+  const t = useTranslations("chat.sources")
   const languageColor = getLanguageColor(source.language || null)
 
   // 格式化数字
@@ -70,7 +72,7 @@ export function RepositoryReferenceCard({ source }: RepositoryReferenceCardProps
           rel="noopener noreferrer"
           className="inline-flex items-center gap-1 text-xs text-primary hover:underline"
         >
-          在 GitHub 查看
+          {t("viewOnGitHub")}
           <ExternalLink className="w-3 h-3" />
         </a>
       )}

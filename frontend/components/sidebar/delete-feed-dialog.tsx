@@ -14,6 +14,7 @@ import {
 import { useRSSStore } from "@/lib/store"
 import type { DeleteFeedDialogState } from "./types"
 import { Loader2 } from "lucide-react"
+import { useTranslations } from "next-intl"
 
 interface DeleteFeedDialogProps {
   state: DeleteFeedDialogState
@@ -21,6 +22,7 @@ interface DeleteFeedDialogProps {
 }
 
 export function DeleteFeedDialog({ state, onOpenChange }: DeleteFeedDialogProps) {
+  const t = useTranslations("sidebar.deleteFeedDialog")
   const { removeFeed } = useRSSStore()
   const [isPending, setIsPending] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -47,11 +49,11 @@ export function DeleteFeedDialog({ state, onOpenChange }: DeleteFeedDialogProps)
         onOpenChange(false)
       } else {
         // Show error if deletion failed
-        setError(result.error || 'Failed to delete feed')
+        setError(result.error || t("failedToDeleteFeed"))
       }
     } catch (err) {
       // Handle unexpected errors
-      setError(err instanceof Error ? err.message : 'An unexpected error occurred')
+      setError(err instanceof Error ? err.message : t("unexpectedError"))
     } finally {
       setIsPending(false)
     }
@@ -61,19 +63,19 @@ export function DeleteFeedDialog({ state, onOpenChange }: DeleteFeedDialogProps)
     <AlertDialog open={state.open} onOpenChange={handleClose}>
       <AlertDialogContent>
         <AlertDialogHeader>
-          <AlertDialogTitle>Delete Feed</AlertDialogTitle>
+          <AlertDialogTitle>{t("title")}</AlertDialogTitle>
           <AlertDialogDescription>
-            Are you sure you want to delete "{state.feedTitle}"? This action cannot be undone.
+            {t("description", { feedTitle: state.feedTitle })}
             {error && (
               <span className="block mt-2 text-destructive font-medium">
-                Error: {error}
+                {t("errorPrefix", { error })}
               </span>
             )}
           </AlertDialogDescription>
         </AlertDialogHeader>
 
         <AlertDialogFooter>
-          <AlertDialogCancel disabled={isPending}>Cancel</AlertDialogCancel>
+          <AlertDialogCancel disabled={isPending}>{t("cancel")}</AlertDialogCancel>
           <AlertDialogAction
             onClick={handleConfirm}
             disabled={isPending}
@@ -82,10 +84,10 @@ export function DeleteFeedDialog({ state, onOpenChange }: DeleteFeedDialogProps)
             {isPending ? (
               <>
                 <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                Deleting...
+                {t("deleting")}
               </>
             ) : (
-              'Delete Feed'
+              t("confirm")
             )}
           </AlertDialogAction>
         </AlertDialogFooter>

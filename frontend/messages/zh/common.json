@@ -1,0 +1,72 @@
+{
+  "app": {
+    "name": "SaveHub"
+  },
+  "combobox": {
+    "placeholder": "选择选项...",
+    "searchPlaceholder": "搜索...",
+    "emptyText": "未找到选项"
+  },
+  "databaseSetup": {
+    "title": "需要进行数据库初始化",
+    "description": "初始化你的 RSS 阅读器数据库以开始使用",
+    "alert": "在使用 RSS 阅读器之前，需要先初始化你的 Supabase 数据库。请按照以下步骤完成设置。",
+    "steps": {
+      "runScriptTitle": "运行数据库脚本",
+      "runScriptDescription": "点击下方的 Run Script 按钮执行数据库初始化脚本。该脚本会创建所有必要的数据表和索引。",
+      "verifyTitle": "验证数据库设置",
+      "verifyDescription": "运行脚本后，点击 Check Database 以验证是否配置正确。"
+    },
+    "actions": {
+      "checkDatabase": "检查数据库",
+      "checkingDatabase": "正在检查数据库..."
+    },
+    "noteLabel": "注意：",
+    "noteDescription": "你可以在 Scripts 部分找到数据库脚本。该脚本会创建 folders、feeds、articles 和 settings 数据表，并包含正确的索引与关联关系。"
+  },
+  "apiValidation": {
+    "errors": {
+      "loginRequired": "请先登录后再验证API配置",
+      "serverError": "服务器错误: {status} - {message}",
+      "sessionExpired": "会话已过期，请重新登录",
+      "networkError": "无法连接到验证服务器，请检查网络连接",
+      "validationFailed": "验证失败: {message}",
+      "unknownValidationError": "模型验证过程中发生未知错误"
+    },
+    "apiBaseUrlErrors": {
+      "required": "API 端点 URL不能为空",
+      "invalidProtocol": "API 端点 URL必须使用HTTP或HTTPS协议",
+      "invalidFormat": "API 端点 URL格式无效"
+    }
+  },
+  "auth": {
+    "subtitleSignIn": "登录以访问你的订阅",
+    "subtitleRegister": "创建新账号",
+    "fields": {
+      "email": "邮箱",
+      "password": "密码",
+      "emailPlaceholder": "you@example.com",
+      "passwordPlaceholder": "••••••••"
+    },
+    "actions": {
+      "signIn": "登录",
+      "signInLower": "登录",
+      "signUp": "注册",
+      "createAccount": "创建账号",
+      "signingIn": "正在登录...",
+      "creatingAccount": "正在创建账号..."
+    },
+    "prompts": {
+      "noAccount": "还没有账号？",
+      "hasAccount": "已有账号？"
+    },
+    "errors": {
+      "authenticationFailed": "身份验证失败"
+    }
+  },
+  "store": {
+    "errors": {
+      "failedToLoadSavedData": "加载已保存数据失败"
+    }
+  }
+}

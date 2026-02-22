@@ -25,12 +25,7 @@ import {
 } from "@/lib/api/agentic-rag"
 import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
-
-const QUICK_PROMPTS = [
-  "最近收藏的仓库里，最值得关注的 3 个项目是什么？",
-  "帮我总结今天新增文章的核心观点",
-  "基于我的收藏内容，给出下周学习计划",
-]
+import { useTranslations } from "next-intl"
 
 interface ChatState {
   messages: Message[]
@@ -119,6 +114,7 @@ function mergeSources(
 }
 
 export function ChatPage() {
+  const t = useTranslations("chat")
   const [state, setState] = useState<ChatState>({
     messages: [],
     isLoading: false,
@@ -132,6 +128,11 @@ export function ChatPage() {
   const [input, setInput] = useState("")
   const scrollRef = useRef<HTMLDivElement>(null)
   const abortRef = useRef<AbortController | null>(null)
+  const quickPrompts = [
+    t("emptyState.quickPrompts.topProjects"),
+    t("emptyState.quickPrompts.todayArticles"),
+    t("emptyState.quickPrompts.nextWeekPlan"),
+  ]
 
   useEffect(() => {
     scrollRef.current?.scrollIntoView({ behavior: "smooth" })
@@ -155,7 +156,7 @@ export function ChatPage() {
       messages: newMessages,
       messageSources: newMessageSources,
       isLoading: true,
-      currentStatus: "思考中...",
+      currentStatus: t("statusMessages.thinking"),
       stages: initialStages(),
       stageLogs: [],
       clarificationPrompt: null,
@@ -174,7 +175,7 @@ export function ChatPage() {
         (event: AgenticStreamEvent) => {
           switch (event.event) {
             case "progress": {
-              const progressText = event.data.display_text || event.data.message || "思考中..."
+              const progressText = event.data.display_text || event.data.message || t("statusMessages.thinking")
               const stageKey = stageKeyFromProgress(event.data.stage)
               const logStage = (stageKey ?? "system") as AgentStageLogStage
 
@@ -195,7 +196,7 @@ export function ChatPage() {
             case "rewrite": {
               const rewrittenCount = event.data.count ?? event.data.rewritten_queries.length
               const rewriteLog =
-                event.data.display_text || `重写完成，拆分 ${rewrittenCount} 个子问题`
+                event.data.display_text || t("statusMessages.rewriteDone", { count: rewrittenCount })
 
               setState((prev) => ({
                 ...prev,
@@ -216,10 +217,10 @@ export function ChatPage() {
                 event.data.tool_name === "retrieve_parent_chunks"
               const defaultToolCallText =
                 event.data.tool_name === "retrieve_parent_chunks"
-                  ? `第 ${formatQuestionIndex(event.data.question_index)} 个子问题进入父块回溯补全`
+                  ? t("statusMessages.enterParentBackfill", { questionIndex: formatQuestionIndex(event.data.question_index) })
                   : isExpandContext
-                    ? `第 ${formatQuestionIndex(event.data.question_index)} 个子问题进入二次检索`
-                    : `正在检索第 ${formatQuestionIndex(event.data.question_index)} 个子问题`
+                    ? t("statusMessages.enterSecondaryRetrieval", { questionIndex: formatQuestionIndex(event.data.question_index) })
+                    : t("statusMessages.retrievingQuestion", { questionIndex: formatQuestionIndex(event.data.question_index) })
               const toolCallText = event.data.display_text || defaultToolCallText
 
               setState((prev) => ({
@@ -245,10 +246,19 @@ export function ChatPage() {
 
               const fallbackResultText =
                 event.data.tool_name === "retrieve_parent_chunks"
-                  ? `第 ${formatQuestionIndex(event.data.question_index)} 个子问题父块补全返回 ${toNumber(event.data.result_count)} 条结果`
+                  ? t("statusMessages.parentBackfillReturned", {
+                      questionIndex: formatQuestionIndex(event.data.question_index),
+                      resultCount: toNumber(event.data.result_count),
+                    })
                   : event.data.tool_name === "expand_context"
-                    ? `第 ${formatQuestionIndex(event.data.question_index)} 个子问题二次检索返回 ${toNumber(event.data.result_count)} 条结果`
-                    : `第 ${formatQuestionIndex(event.data.question_index)} 个子问题检索返回 ${toNumber(event.data.result_count)} 条结果`
+                    ? t("statusMessages.secondaryRetrievalReturned", {
+                        questionIndex: formatQuestionIndex(event.data.question_index),
+                        resultCount: toNumber(event.data.result_count),
+                      })
+                    : t("statusMessages.retrievalReturned", {
+                        questionIndex: formatQuestionIndex(event.data.question_index),
+                        resultCount: toNumber(event.data.result_count),
+                      })
               const toolResultText = event.data.display_text || fallbackResultText
 
               setState((prev) => ({
@@ -278,7 +288,10 @@ export function ChatPage() {
             case "aggregation": {
               const aggregationText =
                 event.data.display_text ||
-                `已完成 ${event.data.completed}/${event.data.total_questions} 个子问题，正在聚合答案`
+                t("statusMessages.aggregatingAfterCompleted", {
+                  completed: event.data.completed,
+                  totalQuestions: event.data.total_questions,
+                })
 
               setState((prev) => ({
                 ...prev,
@@ -293,9 +306,9 @@ export function ChatPage() {
             }
 
             case "clarification_required": {
-              const clarificationMessage = event.data.message || "请补充更多问题细节。"
+              const clarificationMessage = event.data.message || t("statusMessages.needMoreDetails")
               const clarificationStatus =
-                event.data.display_text || "需要补充问题细节后才能继续检索"
+                event.data.display_text || t("statusMessages.clarificationRequiredBeforeContinue")
 
               setState((prev) => ({
                 ...prev,
@@ -325,7 +338,7 @@ export function ChatPage() {
               assistantContent += event.data.delta
 
               const contentStatus =
-                event.data.display_text || "证据准备完成，正在生成最终回答"
+                event.data.display_text || t("statusMessages.generatingFinalAnswer")
               setState((prev) => ({
                 ...prev,
                 currentStatus: contentStatus,
@@ -350,7 +363,7 @@ export function ChatPage() {
 
             case "done": {
               sources = mergeSources(sources, event.data.sources || [])
-              const doneLog = event.data.display_text || "回答完成"
+              const doneLog = event.data.display_text || t("statusMessages.answerCompleted")
 
               setState((prev) => ({
                 ...prev,
@@ -417,7 +430,7 @@ export function ChatPage() {
     }))
   }
 
-  const statusText = state.currentStatus || (state.stageLogs.length > 0 ? "回答完成，可展开查看流程" : null)
+  const statusText = state.currentStatus || (state.stageLogs.length > 0 ? t("statusMessages.answerCompletedExpandable") : null)
   const shouldShowStatus = Boolean(statusText)
   const lastMessageIndex = state.messages.length - 1
   const statusBeforeAssistantIndex =
@@ -436,13 +449,13 @@ export function ChatPage() {
             <Sparkles className="w-5 h-5 text-primary" />
           </div>
           <div className="flex-1">
-            <h1 className="font-semibold">智能问答</h1>
+            <h1 className="font-semibold">{t("page.title")}</h1>
             <p className="text-sm text-muted-foreground">
-              基于您的文章和仓库进行问答
+              {t("page.subtitle")}
             </p>
           </div>
           <span className="hidden rounded-full border border-border/70 bg-card/70 px-2.5 py-1 text-xs text-muted-foreground md:inline-flex">
-            Agentic RAG
+            {t("page.badge")}
           </span>
           <span
             className={cn(
@@ -452,7 +465,7 @@ export function ChatPage() {
                 : "border-emerald-500/30 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300"
             )}
           >
-            {state.isLoading ? "Streaming" : "Ready"}
+            {state.isLoading ? t("page.state.streaming") : t("page.state.ready")}
           </span>
         </div>
       </div>
@@ -464,12 +477,12 @@ export function ChatPage() {
             <div className="py-10">
               <div className="mx-auto max-w-2xl rounded-2xl border border-border/70 bg-card/80 p-6 text-center shadow-sm">
                 <MessageSquare className="w-12 h-12 mx-auto text-primary/70 mb-4" />
-                <h2 className="text-lg font-semibold mb-2">开始对话</h2>
+                <h2 className="text-lg font-semibold mb-2">{t("emptyState.title")}</h2>
                 <p className="text-sm text-muted-foreground">
-                输入问题，我会从您的文章和仓库中检索相关信息来回答
+                  {t("emptyState.description")}
                 </p>
                 <div className="mt-5 flex flex-wrap justify-center gap-2">
-                  {QUICK_PROMPTS.map((prompt) => (
+                  {quickPrompts.map((prompt) => (
                     <Button
                       key={prompt}
                       type="button"
@@ -534,14 +547,14 @@ export function ChatPage() {
             onKeyDown={handleKeyDown}
             placeholder={
               state.clarificationPrompt
-                ? "请先补充上方澄清问题的细节..."
-                : "输入您的问题..."
+                ? t("input.clarificationPlaceholder")
+                : t("input.placeholder")
             }
             disabled={state.isLoading}
           />
           {state.isLoading && (
             <PromptInputStop onClick={handleStop}>
-              停止生成
+              {t("input.stopGenerating")}
             </PromptInputStop>
           )}
           <PromptInputSubmit

@@ -4,6 +4,7 @@ import { useState, useEffect, useMemo } from "react"
 import Link from "next/link"
 import { Rss, Edit, Trash2, Check, ExternalLink, Settings, AlertCircle, RefreshCw, ArrowRightToLine, Loader2 } from "lucide-react"
 import { useRouter } from "next/navigation"
+import { useTranslations } from "next-intl"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import {
@@ -65,6 +66,7 @@ interface FeedItemProps {
 }
 
 export function FeedItem({ feed, unreadCount, isActive, variant, onRename, onMove, onDelete, onDragStart, onDragOver, onDrop, isDragging }: FeedItemProps) {
+  const t = useTranslations("sidebar")
   const [isRefreshing, setIsRefreshing] = useState(false)
   const { markFeedAsRead, addArticles, updateFeed } = useRSSStore()
   const { toast } = useToast()
@@ -137,20 +139,20 @@ export function FeedItem({ feed, unreadCount, isActive, variant, onRename, onMov
       })
 
       toast({
-        title: "Feed refreshed",
+        title: t("refresh.feedRefreshedTitle"),
         description: newArticlesCount === 0
-          ? `"${feed.title}" has no new articles`
-          : `Found ${newArticlesCount} new article${newArticlesCount > 1 ? 's' : ''} in "${feed.title}"`,
+          ? t("refresh.feedNoNewArticles", { feedTitle: feed.title })
+          : t("refresh.feedFoundNewArticles", { articleCount: newArticlesCount, feedTitle: feed.title }),
       })
     } catch (error) {
       console.error(`Error refreshing feed ${feed.title}:`, error)
-      const errorMessage = error instanceof Error ? error.message : "Failed to refresh feed"
+      const errorMessage = error instanceof Error ? error.message : t("refresh.failedToRefreshFeed")
       await updateFeed(feed.id, {
         lastFetchStatus: "failed",
         lastFetchError: errorMessage,
       })
       toast({
-        title: "Refresh failed",
+        title: t("refresh.refreshFailedTitle"),
         description: errorMessage,
         variant: "destructive",
       })
@@ -208,7 +210,9 @@ export function FeedItem({ feed, unreadCount, isActive, variant, onRename, onMov
                 <p className="font-medium">{feed.title}</p>
                 {feed.lastFetchStatus === "failed" && (
                   <p className="text-xs text-destructive mt-1">
-                    Last refresh failed: {feed.lastFetchError || "Unknown error"}
+                    {t("feeds.status.lastRefreshFailedWithError", {
+                      error: feed.lastFetchError || t("feeds.status.unknownError"),
+                    })}
                   </p>
                 )}
               </TooltipContent>
@@ -222,35 +226,35 @@ export function FeedItem({ feed, unreadCount, isActive, variant, onRename, onMov
             ) : (
               <RefreshCw className="h-4 w-4 mr-2" />
             )}
-            Refresh Feed
+            {t("feeds.menu.refreshFeed")}
           </ContextMenuItem>
           {onMove && (
             <ContextMenuItem onClick={handleMove}>
               <ArrowRightToLine className="h-4 w-4 mr-2" />
-              Move to Folder
+              {t("feeds.menu.moveToFolder")}
             </ContextMenuItem>
           )}
           <ContextMenuSeparator />
           <ContextMenuItem onClick={handleEditProperties}>
             <Settings className="h-4 w-4 mr-2" />
-            Edit Feed Properties
+            {t("feeds.menu.editProperties")}
           </ContextMenuItem>
           <ContextMenuItem onClick={handleRename}>
             <Edit className="h-4 w-4 mr-2" />
-            Rename
+            {t("feeds.menu.rename")}
           </ContextMenuItem>
           <ContextMenuItem onClick={handleDelete} variant="destructive">
             <Trash2 className="h-4 w-4 mr-2" />
-            Delete
+            {t("feeds.menu.delete")}
           </ContextMenuItem>
           <ContextMenuSeparator />
           <ContextMenuItem onClick={handleMarkAllAsRead}>
             <Check className="h-4 w-4 mr-2" />
-            Mark all as read
+            {t("feeds.menu.markAllAsRead")}
           </ContextMenuItem>
           <ContextMenuItem onClick={handleOpenURL}>
             <ExternalLink className="h-4 w-4 mr-2" />
-            Open Feed URL
+            {t("feeds.menu.openFeedUrl")}
           </ContextMenuItem>
         </ContextMenuContent>
       </ContextMenu>
@@ -293,7 +297,7 @@ export function FeedItem({ feed, unreadCount, isActive, variant, onRename, onMov
                             <AlertCircle className="h-4 w-4 text-destructive flex-shrink-0" />
                           </TooltipTrigger>
                           <TooltipContent>
-                            <p className="text-xs">Last refresh failed</p>
+                            <p className="text-xs">{t("feeds.status.lastRefreshFailed")}</p>
                             {feed.lastFetchError && (
                               <p className="text-xs text-muted-foreground mt-1">{feed.lastFetchError}</p>
                             )}
@@ -320,35 +324,35 @@ export function FeedItem({ feed, unreadCount, isActive, variant, onRename, onMov
           ) : (
             <RefreshCw className="h-4 w-4 mr-2" />
           )}
-          Refresh Feed
+          {t("feeds.menu.refreshFeed")}
         </ContextMenuItem>
         {onMove && (
           <ContextMenuItem onClick={handleMove}>
             <ArrowRightToLine className="h-4 w-4 mr-2" />
-            Move to Folder
+            {t("feeds.menu.moveToFolder")}
           </ContextMenuItem>
         )}
         <ContextMenuSeparator />
         <ContextMenuItem onClick={handleEditProperties}>
           <Settings className="h-4 w-4 mr-2" />
-          Edit Feed Properties
+          {t("feeds.menu.editProperties")}
         </ContextMenuItem>
         <ContextMenuItem onClick={handleRename}>
           <Edit className="h-4 w-4 mr-2" />
-          Rename
+          {t("feeds.menu.rename")}
         </ContextMenuItem>
         <ContextMenuItem onClick={handleDelete} variant="destructive">
           <Trash2 className="h-4 w-4 mr-2" />
-          Delete
+          {t("feeds.menu.delete")}
         </ContextMenuItem>
         <ContextMenuSeparator />
         <ContextMenuItem onClick={handleMarkAllAsRead}>
           <Check className="h-4 w-4 mr-2" />
-          Mark all as read
+          {t("feeds.menu.markAllAsRead")}
         </ContextMenuItem>
         <ContextMenuItem onClick={handleOpenURL}>
           <ExternalLink className="h-4 w-4 mr-2" />
-          Open Feed URL
+          {t("feeds.menu.openFeedUrl")}
         </ContextMenuItem>
       </ContextMenuContent>
     </ContextMenu>

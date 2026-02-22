@@ -1,0 +1,143 @@
+{
+  "brand": {
+    "name": "SaveHub"
+  },
+  "tooltips": {
+    "pinSidebar": "固定侧边栏",
+    "unpinSidebar": "取消固定侧边栏",
+    "collapseSidebar": "收起侧边栏",
+    "expandSidebar": "展开侧边栏",
+    "logout": "退出登录",
+    "helpShortcuts": "帮助与快捷键"
+  },
+  "search": {
+    "placeholder": "搜索订阅源和文件夹..."
+  },
+  "views": {
+    "allArticles": "全部文章",
+    "unread": "未读",
+    "starred": "已收藏",
+    "chat": "聊天",
+    "transcript": "转录",
+    "repository": "仓库",
+    "feedsCount": "订阅源（{count}）"
+  },
+  "actions": {
+    "addFeed": "添加订阅源",
+    "addFolder": "添加文件夹",
+    "addFirstFeed": "添加你的第一个订阅源",
+    "settings": "设置",
+    "logout": "退出登录"
+  },
+  "feeds": {
+    "dropToRoot": "拖到这里可移动到根级",
+    "noMatchSearch": "没有匹配搜索条件的订阅源",
+    "empty": "尚未添加订阅源",
+    "menu": {
+      "refreshFeed": "刷新订阅源",
+      "moveToFolder": "移动到文件夹",
+      "editProperties": "编辑订阅源属性",
+      "rename": "重命名",
+      "delete": "删除",
+      "markAllAsRead": "全部标记为已读",
+      "openFeedUrl": "打开订阅源链接"
+    },
+    "status": {
+      "lastRefreshFailed": "上次刷新失败",
+      "lastRefreshFailedWithError": "上次刷新失败：{error}",
+      "unknownError": "未知错误"
+    }
+  },
+  "folders": {
+    "noFolder": "无文件夹",
+    "menu": {
+      "addFeedToFolder": "向文件夹添加订阅源",
+      "renameFolder": "重命名文件夹",
+      "deleteFolder": "删除文件夹"
+    }
+  },
+  "renameDialog": {
+    "renameFolderTitle": "重命名文件夹",
+    "renameFeedTitle": "重命名订阅源",
+    "description": "请输入此{type}的新名称。"
+  },
+  "deleteFeedDialog": {
+    "title": "删除订阅源",
+    "description": "确定要删除 {feedTitle} 吗？此操作无法撤销。",
+    "errorPrefix": "错误：{error}",
+    "cancel": "取消",
+    "deleting": "删除中...",
+    "confirm": "删除订阅源",
+    "failedToDeleteFeed": "删除订阅源失败",
+    "unexpectedError": "发生了意外错误"
+  },
+  "deleteFolderDialog": {
+    "title": "删除文件夹",
+    "description": "你希望如何处理 {folderName} 中的订阅源？",
+    "options": {
+      "keepFeedsTitle": "保留订阅源（解散文件夹）",
+      "keepFeedsDescription": "仅删除文件夹，保留所有订阅源并移动到\"无文件夹\"",
+      "deleteAllFeedsTitle": "删除所有订阅源",
+      "deleteAllFeedsDescription": "删除该文件夹及其中全部 {feedCount} 个订阅源（永久删除）"
+    },
+    "confirmTitle": "确认删除",
+    "confirmDissolveDescription": "文件夹 {folderName} 将被删除，但其中 {feedCount} 个订阅源会被保留并移动到\"无文件夹\"。",
+    "confirmDeleteAllDescription": "文件夹 {folderName} 及其中全部 {feedCount} 个订阅源将被永久删除。此操作无法撤销。",
+    "buttons": {
+      "cancel": "取消",
+      "next": "下一步",
+      "back": "返回",
+      "deleteAll": "全部删除",
+      "deleteFolder": "删除文件夹"
+    }
+  },
+  "refresh": {
+    "feedNotFound": "未找到订阅源",
+    "feedRefreshedTitle": "订阅源已刷新",
+    "feedNoNewArticles": "{feedTitle} 暂无新文章",
+    "feedFoundNewArticles": "在 {feedTitle} 中发现 {articleCount} 篇新文章",
+    "allFeedsRefreshedTitle": "全部订阅源已刷新",
+    "allFeedsNoNewArticles": "在 {feedCount} 个订阅源中未发现新文章",
+    "allFeedsFoundNewArticles": "在 {feedCount} 个订阅源中发现 {articleCount} 篇新文章",
+    "feedsRefreshedWithErrorsTitle": "订阅源刷新完成，但有错误",
+    "partialUpdateNoNewArticles": "{successCount} 个订阅源已更新，{errorCount} 个失败。未发现新文章。",
+    "partialUpdateFoundNewArticles": "{successCount} 个订阅源已更新，{errorCount} 个失败。发现 {articleCount} 篇新文章。",
+    "refreshFailedTitle": "刷新失败",
+    "failedToRefreshFeed": "刷新订阅源失败",
+    "failedToRefreshFeeds": "刷新订阅源失败"
+  },
+  "helpDialog": {
+    "title": "键盘快捷键",
+    "description": "使用这些快捷键可快速浏览你的 RSS 订阅",
+    "sections": {
+      "navigation": "导航",
+      "actions": "操作",
+      "views": "视图",
+      "other": "其他"
+    },
+    "shortcuts": {
+      "nextArticle": "下一篇文章",
+      "previousArticle": "上一篇文章",
+      "toggleReadUnread": "切换已读/未读",
+      "toggleStar": "切换收藏",
+      "openOriginalArticle": "打开原文",
+      "showAllArticles": "显示全部文章",
+      "showUnreadArticles": "显示未读文章",
+      "showStarredArticles": "显示已收藏文章",
+      "refreshFeeds": "刷新订阅源"
+    },
+    "shortcutKeys": {
+      "nextArticle": "j / ↓",
+      "previousArticle": "k / ↑",
+      "toggleReadUnread": "m",
+      "toggleStar": "s",
+      "openOriginalArticle": "o / Enter",
+      "showAllArticles": "1",
+      "showUnreadArticles": "2",
+      "showStarredArticles": "3",
+      "refreshFeeds": "Ctrl+R"
+    },
+    "tipLabel": "提示：",
+    "tipDescription": "当你没有在搜索框或输入框中输入时，这些快捷键才会生效。"
+  }
+}

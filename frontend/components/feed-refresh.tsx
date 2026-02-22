@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button"
 import { useRSSStore } from "@/lib/store"
 import { parseRSSFeed } from "@/lib/rss-parser"
 import { useToast } from "@/hooks/use-toast"
+import { useTranslations } from "next-intl"
 
 interface FeedRefreshProps {
   feedId?: string
@@ -15,6 +16,7 @@ interface FeedRefreshProps {
 }
 
 export function FeedRefresh({ feedId, className, listenToGlobalEvent = false }: FeedRefreshProps) {
+  const t = useTranslations("sidebar.refresh")
   const [isRefreshing, setIsRefreshing] = useState(false)
   const { feeds, addArticles, updateFeed } = useRSSStore()
   const { toast } = useToast()
@@ -44,16 +46,16 @@ export function FeedRefresh({ feedId, className, listenToGlobalEvent = false }: 
         // Refresh specific feed
         const feed = feeds.find((f) => f.id === feedId)
         if (!feed) {
-          throw new Error("Feed not found")
+          throw new Error(t("feedNotFound"))
         }
 
         const newArticlesCount = await refreshFeed(feed)
 
         toast({
-          title: "Feed refreshed",
+          title: t("feedRefreshedTitle"),
           description: newArticlesCount === 0
-            ? `"${feed.title}" has no new articles`
-            : `Found ${newArticlesCount} new article${newArticlesCount > 1 ? 's' : ''} in "${feed.title}"`,
+            ? t("feedNoNewArticles", { feedTitle: feed.title })
+            : t("feedFoundNewArticles", { articleCount: newArticlesCount, feedTitle: feed.title }),
         })
       } else {
         // Refresh all feeds
@@ -74,17 +76,17 @@ export function FeedRefresh({ feedId, className, listenToGlobalEvent = false }: 
 
         if (errorCount === 0) {
           toast({
-            title: "All feeds refreshed",
+            title: t("allFeedsRefreshedTitle"),
             description: totalNewArticles === 0
-              ? `No new articles found across ${successCount} feed${successCount > 1 ? 's' : ''}`
-              : `Found ${totalNewArticles} new article${totalNewArticles > 1 ? 's' : ''} across ${successCount} feed${successCount > 1 ? 's' : ''}`,
+              ? t("allFeedsNoNewArticles", { feedCount: successCount })
+              : t("allFeedsFoundNewArticles", { articleCount: totalNewArticles, feedCount: successCount }),
           })
         } else {
           toast({
-            title: "Feeds refreshed with errors",
+            title: t("feedsRefreshedWithErrorsTitle"),
             description: totalNewArticles === 0
-              ? `${successCount} feed${successCount > 1 ? 's' : ''} updated, ${errorCount} failed. No new articles found.`
-              : `${successCount} feed${successCount > 1 ? 's' : ''} updated, ${errorCount} failed. Found ${totalNewArticles} new article${totalNewArticles > 1 ? 's' : ''}.`,
+              ? t("partialUpdateNoNewArticles", { successCount, errorCount })
+              : t("partialUpdateFoundNewArticles", { successCount, errorCount, articleCount: totalNewArticles }),
             variant: errorCount > successCount ? "destructive" : "default",
           })
         }
@@ -92,8 +94,8 @@ export function FeedRefresh({ feedId, className, listenToGlobalEvent = false }: 
     } catch (error) {
       console.error("Error refreshing feeds:", error)
       toast({
-        title: "Refresh failed",
-        description: error instanceof Error ? error.message : "Failed to refresh feeds",
+        title: t("refreshFailedTitle"),
+        description: error instanceof Error ? error.message : feedId ? t("failedToRefreshFeed") : t("failedToRefreshFeeds"),
         variant: "destructive",
       })
     } finally {

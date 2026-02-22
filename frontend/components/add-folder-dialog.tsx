@@ -16,6 +16,7 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { useRSSStore } from "@/lib/store"
 import { useToast } from "@/hooks/use-toast"
+import { useTranslations } from "next-intl"
 
 interface AddFolderDialogProps {
   open: boolean
@@ -23,6 +24,7 @@ interface AddFolderDialogProps {
 }
 
 export function AddFolderDialog({ open, onOpenChange }: AddFolderDialogProps) {
+  const t = useTranslations("reader.addFolderDialog")
   const [folderName, setFolderName] = useState("")
   const [isLoading, setIsLoading] = useState(false)
   const { addFolder } = useRSSStore()
@@ -40,22 +42,22 @@ export function AddFolderDialog({ open, onOpenChange }: AddFolderDialogProps) {
 
       if (result.success) {
         toast({
-          title: "Success",
-          description: `Folder "${folderName.trim()}" created successfully.`,
+          title: t("toasts.successTitle"),
+          description: t("toasts.folderCreated", { folderName: folderName.trim() }),
         })
         setFolderName("")
         onOpenChange(false)
       } else {
         if (result.error === 'duplicate') {
           toast({
-            title: "Error",
-            description: `Folder "${folderName.trim()}" already exists.`,
+            title: t("toasts.errorTitle"),
+            description: t("toasts.folderAlreadyExists", { folderName: folderName.trim() }),
             variant: "destructive",
           })
         } else {
           toast({
-            title: "Error",
-            description: "Failed to create folder. Please try again.",
+            title: t("toasts.errorTitle"),
+            description: t("toasts.failedToCreateFolder"),
             variant: "destructive",
           })
         }
@@ -63,8 +65,8 @@ export function AddFolderDialog({ open, onOpenChange }: AddFolderDialogProps) {
     } catch (error) {
       console.error("Failed to add folder:", error)
       toast({
-        title: "Error",
-        description: "Failed to create folder. Please try again.",
+        title: t("toasts.errorTitle"),
+        description: t("toasts.failedToCreateFolder"),
         variant: "destructive",
       })
     } finally {
@@ -76,20 +78,20 @@ export function AddFolderDialog({ open, onOpenChange }: AddFolderDialogProps) {
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-[425px]">
         <DialogHeader>
-          <DialogTitle>Add New Folder</DialogTitle>
-          <DialogDescription>Create a new folder to organize your RSS feeds.</DialogDescription>
+          <DialogTitle>{t("title")}</DialogTitle>
+          <DialogDescription>{t("description")}</DialogDescription>
         </DialogHeader>
         <form onSubmit={handleSubmit}>
           <div className="grid gap-4 py-4">
             <div className="grid grid-cols-4 items-center gap-4">
               <Label htmlFor="folder-name" className="text-right">
-                Name
+                {t("fields.name")}
               </Label>
               <Input
                 id="folder-name"
                 value={folderName}
                 onChange={(e) => setFolderName(e.target.value)}
-                placeholder="Enter folder name"
+                placeholder={t("fields.namePlaceholder")}
                 className="col-span-3"
                 required
               />
@@ -97,10 +99,10 @@ export function AddFolderDialog({ open, onOpenChange }: AddFolderDialogProps) {
           </div>
           <DialogFooter>
             <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
-              Cancel
+              {t("actions.cancel")}
             </Button>
             <Button type="submit" disabled={isLoading || !folderName.trim()}>
-              {isLoading ? "Adding..." : "Add Folder"}
+              {isLoading ? t("actions.adding") : t("actions.addFolder")}
             </Button>
           </DialogFooter>
         </form>

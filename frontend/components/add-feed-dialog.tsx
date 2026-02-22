@@ -22,6 +22,7 @@ import { Switch } from "@/components/ui/switch"
 import { useRSSStore } from "@/lib/store"
 import { parseRSSFeed, validateRSSUrl, discoverRSSFeeds } from "@/lib/rss-parser"
 import { useToast } from "@/hooks/use-toast"
+import { useTranslations } from "next-intl"
 
 interface AddFeedDialogProps {
   open: boolean
@@ -31,6 +32,7 @@ interface AddFeedDialogProps {
 }
 
 export function AddFeedDialog({ open, onOpenChange, defaultFolderId, lockFolder = false }: AddFeedDialogProps) {
+  const t = useTranslations("reader.addFeedDialog")
   const [url, setUrl] = useState("")
   const [searchQuery, setSearchQuery] = useState("")
   const [selectedFolderId, setSelectedFolderId] = useState<string>(defaultFolderId || "none")
@@ -52,8 +54,8 @@ export function AddFeedDialog({ open, onOpenChange, defaultFolderId, lockFolder 
   const handleSubmit = async (feedUrl: string) => {
     if (!feedUrl.trim()) {
       toast({
-        title: "Error",
-        description: "Please enter a valid RSS feed URL",
+        title: t("toasts.errorTitle"),
+        description: t("toasts.invalidFeedUrl"),
         variant: "destructive",
       })
       return
@@ -93,14 +95,14 @@ export function AddFeedDialog({ open, onOpenChange, defaultFolderId, lockFolder 
       if (!result.success) {
         if (result.reason === 'duplicate') {
           toast({
-            title: "Feed Already Exists",
-            description: `"${parsedFeed.title}" is already in your feed list`,
+            title: t("toasts.feedAlreadyExistsTitle"),
+            description: t("toasts.feedAlreadyExistsDescription", { feedTitle: parsedFeed.title }),
             variant: "destructive",
           })
         } else {
           toast({
-            title: "Failed to Add Feed",
-            description: result.error || "An unexpected error occurred",
+            title: t("toasts.failedToAddFeedTitle"),
+            description: result.error || t("toasts.unexpectedError"),
             variant: "destructive",
           })
         }
@@ -112,8 +114,8 @@ export function AddFeedDialog({ open, onOpenChange, defaultFolderId, lockFolder 
       await addArticles(articles)
 
       toast({
-        title: "Success",
-        description: `Added "${parsedFeed.title}" with ${articles.length} articles`,
+        title: t("toasts.successTitle"),
+        description: t("toasts.addedFeedWithArticles", { feedTitle: parsedFeed.title, count: articles.length }),
       })
 
       // Reset form and close dialog
@@ -128,8 +130,8 @@ export function AddFeedDialog({ open, onOpenChange, defaultFolderId, lockFolder 
     } catch (error) {
       console.error("Error adding feed:", error)
       toast({
-        title: "Error",
-        description: error instanceof Error ? error.message : "Failed to add RSS feed",
+        title: t("toasts.errorTitle"),
+        description: error instanceof Error ? error.message : t("toasts.failedToAddRssFeed"),
         variant: "destructive",
       })
     } finally {
@@ -145,8 +147,8 @@ export function AddFeedDialog({ open, onOpenChange, defaultFolderId, lockFolder 
   const handleDiscoverFeeds = async () => {
     if (!searchQuery.trim()) {
       toast({
-        title: "Error",
-        description: "Please enter a website URL to discover feeds",
+        title: t("toasts.errorTitle"),
+        description: t("toasts.websiteUrlRequired"),
         variant: "destructive",
       })
       return
@@ -182,16 +184,16 @@ export function AddFeedDialog({ open, onOpenChange, defaultFolderId, lockFolder 
 
       if (validFeeds.length === 0) {
         toast({
-          title: "No feeds found",
-          description: "Could not discover any RSS feeds for this website",
+          title: t("toasts.noFeedsFoundTitle"),
+          description: t("toasts.noFeedsFoundDescription"),
           variant: "destructive",
         })
       }
     } catch (error) {
       console.error("Error discovering feeds:", error)
       toast({
-        title: "Error",
-        description: "Failed to discover RSS feeds",
+        title: t("toasts.errorTitle"),
+        description: t("toasts.failedToDiscoverFeeds"),
         variant: "destructive",
       })
     } finally {
@@ -203,9 +205,9 @@ export function AddFeedDialog({ open, onOpenChange, defaultFolderId, lockFolder 
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-lg">
         <DialogHeader>
-          <DialogTitle>Add RSS Feed</DialogTitle>
+          <DialogTitle>{t("title")}</DialogTitle>
           <DialogDescription>
-            Add an RSS feed by entering its URL directly or by discovering feeds from a website.
+            {t("description")}
           </DialogDescription>
         </DialogHeader>
 
@@ -213,11 +215,11 @@ export function AddFeedDialog({ open, onOpenChange, defaultFolderId, lockFolder 
           <TabsList className="grid w-full grid-cols-2">
             <TabsTrigger value="direct" className="gap-2">
               <Globe className="h-4 w-4" />
-              Direct URL
+              {t("tabs.directUrl")}
             </TabsTrigger>
             <TabsTrigger value="discover" className="gap-2">
               <Search className="h-4 w-4" />
-              Discover
+              {t("tabs.discover")}
             </TabsTrigger>
           </TabsList>
 
@@ -225,11 +227,11 @@ export function AddFeedDialog({ open, onOpenChange, defaultFolderId, lockFolder 
             <form onSubmit={handleDirectSubmit}>
               <div className="space-y-4">
                 <div className="space-y-2">
-                  <Label htmlFor="feed-url">RSS Feed URL</Label>
+                  <Label htmlFor="feed-url">{t("fields.feedUrlLabel")}</Label>
                   <Input
                     id="feed-url"
                     type="url"
-                    placeholder="https://example.com/feed.xml"
+                    placeholder={t("fields.feedUrlPlaceholder")}
                     value={url}
                     onChange={(e) => setUrl(e.target.value)}
                     disabled={isLoading}
@@ -237,17 +239,17 @@ export function AddFeedDialog({ open, onOpenChange, defaultFolderId, lockFolder 
                 </div>
 
                 <div className="space-y-2">
-                  <Label htmlFor="folder">Folder (Optional)</Label>
+                  <Label htmlFor="folder">{t("fields.folderOptional")}</Label>
                   <Select
                     value={selectedFolderId}
                     onValueChange={setSelectedFolderId}
                     disabled={lockFolder && !!defaultFolderId}
                   >
                     <SelectTrigger>
-                      <SelectValue placeholder="Select a folder" />
+                      <SelectValue placeholder={t("fields.selectFolder")} />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="none">No Folder</SelectItem>
+                      <SelectItem value="none">{t("fields.noFolder")}</SelectItem>
                       {folders.map((folder) => (
                         <SelectItem key={folder.id} value={folder.id}>
                           {folder.name}
@@ -258,28 +260,28 @@ export function AddFeedDialog({ open, onOpenChange, defaultFolderId, lockFolder 
                 </div>
 
                 <div className="space-y-2">
-                  <Label htmlFor="refresh-interval">Refresh Interval (minutes)</Label>
+                  <Label htmlFor="refresh-interval">{t("fields.refreshIntervalLabel")}</Label>
                   <Input
                     id="refresh-interval"
                     type="number"
                     min="1"
                     max="10080"
-                    placeholder={`Default: ${settings.refreshInterval} minutes`}
+                    placeholder={t("fields.defaultPlaceholder", { minutes: settings.refreshInterval })}
                     value={refreshInterval ?? ""}
                     onChange={(e) => setRefreshInterval(e.target.value ? parseInt(e.target.value) : undefined)}
                     disabled={isLoading}
                   />
                   <p className="text-xs text-muted-foreground">
-                    Leave empty to use default ({settings.refreshInterval} minutes)
+                    {t("fields.defaultHint", { minutes: settings.refreshInterval })}
                   </p>
                 </div>
 
                 <div className="space-y-2">
                   <div className="flex items-center justify-between">
                     <div className="space-y-0.5">
-                      <Label htmlFor="enable-deduplication">Enable Article Deduplication</Label>
+                      <Label htmlFor="enable-deduplication">{t("toggles.enableDeduplication")}</Label>
                       <p className="text-xs text-muted-foreground">
-                        Filter out articles with identical title and content
+                        {t("toggles.enableDeduplicationDescription")}
                       </p>
                     </div>
                     <Switch
@@ -294,9 +296,9 @@ export function AddFeedDialog({ open, onOpenChange, defaultFolderId, lockFolder 
                 <div className="space-y-2">
                   <div className="flex items-center justify-between">
                     <div className="space-y-0.5">
-                      <Label htmlFor="enable-auto-fetch">Auto Fetch Full Content on Refresh</Label>
+                      <Label htmlFor="enable-auto-fetch">{t("toggles.enableAutoFetch")}</Label>
                       <p className="text-xs text-muted-foreground">
-                        Automatically extract full content from source URLs when this feed is refreshed
+                        {t("toggles.enableAutoFetchDescription")}
                       </p>
                     </div>
                     <Switch
@@ -311,18 +313,18 @@ export function AddFeedDialog({ open, onOpenChange, defaultFolderId, lockFolder 
 
               <DialogFooter className="mt-6">
                 <Button type="button" variant="outline" onClick={() => onOpenChange(false)} disabled={isLoading}>
-                  Cancel
+                  {t("actions.cancel")}
                 </Button>
                 <Button type="submit" disabled={isLoading}>
                   {isLoading ? (
                     <>
                       <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                      Adding...
+                      {t("actions.adding")}
                     </>
                   ) : (
                     <>
                       <Plus className="h-4 w-4 mr-2" />
-                      Add Feed
+                      {t("actions.addFeed")}
                     </>
                   )}
                 </Button>
@@ -333,12 +335,12 @@ export function AddFeedDialog({ open, onOpenChange, defaultFolderId, lockFolder 
           <TabsContent value="discover" className="space-y-4">
             <div className="space-y-4">
               <div className="space-y-2">
-                <Label htmlFor="website-url">Website URL</Label>
+                <Label htmlFor="website-url">{t("fields.websiteUrlLabel")}</Label>
                 <div className="flex gap-2">
                   <Input
                     id="website-url"
                     type="url"
-                    placeholder="https://example.com"
+                    placeholder={t("fields.websiteUrlPlaceholder")}
                     value={searchQuery}
                     onChange={(e) => setSearchQuery(e.target.value)}
                     disabled={isDiscovering}
@@ -355,17 +357,17 @@ export function AddFeedDialog({ open, onOpenChange, defaultFolderId, lockFolder 
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="folder-discover">Folder (Optional)</Label>
+                <Label htmlFor="folder-discover">{t("fields.folderOptional")}</Label>
                 <Select
                   value={selectedFolderId}
                   onValueChange={setSelectedFolderId}
                   disabled={lockFolder && !!defaultFolderId}
                 >
                   <SelectTrigger>
-                    <SelectValue placeholder="Select a folder" />
+                    <SelectValue placeholder={t("fields.selectFolder")} />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="none">No Folder</SelectItem>
+                    <SelectItem value="none">{t("fields.noFolder")}</SelectItem>
                     {folders.map((folder) => (
                       <SelectItem key={folder.id} value={folder.id}>
                         {folder.name}
@@ -376,30 +378,30 @@ export function AddFeedDialog({ open, onOpenChange, defaultFolderId, lockFolder 
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="refresh-interval-discover">Refresh Interval (minutes)</Label>
+                <Label htmlFor="refresh-interval-discover">{t("fields.refreshIntervalLabel")}</Label>
                 <Input
                   id="refresh-interval-discover"
                   type="number"
                   min="1"
                   max="10080"
-                  placeholder={`Default: ${settings.refreshInterval} minutes`}
+                  placeholder={t("fields.defaultPlaceholder", { minutes: settings.refreshInterval })}
                   value={refreshInterval ?? ""}
                   onChange={(e) => setRefreshInterval(e.target.value ? parseInt(e.target.value) : undefined)}
                   disabled={isDiscovering || isLoading}
                 />
                 <p className="text-xs text-muted-foreground">
-                  Leave empty to use default ({settings.refreshInterval} minutes)
+                  {t("fields.defaultHint", { minutes: settings.refreshInterval })}
                 </p>
               </div>
 
               <div className="space-y-2">
-                <div className="flex items-center justify-between">
-                  <div className="space-y-0.5">
-                    <Label htmlFor="enable-deduplication-discover">Enable Article Deduplication</Label>
-                    <p className="text-xs text-muted-foreground">
-                      Filter out articles with identical title and content
-                    </p>
-                  </div>
+                  <div className="flex items-center justify-between">
+                    <div className="space-y-0.5">
+                      <Label htmlFor="enable-deduplication-discover">{t("toggles.enableDeduplication")}</Label>
+                      <p className="text-xs text-muted-foreground">
+                        {t("toggles.enableDeduplicationDescription")}
+                      </p>
+                    </div>
                   <Switch
                     id="enable-deduplication-discover"
                     checked={enableDeduplication}
@@ -410,13 +412,13 @@ export function AddFeedDialog({ open, onOpenChange, defaultFolderId, lockFolder 
               </div>
 
               <div className="space-y-2">
-                <div className="flex items-center justify-between">
-                  <div className="space-y-0.5">
-                    <Label htmlFor="enable-auto-fetch-discover">Auto Fetch Full Content on Refresh</Label>
-                    <p className="text-xs text-muted-foreground">
-                      Automatically extract full content from source URLs when this feed is refreshed
-                    </p>
-                  </div>
+                  <div className="flex items-center justify-between">
+                    <div className="space-y-0.5">
+                      <Label htmlFor="enable-auto-fetch-discover">{t("toggles.enableAutoFetch")}</Label>
+                      <p className="text-xs text-muted-foreground">
+                        {t("toggles.enableAutoFetchDescription")}
+                      </p>
+                    </div>
                   <Switch
                     id="enable-auto-fetch-discover"
                     checked={enableAutoFetchFullContent}
@@ -428,7 +430,7 @@ export function AddFeedDialog({ open, onOpenChange, defaultFolderId, lockFolder 
 
               {discoveredFeeds.length > 0 && (
                 <div className="space-y-2">
-                  <Label>Discovered Feeds</Label>
+                  <Label>{t("fields.discoveredFeeds")}</Label>
                   <div className="space-y-2 max-h-40 overflow-y-auto">
                     {discoveredFeeds.map((feedUrl, index) => (
                       <div
@@ -450,7 +452,7 @@ export function AddFeedDialog({ open, onOpenChange, defaultFolderId, lockFolder 
 
             <DialogFooter>
               <Button type="button" variant="outline" onClick={() => onOpenChange(false)} disabled={isLoading}>
-                Cancel
+                {t("actions.cancel")}
               </Button>
             </DialogFooter>
           </TabsContent>

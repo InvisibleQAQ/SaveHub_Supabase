@@ -2,12 +2,14 @@
 
 import { FileText, ExternalLink } from "lucide-react"
 import type { RetrievedSource } from "@/lib/api/agentic-rag"
+import { useTranslations } from "next-intl"
 
 interface ArticleReferenceCardProps {
   source: RetrievedSource
 }
 
 export function ArticleReferenceCard({ source }: ArticleReferenceCardProps) {
+  const t = useTranslations("chat.sources")
   return (
     <div className="p-4">
       {/* Header */}
@@ -18,7 +20,7 @@ export function ArticleReferenceCard({ source }: ArticleReferenceCardProps) {
         <div className="min-w-0 flex-1">
           <h4 className="font-medium text-sm line-clamp-2">{source.title}</h4>
           <p className="text-xs text-muted-foreground mt-1">
-            相关度: {(source.score * 100).toFixed(0)}%
+            {t("relevance", { score: (source.score * 100).toFixed(0) })}
           </p>
         </div>
       </div>
@@ -36,7 +38,7 @@ export function ArticleReferenceCard({ source }: ArticleReferenceCardProps) {
           rel="noopener noreferrer"
           className="inline-flex items-center gap-1 text-xs text-primary hover:underline"
         >
-          查看原文
+          {t("viewOriginal")}
           <ExternalLink className="w-3 h-3" />
         </a>
       )}

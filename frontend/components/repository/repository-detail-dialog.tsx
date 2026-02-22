@@ -8,9 +8,9 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog"
-import { ScrollArea } from "@/components/ui/scroll-area"
 import type { Repository } from "@/lib/types"
 import { renderMarkdown } from "@/lib/markdown-renderer"
+import { useTranslations } from "next-intl"
 
 interface RepositoryDetailDialogProps {
   repository: Repository | null
@@ -23,6 +23,7 @@ export function RepositoryDetailDialog({
   open,
   onOpenChange,
 }: RepositoryDetailDialogProps) {
+  const t = useTranslations("repository.detailDialog")
   if (!repository) return null
 
   // Render markdown to sanitized HTML
@@ -79,7 +80,7 @@ export function RepositoryDetailDialog({
             <>
               {renderedContent.error && (
                 <div className="mb-4 p-3 rounded-lg bg-destructive/10 text-destructive text-sm">
-                  渲染失败: {renderedContent.error}
+                  {t("renderFailed", { error: renderedContent.error })}
                 </div>
               )}
               <article
@@ -89,7 +90,7 @@ export function RepositoryDetailDialog({
             </>
           ) : (
             <div className="text-center text-muted-foreground py-8">
-              该仓库没有 README 文件
+              {t("noReadme")}
             </div>
           )}
         </div>

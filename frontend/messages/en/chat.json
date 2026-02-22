@@ -1,0 +1,64 @@
+{
+  "page": {
+    "title": "Smart Q&A",
+    "subtitle": "Q&A based on your articles and repositories",
+    "badge": "Agentic RAG",
+    "state": {
+      "streaming": "Streaming",
+      "ready": "Ready"
+    }
+  },
+  "emptyState": {
+    "title": "Start a conversation",
+    "description": "Ask a question and I'll retrieve relevant information from your articles and repositories to answer.",
+    "quickPrompts": {
+      "topProjects": "Among recently starred repositories, which 3 projects are most worth watching?",
+      "todayArticles": "Help me summarize the key points of today's newly added articles",
+      "nextWeekPlan": "Based on my saved content, suggest a study plan for next week"
+    }
+  },
+  "input": {
+    "placeholder": "Enter your question...",
+    "clarificationPlaceholder": "Please add details to the clarification question above first...",
+    "stopGenerating": "Stop generating",
+    "stop": "Stop"
+  },
+  "statusMessages": {
+    "thinking": "Thinking...",
+    "rewriteDone": "Rewrite complete, split into {count} sub-questions",
+    "enterParentBackfill": "Sub-question {questionIndex}: enter parent-chunk backfill",
+    "enterSecondaryRetrieval": "Sub-question {questionIndex}: enter second-pass retrieval",
+    "retrievingQuestion": "Retrieving sub-question {questionIndex}",
+    "parentBackfillReturned": "Sub-question {questionIndex}: parent-chunk backfill returned {resultCount} results",
+    "secondaryRetrievalReturned": "Sub-question {questionIndex}: second-pass retrieval returned {resultCount} results",
+    "retrievalReturned": "Sub-question {questionIndex}: retrieval returned {resultCount} results",
+    "aggregatingAfterCompleted": "Completed {completed}/{totalQuestions} sub-questions, aggregating answer",
+    "needMoreDetails": "Please provide more details about your question.",
+    "clarificationRequiredBeforeContinue": "More details are required before retrieval can continue",
+    "generatingFinalAnswer": "Evidence ready, generating final answer",
+    "answerCompleted": "Answer complete",
+    "answerCompletedExpandable": "Answer complete, expand to view the workflow"
+  },
+  "stages": {
+    "rewrite": "Rewrite",
+    "toolCall": "Tool Call",
+    "expandContext": "Second-pass Retrieval",
+    "aggregation": "Aggregation"
+  },
+  "timeline": {
+    "label": "Process log ({count})",
+    "collapse": "Collapse",
+    "expand": "Expand"
+  },
+  "agent": {
+    "label": "Agent",
+    "system": "System"
+  },
+  "sources": {
+    "referenceList": "References:",
+    "viewSourceTitle": "View source: {title}",
+    "relevance": "Relevance: {score}%",
+    "viewOriginal": "View original",
+    "viewOnGitHub": "View on GitHub"
+  }
+}

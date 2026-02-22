@@ -9,6 +9,7 @@ import { ViewButton } from "./view-button"
 import { FeedItem } from "./feed-item"
 import { useRSSStore } from "@/lib/store"
 import { useAuth } from "@/lib/context/auth-context"
+import { useTranslations } from "next-intl"
 
 interface CollapsedViewProps {
   onExpand: () => void
@@ -19,6 +20,7 @@ interface CollapsedViewProps {
 }
 
 export function CollapsedView({ onExpand, totalArticles, totalUnread, totalStarred, totalRepositories }: CollapsedViewProps) {
+  const t = useTranslations("sidebar")
   const pathname = usePathname()
   const { logout } = useAuth()
   const { feeds, getUnreadCount } = useRSSStore()
@@ -38,7 +40,7 @@ export function CollapsedView({ onExpand, totalArticles, totalUnread, totalStarr
           e.stopPropagation()
           onExpand()
         }}
-        title="Expand sidebar"
+        title={t("tooltips.expandSidebar")}
       >
         <ChevronRight className="h-4 w-4" />
       </Button>
@@ -46,12 +48,12 @@ export function CollapsedView({ onExpand, totalArticles, totalUnread, totalStarr
       <Separator className="my-2 bg-sidebar-border w-8" />
 
       <div className="flex flex-col items-center space-y-1">
-        <ViewButton href="/all" icon={BookOpen} label="All Articles" count={totalArticles} isActive={pathname === "/all"} variant="icon" />
-        <ViewButton href="/unread" icon={Rss} label="Unread" count={totalUnread} isActive={pathname === "/unread"} variant="icon" />
-        <ViewButton href="/starred" icon={Star} label="Starred" count={totalStarred} isActive={pathname === "/starred"} variant="icon" />
-        <ViewButton href="/chat" icon={MessageSquare} label="Chat" isActive={pathname === "/chat"} variant="icon" />
-        <ViewButton href="/transcript" icon={FileText} label="Transcript" isActive={pathname === "/transcript"} variant="icon" />
-        <ViewButton href="/repository" icon={Github} label="Repository" count={totalRepositories} isActive={pathname === "/repository"} variant="icon" />
+        <ViewButton href="/all" icon={BookOpen} label={t("views.allArticles")} count={totalArticles} isActive={pathname === "/all"} variant="icon" />
+        <ViewButton href="/unread" icon={Rss} label={t("views.unread")} count={totalUnread} isActive={pathname === "/unread"} variant="icon" />
+        <ViewButton href="/starred" icon={Star} label={t("views.starred")} count={totalStarred} isActive={pathname === "/starred"} variant="icon" />
+        <ViewButton href="/chat" icon={MessageSquare} label={t("views.chat")} isActive={pathname === "/chat"} variant="icon" />
+        <ViewButton href="/transcript" icon={FileText} label={t("views.transcript")} isActive={pathname === "/transcript"} variant="icon" />
+        <ViewButton href="/repository" icon={Github} label={t("views.repository")} count={totalRepositories} isActive={pathname === "/repository"} variant="icon" />
       </div>
 
       <Separator className="my-2 bg-sidebar-border w-8" />
@@ -68,14 +70,14 @@ export function CollapsedView({ onExpand, totalArticles, totalUnread, totalStarr
 
       <Separator className="my-2 bg-sidebar-border w-8" />
 
-      <ViewButton href="/settings" icon={Settings} label="Settings" isActive={pathname.startsWith("/settings")} variant="icon" />
+      <ViewButton href="/settings" icon={Settings} label={t("actions.settings")} isActive={pathname.startsWith("/settings")} variant="icon" />
 
       <Button
         variant="ghost"
         size="icon"
         className="h-10 w-10 mt-1 text-sidebar-foreground hover:bg-sidebar-accent"
         onClick={handleLogout}
-        title="Logout"
+        title={t("tooltips.logout")}
       >
         <LogOut className="h-4 w-4" />
       </Button>

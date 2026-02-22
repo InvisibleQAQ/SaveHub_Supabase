@@ -3,6 +3,7 @@
 import { Loader2 } from "lucide-react"
 import { Card, CardContent } from "@/components/ui/card"
 import { cn } from "@/lib/utils"
+import { useTranslations } from "next-intl"
 
 interface ProgressDisplayProps {
   progress: number
@@ -12,6 +13,7 @@ interface ProgressDisplayProps {
 }
 
 export function ProgressDisplay({ progress, stage, status }: ProgressDisplayProps) {
+  const t = useTranslations("transcript.progress")
   if (status === "idle" || status === "completed") return null
 
   const isError = status === "error"
@@ -27,7 +29,7 @@ export function ProgressDisplay({ progress, stage, status }: ProgressDisplayProp
                 <Loader2 className="h-4 w-4 animate-spin text-primary" />
               )}
               <span className={cn("font-medium", isError ? "text-destructive" : "text-foreground")}>
-                {isError ? "Error" : stage || "Processing..."}
+                {isError ? t("error") : stage || t("processing")}
               </span>
             </div>
             <span className="text-muted-foreground">{Math.round(percentage)}%</span>
@@ -45,7 +47,7 @@ export function ProgressDisplay({ progress, stage, status }: ProgressDisplayProp
           </div>
           
           <p className="text-xs text-muted-foreground text-center animate-pulse">
-            This process may take a few minutes depending on the video length.
+            {t("durationHint")}
           </p>
         </div>
       </CardContent>

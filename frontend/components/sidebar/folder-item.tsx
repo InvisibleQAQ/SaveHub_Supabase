@@ -14,6 +14,7 @@ import {
 } from "@/components/ui/context-menu"
 import { FeedItem } from "./feed-item"
 import { useRSSStore } from "@/lib/store"
+import { useTranslations } from "next-intl"
 import type { Folder as FolderType, Feed } from "@/lib/types"
 import type { RenameDialogState, MoveDialogState, DeleteFolderDialogState, DeleteFeedDialogState } from "./types"
 
@@ -54,6 +55,7 @@ export function FolderItem({
   onFeedDrop,
   draggedFeedId,
 }: FolderItemProps) {
+  const t = useTranslations("sidebar")
   const pathname = usePathname()
   const { getUnreadCount } = useRSSStore()
 
@@ -123,7 +125,7 @@ export function FolderItem({
       <ContextMenuContent className="w-56">
         <ContextMenuItem onClick={onAddFeed}>
           <Plus className="h-4 w-4 mr-2" />
-          Add Feed to Folder
+          {t("folders.menu.addFeedToFolder")}
         </ContextMenuItem>
         <ContextMenuSeparator />
         <ContextMenuItem
@@ -137,7 +139,7 @@ export function FolderItem({
           }
         >
           <Edit className="h-4 w-4 mr-2" />
-          Rename Folder
+          {t("folders.menu.renameFolder")}
         </ContextMenuItem>
         <ContextMenuItem
           variant="destructive"
@@ -151,7 +153,7 @@ export function FolderItem({
           }
         >
           <Trash2 className="h-4 w-4 mr-2" />
-          Delete Folder
+          {t("folders.menu.deleteFolder")}
         </ContextMenuItem>
       </ContextMenuContent>
     </ContextMenu>

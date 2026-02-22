@@ -1,0 +1,64 @@
+{
+  "page": {
+    "title": "AI 视频转录",
+    "subtitle": "将视频内容转换为结构化笔记，支持 AI 转录与摘要。"
+  },
+  "form": {
+    "title": "视频转录",
+    "description": "根据视频 URL 生成转录、摘要和翻译。",
+    "urlPlaceholder": "输入视频 URL（例如：YouTube、Bilibili）",
+    "targetLanguagePlaceholder": "目标语言",
+    "submitProcessing": "处理中...",
+    "submitStart": "开始",
+    "languages": {
+      "zh": "简体中文",
+      "en": "英语",
+      "ja": "日语",
+      "ko": "韩语",
+      "es": "西班牙语",
+      "fr": "法语",
+      "de": "德语"
+    }
+  },
+  "progress": {
+    "error": "错误",
+    "processing": "处理中...",
+    "durationHint": "该过程可能需要几分钟，具体取决于视频时长。",
+    "stageInitializing": "正在初始化任务...",
+    "stageStarted": "任务已启动，正在等待流式结果...",
+    "stageAccepted": "任务已被服务器接收...",
+    "stageCompleted": "已完成"
+  },
+  "result": {
+    "downloadMd": "下载 MD",
+    "titleFallback": "转录结果",
+    "markdownTitleFallback": "转录",
+    "tabs": {
+      "transcript": "转录",
+      "summary": "摘要",
+      "translation": "翻译"
+    },
+    "contentTitle": "{label} 内容",
+    "copySrOnly": "复制 {label}",
+    "noContent": "*暂无生成内容*"
+  },
+  "toast": {
+    "copiedTitle": "已复制！",
+    "copiedDescription": "{section} 已复制到剪贴板。",
+    "copyFailedTitle": "复制失败",
+    "copyFailedDescription": "请重试。",
+    "downloadedTitle": "已下载",
+    "downloadedDescription": "转录结果已保存为 Markdown 文件。",
+    "successTitle": "成功",
+    "successDescription": "转录已成功完成。",
+    "errorTitle": "错误",
+    "taskFailed": "任务失败",
+    "connectionErrorTitle": "连接错误"
+  },
+  "errors": {
+    "unknownError": "发生未知错误",
+    "connectFailed": "连接转录服务失败",
+    "errorWithMessage": "错误：{message}",
+    "checkUrlAndRetry": "请检查 URL 后重试。"
+  }
+}

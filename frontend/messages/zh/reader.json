@@ -1,0 +1,229 @@
+{
+  "articleList": {
+    "unknownFeed": "未知订阅源",
+    "header": {
+      "viewModeArticles": "{viewMode} 文章",
+      "articleCount": "{count} 篇文章"
+    },
+    "sort": {
+      "date": "日期",
+      "title": "标题",
+      "feed": "订阅源",
+      "readTime": "阅读时长",
+      "sortByDate": "按日期排序",
+      "sortByTitle": "按标题排序",
+      "sortByFeed": "按订阅源排序",
+      "sortByReadTime": "按阅读时长排序"
+    },
+    "search": {
+      "placeholder": "搜索文章..."
+    },
+    "menu": {
+      "markAsUnread": "标记为未读",
+      "markAsRead": "标记为已读",
+      "removeStar": "取消收藏",
+      "addStar": "添加收藏",
+      "openOriginal": "打开原文"
+    },
+    "meta": {
+      "readingTime": "阅读约 {minutes} 分钟"
+    },
+    "empty": {
+      "title": "未找到文章",
+      "adjustSearch": "请尝试调整搜索关键词",
+      "addFeeds": "添加一些 RSS 订阅源以开始使用"
+    }
+  },
+  "articleContent": {
+    "errors": {
+      "failedToFetchFullContent": "抓取全文失败"
+    },
+    "toasts": {
+      "linkCopiedTitle": "链接已复制",
+      "linkCopiedDescription": "文章链接已复制到剪贴板",
+      "errorTitle": "错误",
+      "failedToCopyLink": "复制链接失败"
+    },
+    "empty": {
+      "title": "选择一篇文章开始阅读",
+      "description": "从列表中选择文章即可在此查看内容。你可以按订阅源浏览、搜索特定主题，或按阅读状态筛选。"
+    },
+    "meta": {
+      "byAuthor": "作者：{author}",
+      "readingTime": "阅读约 {minutes} 分钟"
+    },
+    "tooltips": {
+      "decreaseFontSize": "减小字体",
+      "increaseFontSize": "增大字体",
+      "removeStar": "取消收藏",
+      "addStar": "添加收藏",
+      "openOriginalArticle": "打开原文链接"
+    },
+    "menu": {
+      "markAsUnread": "标记为未读",
+      "markAsRead": "标记为已读",
+      "shareArticle": "分享文章",
+      "copyLink": "复制链接"
+    },
+    "status": {
+      "unread": "未读",
+      "starred": "已收藏"
+    },
+    "fullContent": {
+      "fetch": "抓取全文",
+      "fetching": "抓取中...",
+      "showRss": "显示 RSS 内容",
+      "showFull": "显示全文",
+      "refetch": "重新抓取全文"
+    },
+    "footer": {
+      "published": "发布于 {date}",
+      "fromFeed": "来自 {feedTitle}",
+      "readOriginal": "阅读原文"
+    }
+  },
+  "repositories": {
+    "relatedGithubRepositories": "相关 GitHub 仓库"
+  },
+  "addFeedDialog": {
+    "title": "添加 RSS 订阅源",
+    "description": "通过直接输入 URL 或从网站发现订阅源来添加 RSS。",
+    "tabs": {
+      "directUrl": "直接 URL",
+      "discover": "自动发现"
+    },
+    "fields": {
+      "feedUrlLabel": "RSS 订阅源 URL",
+      "feedUrlPlaceholder": "https://example.com/feed.xml",
+      "websiteUrlLabel": "网站 URL",
+      "websiteUrlPlaceholder": "https://example.com",
+      "folderOptional": "文件夹（可选）",
+      "selectFolder": "选择文件夹",
+      "noFolder": "无文件夹",
+      "refreshIntervalLabel": "刷新间隔（分钟）",
+      "defaultPlaceholder": "默认：{minutes} 分钟",
+      "defaultHint": "留空则使用默认值（{minutes} 分钟）",
+      "discoveredFeeds": "已发现订阅源"
+    },
+    "toggles": {
+      "enableDeduplication": "启用文章去重",
+      "enableDeduplicationDescription": "过滤标题和内容完全相同的文章",
+      "enableAutoFetch": "刷新时自动抓取全文",
+      "enableAutoFetchDescription": "刷新该订阅源时自动从原文链接提取全文"
+    },
+    "actions": {
+      "cancel": "取消",
+      "adding": "添加中...",
+      "addFeed": "添加订阅源"
+    },
+    "toasts": {
+      "errorTitle": "错误",
+      "invalidFeedUrl": "请输入有效的 RSS 订阅源 URL",
+      "feedAlreadyExistsTitle": "订阅源已存在",
+      "feedAlreadyExistsDescription": "{feedTitle} 已在你的订阅列表中",
+      "failedToAddFeedTitle": "添加订阅源失败",
+      "unexpectedError": "发生了未知错误",
+      "successTitle": "成功",
+      "addedFeedWithArticles": "已添加 {feedTitle}，包含 {count} 篇文章",
+      "failedToAddRssFeed": "添加 RSS 订阅源失败",
+      "websiteUrlRequired": "请输入网站 URL 以发现订阅源",
+      "noFeedsFoundTitle": "未发现订阅源",
+      "noFeedsFoundDescription": "无法为该网站发现任何 RSS 订阅源",
+      "failedToDiscoverFeeds": "发现 RSS 订阅源失败"
+    }
+  },
+  "addFolderDialog": {
+    "title": "新建文件夹",
+    "description": "创建新文件夹以组织你的 RSS 订阅源。",
+    "fields": {
+      "name": "名称",
+      "namePlaceholder": "输入文件夹名称"
+    },
+    "actions": {
+      "cancel": "取消",
+      "adding": "添加中...",
+      "addFolder": "添加文件夹"
+    },
+    "toasts": {
+      "successTitle": "成功",
+      "errorTitle": "错误",
+      "folderCreated": "文件夹 {folderName} 创建成功。",
+      "folderAlreadyExists": "文件夹 {folderName} 已存在。",
+      "failedToCreateFolder": "创建文件夹失败，请重试。"
+    }
+  },
+  "editFeedForm": {
+    "notFound": {
+      "title": "未找到订阅源",
+      "description": "你要查找的订阅源不存在。",
+      "backToAllArticles": "返回全部文章"
+    },
+    "header": {
+      "title": "编辑订阅源属性",
+      "subtitle": "更新 {feedTitle} 的属性"
+    },
+    "fields": {
+      "title": "标题",
+      "titlePlaceholder": "订阅源标题",
+      "rssUrl": "RSS 订阅源 URL",
+      "rssUrlPlaceholder": "https://example.com/feed.xml",
+      "rssUrlHint": "修改 URL 后会验证新的订阅源地址",
+      "description": "描述",
+      "descriptionPlaceholder": "订阅源描述（可选）",
+      "category": "分类",
+      "categoryPlaceholder": "分类（可选）",
+      "folder": "文件夹",
+      "selectFolder": "选择文件夹",
+      "noFolder": "无文件夹",
+      "refreshInterval": "刷新间隔（分钟）",
+      "refreshIntervalPlaceholder": "默认：{minutes} 分钟",
+      "refreshIntervalHint": "检查新文章的频率（1 分钟到 1 周）。默认：{minutes} 分钟"
+    },
+    "toggles": {
+      "enableDeduplication": "启用文章去重",
+      "enableDeduplicationDescription": "自动过滤标题和内容完全相同的文章",
+      "enableAutoFetch": "刷新时自动抓取全文",
+      "enableAutoFetchDescription": "刷新该订阅源时自动从原文链接提取全文"
+    },
+    "actions": {
+      "saving": "保存中...",
+      "saveChanges": "保存更改",
+      "cancel": "取消"
+    },
+    "toasts": {
+      "errorTitle": "错误",
+      "successTitle": "成功",
+      "invalidUrlTitle": "URL 无效",
+      "duplicateFeedTitle": "重复订阅源",
+      "feedTitleRequired": "订阅源标题不能为空",
+      "feedUrlRequired": "订阅源 URL 不能为空",
+      "invalidRssUrl": "提供的 URL 不是有效的 RSS 订阅源",
+      "feedUpdated": "订阅源属性更新成功",
+      "duplicateFeedDescription": "已存在相同 URL 的订阅源",
+      "failedToUpdateFeed": "更新订阅源失败"
+    }
+  },
+  "renameDialog": {
+    "name": "名称",
+    "namePlaceholder": "输入新名称",
+    "actions": {
+      "cancel": "取消",
+      "renaming": "重命名中...",
+      "rename": "重命名"
+    }
+  },
+  "moveToFolderDialog": {
+    "title": "将订阅源移动到文件夹",
+    "description": "将 {feedTitle} 移动到其他文件夹，或从文件夹中移除。",
+    "fields": {
+      "folder": "文件夹",
+      "selectFolder": "选择文件夹",
+      "noFolder": "无文件夹"
+    },
+    "actions": {
+      "cancel": "取消",
+      "moving": "移动中...",
+      "move": "移动"
+    }
+  }
+}

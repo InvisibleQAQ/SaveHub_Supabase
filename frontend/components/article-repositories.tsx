@@ -6,12 +6,14 @@ import type { Repository } from "@/lib/types"
 import { getArticleRepositories } from "@/lib/api/articles"
 import { RepositoryCard } from "./repository/repository-card"
 import { RepositoryDetailDialog } from "./repository/repository-detail-dialog"
+import { useTranslations } from "next-intl"
 
 interface ArticleRepositoriesProps {
   articleId: string
 }
 
 export function ArticleRepositories({ articleId }: ArticleRepositoriesProps) {
+  const t = useTranslations("reader.repositories")
   const [repositories, setRepositories] = useState<Repository[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [selectedRepo, setSelectedRepo] = useState<Repository | null>(null)
@@ -62,7 +64,7 @@ export function ArticleRepositories({ articleId }: ArticleRepositoriesProps) {
         {/* Section Title */}
         <div className="flex items-center gap-2 mb-4">
           <Github className="w-5 h-5 text-muted-foreground" />
-          <h3 className="text-lg font-semibold">相关 GitHub 仓库</h3>
+          <h3 className="text-lg font-semibold">{t("relatedGithubRepositories")}</h3>
           {!isLoading && (
             <span className="text-sm text-muted-foreground">
               ({repositories.length})

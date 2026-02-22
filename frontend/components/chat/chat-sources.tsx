@@ -2,17 +2,19 @@
 
 import { ExternalLink, FileText, Github } from "lucide-react"
 import type { RetrievedSource } from "@/lib/api/agentic-rag"
+import { useTranslations } from "next-intl"
 
 interface ChatSourcesProps {
   sources: RetrievedSource[]
 }
 
 export function ChatSources({ sources }: ChatSourcesProps) {
+  const t = useTranslations("chat.sources")
   if (!sources || sources.length === 0) return null
 
   return (
     <div className="mt-3 pt-3 border-t">
-      <p className="text-xs text-muted-foreground mb-2">参考来源：</p>
+      <p className="text-xs text-muted-foreground mb-2">{t("referenceList")}</p>
       <div className="flex flex-wrap gap-2">
         {sources.map((source, i) => (
           <a

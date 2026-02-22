@@ -1,0 +1,105 @@
+{
+  "page": {
+    "title": "GitHub Stars",
+    "tokenMissingTitle": "GitHub Token 未配置",
+    "tokenMissingDescription": "请在设置页面添加 GitHub Token",
+    "tokenMissingHint": "请在设置页面添加 GitHub Personal Access Token 以同步您的 Starred 仓库",
+    "repositoryCount": "{count} 个仓库",
+    "searchPlaceholder": "搜索仓库...",
+    "sync": "同步",
+    "syncing": "同步中..."
+  },
+  "sort": {
+    "stars": "Star 数",
+    "starredAt": "收藏时间",
+    "updatedAt": "最后更新",
+    "pushedAt": "最后推送",
+    "name": "名称",
+    "openRank": "OpenRank",
+    "ascending": "升序",
+    "descending": "降序"
+  },
+  "syncProgress": {
+    "fetching": "正在获取所有仓库",
+    "fetched": "获取完成，共 {total} 个仓库",
+    "analyzing": "正在分析: {current}",
+    "saving": "正在保存分析结果...",
+    "openRank": "正在获取 OpenRank 指标...",
+    "embedding": "正在生成向量: {current}",
+    "savedCount": "已保存 {savedCount} / {saveTotal}"
+  },
+  "states": {
+    "loading": "加载中...",
+    "emptyNoRepository": "暂无仓库，点击同步按钮获取",
+    "emptyNoMatch": "未找到匹配的仓库",
+    "emptyNoCategory": "该分类下暂无仓库"
+  },
+  "toast": {
+    "syncCompletedTitle": "同步完成",
+    "syncCompletedDescription": "共 {total} 个仓库，新增 {newCount} 个",
+    "syncFailedTitle": "同步失败",
+    "unknownError": "未知错误",
+    "aiAnalyzeCompleted": "AI 分析完成",
+    "aiAnalyzeFailed": "AI 分析失败",
+    "saveSuccess": "保存成功",
+    "saveFailed": "保存失败"
+  },
+  "card": {
+    "noDescription": "暂无描述",
+    "tooltipAnalyzeRetryFailed": "分析失败，点击重试",
+    "tooltipAnalyzeAgain": "已分析，点击重新分析",
+    "tooltipAnalyze": "AI 分析",
+    "tooltipEdit": "编辑仓库信息",
+    "tooltipViewInZread": "在 Zread 中查看",
+    "tooltipViewOnGitHub": "在 GitHub 查看",
+    "platformSupported": "支持平台:",
+    "openRankScore": "OpenRank 分数",
+    "badgeCustom": "自定义",
+    "badgeAiSummary": "AI 总结",
+    "badgeEdited": "已编辑",
+    "badgeAnalyzeFailed": "分析失败",
+    "badgeAiAnalyzed": "AI已分析",
+    "updatedAt": "更新于 {time}"
+  },
+  "detailDialog": {
+    "renderFailed": "渲染失败: {error}",
+    "noReadme": "该仓库没有 README 文件"
+  },
+  "editDialog": {
+    "title": "编辑仓库信息",
+    "rawDescription": "原始描述: {description}",
+    "customDescription": "自定义描述",
+    "customDescriptionPlaceholder": "输入自定义描述...",
+    "category": "分类",
+    "categoryPlaceholder": "选择分类...",
+    "customTags": "自定义标签",
+    "addTagPlaceholder": "添加标签...",
+    "cancel": "取消",
+    "saving": "保存中...",
+    "save": "保存"
+  },
+  "sidebar": {
+    "searchCategoryPlaceholder": "搜索分类...",
+    "category": "分类",
+    "platform": "平台",
+    "tag": "标签",
+    "collapse": "收起",
+    "showAll": "显示全部 {count} 个"
+  },
+  "categories": {
+    "all": "全部分类",
+    "web": "Web应用",
+    "mobile": "移动应用",
+    "desktop": "桌面应用",
+    "database": "数据库",
+    "ai": "AI/机器学习",
+    "devtools": "开发工具",
+    "security": "安全工具",
+    "game": "游戏",
+    "design": "设计工具",
+    "productivity": "效率工具",
+    "education": "教育学习",
+    "social": "社交网络",
+    "analytics": "数据分析"
+  }
+}

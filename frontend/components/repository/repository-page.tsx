@@ -12,11 +12,13 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import type { Repository } from "@/lib/types"
+import { useTranslations } from "next-intl"
 
 type SortField = "stars" | "starredAt" | "updatedAt" | "pushedAt" | "name" | "openrank"
 type SortDirection = "asc" | "desc"
 
 export function RepositoryPage() {
+  const t = useTranslations("repository")
   const { toast } = useToast()
 
   const {
@@ -92,8 +94,8 @@ export function RepositoryPage() {
   const handleSync = async () => {
     if (!settings.githubToken) {
       toast({
-        title: "GitHub Token 未配置",
-        description: "请在设置页面添加 GitHub Token",
+        title: t("page.tokenMissingTitle"),
+        description: t("page.tokenMissingDescription"),
         variant: "destructive",
       })
       return
@@ -102,13 +104,13 @@ export function RepositoryPage() {
     try {
       const result = await syncRepositories()
       toast({
-        title: "同步完成",
-        description: `共 ${result.total} 个仓库，新增 ${result.newCount} 个`,
+        title: t("toast.syncCompletedTitle"),
+        description: t("toast.syncCompletedDescription", { total: result.total, newCount: result.newCount }),
       })
     } catch (error) {
       toast({
-        title: "同步失败",
-        description: error instanceof Error ? error.message : "未知错误",
+        title: t("toast.syncFailedTitle"),
+        description: error instanceof Error ? error.message : t("toast.unknownError"),
         variant: "destructive",
       })
     }
@@ -205,9 +207,9 @@ export function RepositoryPage() {
           <div className="w-16 h-16 mx-auto rounded-full bg-muted flex items-center justify-center">
             <Github className="w-8 h-8 text-muted-foreground" />
           </div>
-          <h2 className="text-xl font-semibold">GitHub Token 未配置</h2>
+          <h2 className="text-xl font-semibold">{t("page.tokenMissingTitle")}</h2>
           <p className="text-sm text-muted-foreground max-w-sm">
-            请在设置页面添加 GitHub Personal Access Token 以同步您的 Starred 仓库
+            {t("page.tokenMissingHint")}
           </p>
         </div>
       </div>
@@ -237,18 +239,18 @@ export function RepositoryPage() {
             <div className="flex items-center gap-2">
               <Star className="w-5 h-5 text-amber-500" />
               <h1 className="text-lg font-semibold">
-                GitHub Stars
+                {t("page.title")}
               </h1>
             </div>
             <span className="text-sm text-muted-foreground">
-              {filteredRepos.length} 个仓库
+              {t("page.repositoryCount", { count: filteredRepos.length })}
             </span>
           </div>
           <div className="flex items-center gap-3">
             <div className="relative">
               <Search className="absolute left-3 inset-y-0 my-auto w-4 h-4 text-muted-foreground pointer-events-none" />
               <Input
-                placeholder="搜索仓库..."
+                placeholder={t("page.searchPlaceholder")}
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 className="pl-9 w-64 h-9"
@@ -260,7 +262,7 @@ export function RepositoryPage() {
               size="sm"
             >
               <RefreshCw className={`w-4 h-4 mr-2 ${isSyncing ? "animate-spin" : ""}`} />
-              {isSyncing ? "同步中..." : "同步"}
+              {isSyncing ? t("page.syncing") : t("page.sync")}
             </Button>
           </div>
         </div>
@@ -273,22 +275,22 @@ export function RepositoryPage() {
           >
             <TabsList className="h-8 bg-muted/50">
               <TabsTrigger value="stars" className="text-xs px-3 h-7 data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:font-medium">
-                Star 数
+                {t("sort.stars")}
               </TabsTrigger>
               <TabsTrigger value="starredAt" className="text-xs px-3 h-7 data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:font-medium">
-                收藏时间
+                {t("sort.starredAt")}
               </TabsTrigger>
               <TabsTrigger value="updatedAt" className="text-xs px-3 h-7 data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:font-medium">
-                最后更新
+                {t("sort.updatedAt")}
               </TabsTrigger>
               <TabsTrigger value="pushedAt" className="text-xs px-3 h-7 data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:font-medium">
-                最后推送
+                {t("sort.pushedAt")}
               </TabsTrigger>
               <TabsTrigger value="name" className="text-xs px-3 h-7 data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:font-medium">
-                名称
+                {t("sort.name")}
               </TabsTrigger>
               <TabsTrigger value="openrank" className="text-xs px-3 h-7 data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:font-medium">
-                OpenRank
+                {t("sort.openRank")}
               </TabsTrigger>
             </TabsList>
           </Tabs>
@@ -302,12 +304,12 @@ export function RepositoryPage() {
             {sortDirection === "asc" ? (
               <>
                 <ArrowUp className="w-4 h-4" />
-                升序
+                {t("sort.ascending")}
               </>
             ) : (
               <>
                 <ArrowDown className="w-4 h-4" />
-                降序
+                {t("sort.descending")}
               </>
             )}
           </Button>
@@ -318,17 +320,17 @@ export function RepositoryPage() {
           <div className="px-6 py-3 border-b bg-muted/30">
             <div className="flex items-center justify-between text-sm mb-2">
               <span className="text-muted-foreground">
-                {syncProgress.phase === "fetching" && "正在获取所有仓库"}
+                {syncProgress.phase === "fetching" && t("syncProgress.fetching")}
                 {syncProgress.phase === "fetched" && (
-                  <>获取完成，共 <span className="text-foreground font-medium">{syncProgress.total}</span> 个仓库</>
+                  <>{t("syncProgress.fetched", { total: syncProgress.total ?? 0 })}</>
                 )}
                 {syncProgress.phase === "analyzing" && (
-                  <>正在分析: <span className="text-foreground font-medium">{syncProgress.current}</span></>
+                  <>{t("syncProgress.analyzing", { current: syncProgress.current ?? "-" })}</>
                 )}
-                {syncProgress.phase === "saving" && "正在保存分析结果..."}
-                {syncProgress.phase === "openrank" && "正在获取 OpenRank 指标..."}
+                {syncProgress.phase === "saving" && t("syncProgress.saving")}
+                {syncProgress.phase === "openrank" && t("syncProgress.openRank")}
                 {syncProgress.phase === "embedding" && (
-                  <>正在生成向量: <span className="text-foreground font-medium">{syncProgress.current}</span></>
+                  <>{t("syncProgress.embedding", { current: syncProgress.current ?? "-" })}</>
                 )}
               </span>
               {syncProgress.phase === "analyzing" && syncProgress.completed !== undefined && syncProgress.total !== undefined && (
@@ -338,7 +340,10 @@ export function RepositoryPage() {
               )}
               {syncProgress.phase === "saving" && syncProgress.savedCount !== undefined && syncProgress.saveTotal !== undefined && (
                 <span className="text-muted-foreground">
-                  已保存 {syncProgress.savedCount} / {syncProgress.saveTotal}
+                  {t("syncProgress.savedCount", {
+                    savedCount: syncProgress.savedCount,
+                    saveTotal: syncProgress.saveTotal,
+                  })}
                 </span>
               )}
               {syncProgress.phase === "embedding" && syncProgress.completed !== undefined && syncProgress.total !== undefined && (
@@ -390,7 +395,7 @@ export function RepositoryPage() {
             <div className="flex items-center justify-center h-full">
               <div className="text-center space-y-3">
                 <RefreshCw className="w-8 h-8 animate-spin text-primary mx-auto" />
-                <p className="text-sm text-muted-foreground">加载中...</p>
+                <p className="text-sm text-muted-foreground">{t("states.loading")}</p>
               </div>
             </div>
           ) : filteredRepos.length === 0 ? (
@@ -401,10 +406,10 @@ export function RepositoryPage() {
                 </div>
                 <p className="text-muted-foreground">
                   {repositories.length === 0
-                    ? "暂无仓库，点击同步按钮获取"
+                    ? t("states.emptyNoRepository")
                     : searchQuery
-                    ? "未找到匹配的仓库"
-                    : "该分类下暂无仓库"}
+                    ? t("states.emptyNoMatch")
+                    : t("states.emptyNoCategory")}
                 </p>
               </div>
             </div>

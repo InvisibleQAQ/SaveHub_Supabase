@@ -1,0 +1,64 @@
+{
+  "page": {
+    "title": "AI Video Transcript",
+    "subtitle": "Turn video content into structured notes with AI-powered transcription and summarization."
+  },
+  "form": {
+    "title": "Video Transcript",
+    "description": "Generate transcript, summary, and translation from video URL.",
+    "urlPlaceholder": "Enter video URL (e.g., YouTube, Bilibili)",
+    "targetLanguagePlaceholder": "Target Language",
+    "submitProcessing": "Processing...",
+    "submitStart": "Start",
+    "languages": {
+      "zh": "Chinese (Simplified)",
+      "en": "English",
+      "ja": "Japanese",
+      "ko": "Korean",
+      "es": "Spanish",
+      "fr": "French",
+      "de": "German"
+    }
+  },
+  "progress": {
+    "error": "Error",
+    "processing": "Processing...",
+    "durationHint": "This process may take a few minutes depending on the video length.",
+    "stageInitializing": "Initializing task...",
+    "stageStarted": "Task started, waiting for stream...",
+    "stageAccepted": "Task accepted by server...",
+    "stageCompleted": "Completed"
+  },
+  "result": {
+    "downloadMd": "Download MD",
+    "titleFallback": "Transcription Result",
+    "markdownTitleFallback": "Transcript",
+    "tabs": {
+      "transcript": "Transcript",
+      "summary": "Summary",
+      "translation": "Translation"
+    },
+    "contentTitle": "{label} Content",
+    "copySrOnly": "Copy {label}",
+    "noContent": "*No content generated*"
+  },
+  "toast": {
+    "copiedTitle": "Copied!",
+    "copiedDescription": "{section} copied to clipboard.",
+    "copyFailedTitle": "Failed to copy",
+    "copyFailedDescription": "Please try again.",
+    "downloadedTitle": "Downloaded",
+    "downloadedDescription": "Transcript saved as Markdown file.",
+    "successTitle": "Success",
+    "successDescription": "Transcription completed successfully.",
+    "errorTitle": "Error",
+    "taskFailed": "Task failed",
+    "connectionErrorTitle": "Connection Error"
+  },
+  "errors": {
+    "unknownError": "An unknown error occurred",
+    "connectFailed": "Failed to connect to transcription service",
+    "errorWithMessage": "Error: {message}",
+    "checkUrlAndRetry": "Please check the URL and try again."
+  }
+}

@@ -1,0 +1,64 @@
+{
+  "page": {
+    "title": "智能问答",
+    "subtitle": "基于您的文章和仓库进行问答",
+    "badge": "Agentic RAG",
+    "state": {
+      "streaming": "流式输出中",
+      "ready": "就绪"
+    }
+  },
+  "emptyState": {
+    "title": "开始对话",
+    "description": "输入问题，我会从您的文章和仓库中检索相关信息来回答。",
+    "quickPrompts": {
+      "topProjects": "最近收藏的仓库里，最值得关注的 3 个项目是什么？",
+      "todayArticles": "帮我总结今天新增文章的核心观点",
+      "nextWeekPlan": "基于我的收藏内容，给出下周学习计划"
+    }
+  },
+  "input": {
+    "placeholder": "输入您的问题...",
+    "clarificationPlaceholder": "请先补充上方澄清问题的细节...",
+    "stopGenerating": "停止生成",
+    "stop": "停止"
+  },
+  "statusMessages": {
+    "thinking": "思考中...",
+    "rewriteDone": "重写完成，拆分 {count} 个子问题",
+    "enterParentBackfill": "第 {questionIndex} 个子问题进入父块回溯补全",
+    "enterSecondaryRetrieval": "第 {questionIndex} 个子问题进入二次检索",
+    "retrievingQuestion": "正在检索第 {questionIndex} 个子问题",
+    "parentBackfillReturned": "第 {questionIndex} 个子问题父块补全返回 {resultCount} 条结果",
+    "secondaryRetrievalReturned": "第 {questionIndex} 个子问题二次检索返回 {resultCount} 条结果",
+    "retrievalReturned": "第 {questionIndex} 个子问题检索返回 {resultCount} 条结果",
+    "aggregatingAfterCompleted": "已完成 {completed}/{totalQuestions} 个子问题，正在聚合答案",
+    "needMoreDetails": "请补充更多问题细节。",
+    "clarificationRequiredBeforeContinue": "需要补充问题细节后才能继续检索",
+    "generatingFinalAnswer": "证据准备完成，正在生成最终回答",
+    "answerCompleted": "回答完成",
+    "answerCompletedExpandable": "回答完成，可展开查看流程"
+  },
+  "stages": {
+    "rewrite": "重写",
+    "toolCall": "调用工具",
+    "expandContext": "二次检索",
+    "aggregation": "聚合"
+  },
+  "timeline": {
+    "label": "流程日志（{count}）",
+    "collapse": "收起",
+    "expand": "展开"
+  },
+  "agent": {
+    "label": "智能体",
+    "system": "系统"
+  },
+  "sources": {
+    "referenceList": "参考来源：",
+    "viewSourceTitle": "查看来源：{title}",
+    "relevance": "相关度: {score}%",
+    "viewOriginal": "查看原文",
+    "viewOnGitHub": "在 GitHub 查看"
+  }
+}

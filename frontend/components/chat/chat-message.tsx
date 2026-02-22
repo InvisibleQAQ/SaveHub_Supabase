@@ -14,13 +14,18 @@ import type { ChatMessage as ChatMessageData, RetrievedSource } from "@/lib/api/
 import { useRSSStore } from "@/lib/store"
 import { RepositoryCard } from "@/components/repository/repository-card"
 import { Popover, PopoverAnchor, PopoverContent } from "@/components/ui/popover"
+import { useTranslations } from "next-intl"
 
 interface ChatMessageProps {
   message: ChatMessageData
   sources?: RetrievedSource[]
 }
 
-function formatMessageContent(content: string, sources?: RetrievedSource[]): string {
+function formatMessageContent(
+  content: string,
+  sources: RetrievedSource[] | undefined,
+  getViewSourceTitle: (title: string) => string
+): string {
   if (!sources || sources.length === 0) return content
 
   const sourceMap = new Map<number, RetrievedSource>()
@@ -43,23 +48,29 @@ function formatMessageContent(content: string, sources?: RetrievedSource[]): str
     }
 
     const label = getCircledNumber(index)
+    const title = escapeHtmlAttribute(getViewSourceTitle(source.title))
 
     if (!source.url) {
-      return `<a href="#" data-reference-index="${index}" class="inline-flex items-center justify-center w-5 h-5 text-xs font-medium rounded-full bg-primary/10 text-primary hover:bg-primary/20 transition-colors align-super ml-0.5 no-underline" title="查看来源：${escapeHtmlAttribute(source.title)}">${label}</a>`
+      return `<a href="#" data-reference-index="${index}" class="inline-flex items-center justify-center w-5 h-5 text-xs font-medium rounded-full bg-primary/10 text-primary hover:bg-primary/20 transition-colors align-super ml-0.5 no-underline" title="${title}">${label}</a>`
     }
 
-    return `<a href="${escapeHtmlAttribute(source.url)}" data-reference-index="${index}" class="inline-flex items-center justify-center w-5 h-5 text-xs font-medium rounded-full bg-primary/10 text-primary hover:bg-primary/20 transition-colors align-super ml-0.5 no-underline" title="查看来源：${escapeHtmlAttribute(source.title)}">${label}</a>`
+    return `<a href="${escapeHtmlAttribute(source.url)}" data-reference-index="${index}" class="inline-flex items-center justify-center w-5 h-5 text-xs font-medium rounded-full bg-primary/10 text-primary hover:bg-primary/20 transition-colors align-super ml-0.5 no-underline" title="${title}">${label}</a>`
   })
 }
 
 export function ChatMessage({ message, sources }: ChatMessageProps) {
+  const t = useTranslations("chat.sources")
   const isUser = message.role === "user"
   const from = isUser ? "user" : "assistant"
   const repositories = useRSSStore((state) => state.repositories)
   const [activeSource, setActiveSource] = useState<RetrievedSource | null>(null)
   const activeSourceAnchorRef = useRef<HTMLAnchorElement | null>(null)
   const closeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
-  const content = formatMessageContent(message.content, sources)
+  const content = formatMessageContent(
+    message.content,
+    sources,
+    (title) => t("viewSourceTitle", { title })
+  )
 
   const userMarkdownClassName =
     "prose-headings:text-primary-foreground prose-p:text-primary-foreground prose-strong:text-primary-foreground prose-em:text-primary-foreground prose-li:text-primary-foreground prose-code:text-primary-foreground prose-pre:border-primary-foreground/20 prose-pre:bg-primary-foreground/10 prose-blockquote:text-primary-foreground prose-a:text-primary-foreground prose-th:text-primary-foreground prose-td:text-primary-foreground"

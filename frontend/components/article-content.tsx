@@ -16,8 +16,10 @@ import { cn } from "@/lib/utils"
 import { formatDistanceToNow, formatFullDate, sanitizeHTML, estimateReadingTime, getProxiedImageUrl } from "@/lib/utils"
 import { useToast } from "@/hooks/use-toast"
 import { ArticleRepositories } from "./article-repositories"
+import { useTranslations } from "next-intl"
 
 export function ArticleContent() {
+  const t = useTranslations("reader.articleContent")
   const { articles, feeds, selectedArticleId, markAsRead, markAsUnread, toggleStar, settings, updateSettings, isSidebarCollapsed, setSidebarCollapsed, fetchArticleFullContent } =
     useRSSStore()
   const { toast } = useToast()
@@ -53,7 +55,7 @@ export function ArticleContent() {
     } catch (error) {
       if (activeArticleIdRef.current !== targetId) return
       setShowFullContent(false)
-      const msg = error instanceof Error ? error.message : "Failed to fetch full content"
+      const msg = error instanceof Error ? error.message : t("errors.failedToFetchFullContent")
       setFullContentError(msg)
     } finally {
       if (activeArticleIdRef.current === targetId) {
@@ -91,8 +93,8 @@ export function ArticleContent() {
       } else {
         await navigator.clipboard.writeText(selectedArticle.url)
         toast({
-          title: "Link copied",
-          description: "Article link copied to clipboard",
+          title: t("toasts.linkCopiedTitle"),
+          description: t("toasts.linkCopiedDescription"),
         })
       }
     } catch (error) {
@@ -106,14 +108,14 @@ export function ArticleContent() {
     try {
       await navigator.clipboard.writeText(selectedArticle.url)
       toast({
-        title: "Link copied",
-        description: "Article link copied to clipboard",
+        title: t("toasts.linkCopiedTitle"),
+        description: t("toasts.linkCopiedDescription"),
       })
     } catch (error) {
       console.error("Error copying link:", error)
       toast({
-        title: "Error",
-        description: "Failed to copy link",
+        title: t("toasts.errorTitle"),
+        description: t("toasts.failedToCopyLink"),
         variant: "destructive",
       })
     }
@@ -131,10 +133,9 @@ export function ArticleContent() {
           <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-muted flex items-center justify-center">
             <BookOpen className="h-8 w-8" />
           </div>
-          <h3 className="text-lg font-medium mb-2">Select an article to read</h3>
+          <h3 className="text-lg font-medium mb-2">{t("empty.title")}</h3>
           <p className="text-sm text-pretty">
-            Choose an article from the list to view its content here. You can browse by feed, search for specific
-            topics, or filter by read status.
+            {t("empty.description")}
           </p>
         </div>
       </div>
@@ -167,7 +168,7 @@ export function ArticleContent() {
               )}
               {selectedArticle.author && (
                 <>
-                  <span>By {selectedArticle.author}</span>
+                  <span>{t("meta.byAuthor", { author: selectedArticle.author })}</span>
                   <span>•</span>
                 </>
               )}
@@ -175,7 +176,7 @@ export function ArticleContent() {
                 {formatDistanceToNow(selectedArticle.publishedAt)}
               </span>
               <span>•</span>
-              <span>{readingTime} min read</span>
+              <span>{t("meta.readingTime", { minutes: readingTime })}</span>
             </div>
           </div>
 
@@ -186,7 +187,7 @@ export function ArticleContent() {
               size="icon"
               onClick={() => adjustFontSize(-2)}
               className="h-9 w-9"
-              title="Decrease font size"
+              title={t("tooltips.decreaseFontSize")}
             >
               <ZoomOut className="h-4 w-4" />
             </Button>
@@ -196,7 +197,7 @@ export function ArticleContent() {
               size="icon"
               onClick={() => adjustFontSize(2)}
               className="h-9 w-9"
-              title="Increase font size"
+              title={t("tooltips.increaseFontSize")}
             >
               <ZoomIn className="h-4 w-4" />
             </Button>
@@ -206,7 +207,7 @@ export function ArticleContent() {
               size="icon"
               onClick={() => toggleStar(selectedArticle.id)}
               className={cn("h-9 w-9", selectedArticle.isStarred && "text-yellow-500")}
-              title={selectedArticle.isStarred ? "Remove star" : "Add star"}
+              title={selectedArticle.isStarred ? t("tooltips.removeStar") : t("tooltips.addStar")}
             >
               <Star className={cn("h-4 w-4", selectedArticle.isStarred && "fill-current")} />
             </Button>
@@ -216,7 +217,7 @@ export function ArticleContent() {
               size="icon"
               onClick={() => window.open(selectedArticle.url, "_blank")}
               className="h-9 w-9"
-              title="Open original article"
+              title={t("tooltips.openOriginalArticle")}
             >
               <ExternalLink className="h-4 w-4" />
             </Button>
@@ -236,23 +237,23 @@ export function ArticleContent() {
                   {selectedArticle.isRead ? (
                     <>
                       <Clock className="h-4 w-4 mr-2" />
-                      Mark as Unread
+                      {t("menu.markAsUnread")}
                     </>
                   ) : (
                     <>
                       <Check className="h-4 w-4 mr-2" />
-                      Mark as Read
+                      {t("menu.markAsRead")}
                     </>
                   )}
                 </DropdownMenuItem>
                 <DropdownMenuSeparator />
                 <DropdownMenuItem onClick={handleShare}>
                   <Share className="h-4 w-4 mr-2" />
-                  Share Article
+                  {t("menu.shareArticle")}
                 </DropdownMenuItem>
                 <DropdownMenuItem onClick={handleCopyLink}>
                   <Copy className="h-4 w-4 mr-2" />
-                  Copy Link
+                  {t("menu.copyLink")}
                 </DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>
@@ -264,13 +265,13 @@ export function ArticleContent() {
           {!selectedArticle.isRead && (
             <div className="flex items-center gap-2 text-xs text-primary">
               <div className="w-2 h-2 rounded-full bg-primary" />
-              <span>Unread</span>
+              <span>{t("status.unread")}</span>
             </div>
           )}
           {selectedArticle.isStarred && (
             <div className="flex items-center gap-2 text-xs text-yellow-600">
               <Star className="w-3 h-3 fill-current" />
-              <span>Starred</span>
+              <span>{t("status.starred")}</span>
             </div>
           )}
         </div>
@@ -309,14 +310,14 @@ export function ArticleContent() {
                     className="gap-2"
                   >
                     <FileText className="h-3.5 w-3.5" />
-                    Fetch Full Content
+                    {t("fullContent.fetch")}
                   </Button>
                 )}
 
                 {isLoadingFullContent && (
                   <Button variant="outline" size="sm" disabled className="gap-2">
                     <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                    Fetching...
+                    {t("fullContent.fetching")}
                   </Button>
                 )}
 
@@ -329,14 +330,14 @@ export function ArticleContent() {
                       className="gap-2"
                     >
                       <FileText className="h-3.5 w-3.5" />
-                      {showFullContent ? "Show RSS Content" : "Show Full Content"}
+                      {showFullContent ? t("fullContent.showRss") : t("fullContent.showFull")}
                     </Button>
                     <Button
                       variant="ghost"
                       size="sm"
                       onClick={() => handleFetchFullContent(true)}
-                      title="Re-fetch full content"
-                      aria-label="Re-fetch full content"
+                      title={t("fullContent.refetch")}
+                      aria-label={t("fullContent.refetch")}
                       className="gap-2"
                     >
                       <RotateCw className="h-3.5 w-3.5" />
@@ -356,11 +357,11 @@ export function ArticleContent() {
             <div className="mt-8 pt-6 border-t border-border">
               <div className="flex items-center justify-between text-sm text-muted-foreground flex-wrap gap-4">
                 <div className="flex items-center gap-4">
-                  <span>Published {formatFullDate(selectedArticle.publishedAt)}</span>
+                  <span>{t("footer.published", { date: formatFullDate(selectedArticle.publishedAt) })}</span>
                   {selectedFeed && (
                     <>
                       <span>•</span>
-                      <span>From {selectedFeed.title}</span>
+                      <span>{t("footer.fromFeed", { feedTitle: selectedFeed.title })}</span>
                     </>
                   )}
                 </div>
@@ -371,7 +372,7 @@ export function ArticleContent() {
                   className="gap-2"
                 >
                   <ExternalLink className="h-3 w-3" />
-                  Read Original
+                  {t("footer.readOriginal")}
                 </Button>
               </div>
             </div>

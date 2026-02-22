@@ -1,0 +1,79 @@
+{
+  "app": {
+    "name": "SaveHub"
+  },
+  "combobox": {
+    "placeholder": "Select an option...",
+    "searchPlaceholder": "Search...",
+    "emptyText": "No options found"
+  },
+  "databaseSetup": {
+    "title": "Database Setup Required",
+    "description": "Initialize your RSS Reader database to get started",
+    "alert": "Your Supabase database needs to be initialized before you can use the RSS Reader. Follow the steps below to set up your database.",
+    "steps": {
+      "runScriptTitle": "Run the Database Script",
+      "runScriptDescription": "Click the Run Script button below to execute the database initialization script. This will create all necessary tables and indexes.",
+      "verifyTitle": "Verify Database Setup",
+      "verifyDescription": "After running the script, click Check Database to verify that everything is set up correctly."
+    },
+    "actions": {
+      "checkDatabase": "Check Database",
+      "checkingDatabase": "Checking Database..."
+    },
+    "noteLabel": "Note:",
+    "noteDescription": "You can find the database script in the Scripts section. The script will create tables for folders, feeds, articles, and settings with proper indexes and relationships."
+  },
+  "apiValidation": {
+    "errors": {
+      "loginRequired": "Please log in before validating API configuration",
+      "serverError": "Server error: {status} - {message}",
+      "sessionExpired": "Session expired, please log in again",
+      "networkError": "Unable to connect to the validation server, please check your network connection",
+      "validationFailed": "Validation failed: {message}",
+      "unknownValidationError": "An unknown error occurred during model validation"
+    },
+    "apiBaseUrlErrors": {
+      "required": "API endpoint URL cannot be empty",
+      "invalidProtocol": "API endpoint URL must use HTTP or HTTPS",
+      "invalidFormat": "Invalid API endpoint URL format"
+    }
+  },
+  "auth": {
+    "subtitleSignIn": "Sign in to access your feeds",
+    "subtitleRegister": "Create a new account",
+    "fields": {
+      "email": "Email",
+      "password": "Password",
+      "emailPlaceholder": "you@example.com",
+      "passwordPlaceholder": "••••••••"
+    },
+    "actions": {
+      "signIn": "Sign In",
+      "signInLower": "Sign in",
+      "signUp": "Sign up",
+      "createAccount": "Create Account",
+      "signingIn": "Signing in...",
+      "creatingAccount": "Creating account..."
+    },
+    "prompts": {
+      "noAccount": "Don't have an account?",
+      "hasAccount": "Already have an account?"
+    },
+    "errors": {
+      "authenticationFailed": "Authentication failed"
+    }
+  },
+  "readerLayout": {
+    "authenticating": "Authenticating...",
+    "checkingDatabaseStatus": "Checking database status...",
+    "loadingRssReader": "Loading RSS Reader...",
+    "errorLoadingData": "Error loading data",
+    "tryAgain": "Try Again"
+  },
+  "store": {
+    "errors": {
+      "failedToLoadSavedData": "Failed to load saved data"
+    }
+  }
+}

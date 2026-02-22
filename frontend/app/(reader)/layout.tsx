@@ -9,8 +9,10 @@ import { KeyboardShortcuts } from "@/components/keyboard-shortcuts"
 import { Sidebar } from "@/components/sidebar"
 import { Loader2 } from "lucide-react"
 import { useAuth } from "@/lib/context/auth-context"
+import { useTranslations } from "next-intl"
 
 export default function ReaderLayout({ children }: { children: React.ReactNode }) {
+  const t = useTranslations("common")
   const router = useRouter()
   const { isAuthenticated, isLoading: isAuthLoading } = useAuth()
   const { isLoading, error, isDatabaseReady, isSidebarCollapsed, loadFromSupabase, checkDatabaseStatus, setError } = useRSSStore()
@@ -50,12 +52,12 @@ export default function ReaderLayout({ children }: { children: React.ReactNode }
         await loadFromSupabase()
       } catch (error) {
         console.error("Failed to initialize data:", error)
-        setError("Failed to load saved data")
+        setError(t("store.errors.failedToLoadSavedData"))
       }
     }
 
     initializeData()
-  }, [isDatabaseReady, loadFromSupabase, setError])
+  }, [isDatabaseReady, loadFromSupabase, setError, t])
 
 
   if (isAuthLoading) {
@@ -63,7 +65,7 @@ export default function ReaderLayout({ children }: { children: React.ReactNode }
       <div className="flex items-center justify-center h-screen bg-background">
         <div className="text-center">
           <Loader2 className="h-8 w-8 animate-spin mx-auto mb-4 text-primary" />
-          <p className="text-muted-foreground">Authenticating...</p>
+          <p className="text-muted-foreground">{t("readerLayout.authenticating")}</p>
         </div>
       </div>
     )
@@ -79,7 +81,7 @@ export default function ReaderLayout({ children }: { children: React.ReactNode }
       <div className="flex items-center justify-center h-screen bg-background">
         <div className="text-center">
           <Loader2 className="h-8 w-8 animate-spin mx-auto mb-4 text-primary" />
-          <p className="text-muted-foreground">Checking database status...</p>
+          <p className="text-muted-foreground">{t("readerLayout.checkingDatabaseStatus")}</p>
         </div>
       </div>
     )
@@ -94,7 +96,7 @@ export default function ReaderLayout({ children }: { children: React.ReactNode }
       <div className="flex items-center justify-center h-screen bg-background">
         <div className="text-center">
           <Loader2 className="h-8 w-8 animate-spin mx-auto mb-4 text-primary" />
-          <p className="text-muted-foreground">Loading RSS Reader...</p>
+          <p className="text-muted-foreground">{t("readerLayout.loadingRssReader")}</p>
         </div>
       </div>
     )
@@ -107,7 +109,7 @@ export default function ReaderLayout({ children }: { children: React.ReactNode }
           <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-destructive/10 flex items-center justify-center">
             <span className="text-2xl">⚠️</span>
           </div>
-          <h3 className="text-lg font-medium mb-2">Error Loading Data</h3>
+          <h3 className="text-lg font-medium mb-2">{t("readerLayout.errorLoadingData")}</h3>
           <p className="text-sm text-muted-foreground mb-4 text-pretty">{error}</p>
           <button
             onClick={() => {
@@ -116,7 +118,7 @@ export default function ReaderLayout({ children }: { children: React.ReactNode }
             }}
             className="px-4 py-2 bg-primary text-primary-foreground rounded-md hover:bg-primary/90 transition-colors"
           >
-            Try Again
+            {t("readerLayout.tryAgain")}
           </button>
         </div>
       </div>

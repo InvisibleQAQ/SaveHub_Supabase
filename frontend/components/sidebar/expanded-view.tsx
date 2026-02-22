@@ -16,6 +16,7 @@ import { FeedRefresh } from "../feed-refresh"
 import { useRSSStore } from "@/lib/store"
 import { useAuth } from "@/lib/context/auth-context"
 import { cn } from "@/lib/utils"
+import { useTranslations } from "next-intl"
 import type { Feed, Folder } from "@/lib/types"
 import type { RenameDialogState, MoveDialogState, DeleteFolderDialogState, DeleteFeedDialogState } from "./types"
 
@@ -58,6 +59,7 @@ export function ExpandedView({
   sidebarPinned,
   onTogglePin,
 }: ExpandedViewProps) {
+  const t = useTranslations("sidebar")
   const pathname = usePathname()
   const { logout } = useAuth()
   const { folders, feeds, getUnreadCount, moveFeed } = useRSSStore()
@@ -151,7 +153,7 @@ export function ExpandedView({
       {/* Header */}
       <div className="p-4 border-b border-sidebar-border">
         <div className="flex items-center justify-between mb-4">
-          <h1 className="text-lg font-semibold text-sidebar-foreground">SaveHub</h1>
+          <h1 className="text-lg font-semibold text-sidebar-foreground">{t("brand.name")}</h1>
           <div className="flex items-center gap-1">
             <Button
               variant="ghost"
@@ -160,7 +162,7 @@ export function ExpandedView({
                 "h-8 w-8 text-sidebar-foreground hover:bg-sidebar-accent",
                 sidebarPinned && "bg-sidebar-accent"
               )}
-              title={sidebarPinned ? "Unpin sidebar" : "Pin sidebar"}
+              title={sidebarPinned ? t("tooltips.unpinSidebar") : t("tooltips.pinSidebar")}
               onClick={onTogglePin}
             >
               {sidebarPinned ? <Pin className="h-4 w-4" /> : <PinOff className="h-4 w-4" />}
@@ -169,7 +171,7 @@ export function ExpandedView({
               variant="ghost"
               size="icon"
               className="h-8 w-8 text-sidebar-foreground hover:bg-sidebar-accent"
-              title="Collapse sidebar"
+              title={t("tooltips.collapseSidebar")}
               onClick={onCollapse}
             >
               <ChevronLeft className="h-4 w-4" />
@@ -182,7 +184,7 @@ export function ExpandedView({
         <div className="relative">
           <Search className="absolute left-3 top-2.5 h-4 w-4 text-sidebar-foreground/60" />
           <Input
-            placeholder="Search feeds and folders..."
+            placeholder={t("search.placeholder")}
             value={feedSearch}
             onChange={(e) => onFeedSearchChange(e.target.value)}
             className="pl-9 bg-sidebar-accent border-sidebar-border text-sidebar-foreground placeholder:text-sidebar-foreground/60"
@@ -192,12 +194,12 @@ export function ExpandedView({
 
       {/* View Mode Filters */}
       <div className="p-4 space-y-2">
-        <ViewButton href="/all" icon={BookOpen} label="All Articles" count={totalArticles} isActive={pathname === "/all"} variant="full" />
-        <ViewButton href="/unread" icon={Rss} label="Unread" count={totalUnread} isActive={pathname === "/unread"} variant="full" />
-        <ViewButton href="/starred" icon={Star} label="Starred" count={totalStarred} isActive={pathname === "/starred"} variant="full" />
-        <ViewButton href="/chat" icon={MessageSquare} label="Chat" isActive={pathname === "/chat"} variant="full" />
-        <ViewButton href="/transcript" icon={FileText} label="Transcript" isActive={pathname === "/transcript"} variant="full" />
-        <ViewButton href="/repository" icon={Github} label="Repository" count={totalRepositories} isActive={pathname === "/repository"} variant="full" />
+        <ViewButton href="/all" icon={BookOpen} label={t("views.allArticles")} count={totalArticles} isActive={pathname === "/all"} variant="full" />
+        <ViewButton href="/unread" icon={Rss} label={t("views.unread")} count={totalUnread} isActive={pathname === "/unread"} variant="full" />
+        <ViewButton href="/starred" icon={Star} label={t("views.starred")} count={totalStarred} isActive={pathname === "/starred"} variant="full" />
+        <ViewButton href="/chat" icon={MessageSquare} label={t("views.chat")} isActive={pathname === "/chat"} variant="full" />
+        <ViewButton href="/transcript" icon={FileText} label={t("views.transcript")} isActive={pathname === "/transcript"} variant="full" />
+        <ViewButton href="/repository" icon={Github} label={t("views.repository")} count={totalRepositories} isActive={pathname === "/repository"} variant="full" />
 
         <Button
           variant="ghost"
@@ -205,7 +207,7 @@ export function ExpandedView({
           onClick={() => onShowAddFeed()}
         >
           <Plus className="h-4 w-4" />
-          Add Feed
+          {t("actions.addFeed")}
         </Button>
 
         <Button
@@ -214,7 +216,7 @@ export function ExpandedView({
           onClick={onShowAddFolder}
         >
           <FolderPlus className="h-4 w-4" />
-          Add Folder
+          {t("actions.addFolder")}
         </Button>
       </div>
 
@@ -224,7 +226,7 @@ export function ExpandedView({
       <div className="flex-1 overflow-hidden">
         <div className="p-4 pb-2">
           <h2 className="text-sm font-medium text-sidebar-foreground/80 uppercase tracking-wide">
-            Feeds ({filteredFeeds.length})
+            {t("views.feedsCount", { count: filteredFeeds.length })}
           </h2>
         </div>
 
@@ -287,7 +289,7 @@ export function ExpandedView({
               })}
               {draggedFeedId && (!feedsByFolder.none || feedsByFolder.none.length === 0) && (
                 <div className="flex items-center justify-center h-[60px] text-xs text-sidebar-foreground/40">
-                  Drop here to move to root level
+                  {t("feeds.dropToRoot")}
                 </div>
               )}
             </div>
@@ -295,21 +297,21 @@ export function ExpandedView({
             {filteredFeeds.length === 0 && feeds.length > 0 && (
               <div className="text-center py-8 text-sidebar-foreground/60">
                 <Search className="h-8 w-8 mx-auto mb-2 opacity-50" />
-                <p className="text-sm">No feeds match your search</p>
+                <p className="text-sm">{t("feeds.noMatchSearch")}</p>
               </div>
             )}
 
             {feeds.length === 0 && (
               <div className="text-center py-8 text-sidebar-foreground/60">
                 <Rss className="h-8 w-8 mx-auto mb-2 opacity-50" />
-                <p className="text-sm">No feeds added yet</p>
+                <p className="text-sm">{t("feeds.empty")}</p>
                 <Button
                   variant="ghost"
                   size="sm"
                   onClick={() => onShowAddFeed()}
                   className="mt-2 text-sidebar-foreground hover:bg-sidebar-accent"
                 >
-                  Add your first feed
+                  {t("actions.addFirstFeed")}
                 </Button>
               </div>
             )}
@@ -332,7 +334,7 @@ export function ExpandedView({
         >
           <Link href="/settings">
             <Settings className="h-4 w-4" />
-            Settings
+            {t("actions.settings")}
           </Link>
         </Button>
         <Button
@@ -342,7 +344,7 @@ export function ExpandedView({
           onClick={handleLogout}
         >
           <LogOut className="h-4 w-4" />
-          Logout
+          {t("actions.logout")}
         </Button>
       </div>
     </div>
