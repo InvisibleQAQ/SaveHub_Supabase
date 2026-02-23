@@ -71,6 +71,10 @@
     "errorLoadingData": "Error loading data",
     "tryAgain": "Try Again"
   },
+  "ui": {
+    "close": "Close",
+    "stop": "Stop"
+  },
   "store": {
     "errors": {
       "failedToLoadSavedData": "Failed to load saved data"

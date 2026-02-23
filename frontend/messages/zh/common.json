@@ -71,6 +71,10 @@
     "errorLoadingData": "数据加载失败",
     "tryAgain": "重试"
   },
+  "ui": {
+    "close": "关闭",
+    "stop": "停止"
+  },
   "store": {
     "errors": {
       "failedToLoadSavedData": "加载已保存数据失败"

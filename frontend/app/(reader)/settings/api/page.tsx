@@ -11,7 +11,7 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Badge } from "@/components/ui/badge"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Trash2, Edit, Plus, CheckCircle, XCircle, Loader2, Power } from "lucide-react"
-import { validateApiConfig, validateApiBaseUrl } from "@/lib/api-validation"
+import { validateApiConfig, validateApiBaseUrl, type ApiBaseUrlErrorKey } from "@/lib/api-validation"
 import { useToast } from "@/hooks/use-toast"
 import { useTranslations } from "next-intl"
 
@@ -58,6 +58,7 @@ export default function ApiConfigPage() {
 
   const { toast } = useToast()
   const t = useTranslations("settings.api")
+  const tCommon = useTranslations("common")
 
   // Prevent duplicate loading on remount
   const hasLoadedRef = useRef(false)
@@ -96,9 +97,14 @@ export default function ApiConfigPage() {
 
     const urlValidation = validateApiBaseUrl(trimmed.apiBase)
     if (!urlValidation.valid) {
+      const errorMessages: Record<ApiBaseUrlErrorKey, string> = {
+        required: tCommon("apiValidation.apiBaseUrlErrors.required"),
+        invalidProtocol: tCommon("apiValidation.apiBaseUrlErrors.invalidProtocol"),
+        invalidFormat: tCommon("apiValidation.apiBaseUrlErrors.invalidFormat"),
+      }
       toast({
         title: t("toasts.apiBaseUrlError"),
-        description: urlValidation.error,
+        description: errorMessages[urlValidation.errorKey],
         variant: "destructive",
       })
       return

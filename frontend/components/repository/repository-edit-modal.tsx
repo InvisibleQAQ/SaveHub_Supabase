@@ -39,6 +39,16 @@ export function RepositoryEditModal({
   const t = useTranslations("repository")
   const { updateRepository } = useRSSStore()
   const { toast } = useToast()
+  const getCategoryName = (id: string, fallback: string) => {
+    const map: Record<string, string> = {
+      web: t("categories.web"), mobile: t("categories.mobile"), desktop: t("categories.desktop"),
+      database: t("categories.database"), ai: t("categories.ai"), devtools: t("categories.devtools"),
+      security: t("categories.security"), game: t("categories.game"), design: t("categories.design"),
+      productivity: t("categories.productivity"), education: t("categories.education"),
+      social: t("categories.social"), analytics: t("categories.analytics"),
+    }
+    return map[id] || fallback
+  }
 
   const [formData, setFormData] = useState({
     description: "",
@@ -162,7 +172,7 @@ export function RepositoryEditModal({
               <SelectContent>
                 {REPOSITORY_CATEGORIES.filter((cat) => cat.id !== "all").map((category) => (
                   <SelectItem key={category.id} value={category.name}>
-                    {category.icon} {category.name}
+                    {category.icon} {getCategoryName(category.id, category.name)}
                   </SelectItem>
                 ))}
               </SelectContent>

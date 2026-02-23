@@ -103,9 +103,11 @@ export async function validateApiConfig(config: ApiValidationRequest): Promise<A
  * Validate API endpoint URL format (client-side only)
  * Special case: "dashscope" is valid for DashScope rerank API
  */
-export function validateApiBaseUrl(apiBase: string): { valid: boolean; error?: string } {
+export type ApiBaseUrlErrorKey = 'required' | 'invalidProtocol' | 'invalidFormat'
+
+export function validateApiBaseUrl(apiBase: string): { valid: true } | { valid: false; errorKey: ApiBaseUrlErrorKey } {
   if (!apiBase || apiBase.trim() === '') {
-    return { valid: false, error: 'API 端点 URL不能为空' }
+    return { valid: false, errorKey: 'required' }
   }
 
   // Special case: DashScope SDK identifier
@@ -117,11 +119,11 @@ export function validateApiBaseUrl(apiBase: string): { valid: boolean; error?: s
     const url = new URL(apiBase)
 
     if (!['http:', 'https:'].includes(url.protocol)) {
-      return { valid: false, error: 'API 端点 URL必须使用HTTP或HTTPS协议' }
+      return { valid: false, errorKey: 'invalidProtocol' }
     }
 
     return { valid: true }
   } catch {
-    return { valid: false, error: 'API 端点 URL格式无效' }
+    return { valid: false, errorKey: 'invalidFormat' }
   }
 }

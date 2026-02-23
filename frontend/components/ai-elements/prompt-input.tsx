@@ -3,6 +3,7 @@ import { Loader2, Send, Square } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
 import { Textarea } from "@/components/ui/textarea"
+import { useTranslations } from "next-intl"
 
 type PromptInputProps = React.HTMLAttributes<HTMLDivElement>
 
@@ -73,19 +74,18 @@ type PromptInputStopProps = React.ComponentProps<typeof Button>
 
 const PromptInputStop = React.forwardRef<HTMLButtonElement, PromptInputStopProps>(
   ({ className, children, ...props }, ref) => {
+    const t = useTranslations("common")
     return (
       <Button
         ref={ref}
         type="button"
         variant="outline"
+        aria-label={t("ui.stop")}
         className={cn("h-[60px] rounded-2xl px-4 shadow-sm", className)}
         {...props}
       >
         {children ?? (
-          <span className="inline-flex items-center gap-2 text-sm">
-            <Square className="h-3.5 w-3.5" />
-            停止
-          </span>
+          <Square className="h-3.5 w-3.5" />
         )}
       </Button>
     )
