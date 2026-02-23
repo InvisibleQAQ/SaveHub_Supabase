@@ -9,10 +9,12 @@ import { Moon, Sun, Monitor } from "lucide-react"
 import { useRSSStore } from "@/lib/store"
 import { useTheme } from "next-themes"
 import { useEffect } from "react"
+import { useTranslations } from "next-intl"
 
 export default function AppearanceSettingsPage() {
   const { settings, updateSettings } = useRSSStore()
   const { theme, setTheme } = useTheme()
+  const t = useTranslations("settings.appearance")
 
   useEffect(() => {
     if (theme && theme !== settings.theme) {
@@ -28,8 +30,8 @@ export default function AppearanceSettingsPage() {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-3xl font-bold">Appearance</h1>
-        <p className="text-muted-foreground mt-2">Customize the look and feel of your RSS reader</p>
+        <h1 className="text-3xl font-bold">{t("title")}</h1>
+        <p className="text-muted-foreground mt-2">{t("description")}</p>
       </div>
 
       <Separator />
@@ -37,8 +39,8 @@ export default function AppearanceSettingsPage() {
       <div className="space-y-6">
         <div className="flex items-center justify-between">
           <div className="space-y-1">
-            <Label htmlFor="theme">Theme</Label>
-            <p className="text-sm text-muted-foreground">Choose your preferred color scheme</p>
+            <Label htmlFor="theme">{t("theme")}</Label>
+            <p className="text-sm text-muted-foreground">{t("themeDescription")}</p>
           </div>
           <Select value={theme || "system"} onValueChange={handleThemeChange}>
             <SelectTrigger className="w-40">
@@ -48,19 +50,19 @@ export default function AppearanceSettingsPage() {
               <SelectItem value="light">
                 <div className="flex items-center gap-2">
                   <Sun className="h-4 w-4" />
-                  Light
+                  {t("themeLight")}
                 </div>
               </SelectItem>
               <SelectItem value="dark">
                 <div className="flex items-center gap-2">
                   <Moon className="h-4 w-4" />
-                  Dark
+                  {t("themeDark")}
                 </div>
               </SelectItem>
               <SelectItem value="system">
                 <div className="flex items-center gap-2">
                   <Monitor className="h-4 w-4" />
-                  System
+                  {t("themeSystem")}
                 </div>
               </SelectItem>
             </SelectContent>
@@ -71,8 +73,8 @@ export default function AppearanceSettingsPage() {
 
         <div className="space-y-3">
           <div className="flex items-center justify-between">
-            <Label htmlFor="font-size">Font Size</Label>
-            <span className="text-sm text-muted-foreground font-medium">{settings.fontSize}px</span>
+            <Label htmlFor="font-size">{t("fontSize")}</Label>
+            <span className="text-sm text-muted-foreground font-medium">{t("fontSizeValue", { value: settings.fontSize })}</span>
           </div>
           <Slider
             id="font-size"
@@ -83,15 +85,15 @@ export default function AppearanceSettingsPage() {
             onValueChange={([value]) => updateSettings({ fontSize: value })}
             className="w-full"
           />
-          <p className="text-xs text-muted-foreground">Adjust the article content font size</p>
+          <p className="text-xs text-muted-foreground">{t("fontSizeHint")}</p>
         </div>
 
         <Separator />
 
         <div className="flex items-center justify-between">
           <div className="space-y-1">
-            <Label htmlFor="show-thumbnails">Show Thumbnails</Label>
-            <p className="text-sm text-muted-foreground">Display article thumbnails in the feed list</p>
+            <Label htmlFor="show-thumbnails">{t("showThumbnails")}</Label>
+            <p className="text-sm text-muted-foreground">{t("showThumbnailsDescription")}</p>
           </div>
           <Switch
             id="show-thumbnails"
@@ -104,8 +106,8 @@ export default function AppearanceSettingsPage() {
 
         <div className="flex items-center justify-between">
           <div className="space-y-1">
-            <Label htmlFor="mark-read-scroll">Mark as Read on Scroll</Label>
-            <p className="text-sm text-muted-foreground">Automatically mark articles as read when scrolling past</p>
+            <Label htmlFor="mark-read-scroll">{t("markAsReadOnScroll")}</Label>
+            <p className="text-sm text-muted-foreground">{t("markAsReadOnScrollDescription")}</p>
           </div>
           <Switch
             id="mark-read-scroll"

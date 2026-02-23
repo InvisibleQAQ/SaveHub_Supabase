@@ -20,10 +20,12 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog"
 import { Loader2, Key, ExternalLink } from "lucide-react"
+import { useTranslations } from "next-intl"
 
 export default function GitHubTokenPage() {
   const { settings, updateSettings } = useRSSStore()
   const { toast } = useToast()
+  const t = useTranslations("settings.githubToken")
   const [token, setToken] = useState("")
   const [isValidating, setIsValidating] = useState(false)
   const [isSaving, setIsSaving] = useState(false)
@@ -39,8 +41,8 @@ export default function GitHubTokenPage() {
   const handleValidate = async () => {
     if (!token.trim()) {
       toast({
-        title: "验证失败",
-        description: "Token 不能为空",
+        title: t("toasts.validationFailed"),
+        description: t("toasts.tokenEmpty"),
         variant: "destructive",
       })
       return
@@ -55,24 +57,21 @@ export default function GitHubTokenPage() {
 
       if (result.valid) {
         toast({
-          title: "验证成功",
-          description: `Token 有效！GitHub 用户: ${result.username}`,
+          title: t("toasts.validationSuccess"),
+          description: t("toasts.tokenValid", { username: result.username ?? "" }),
         })
       } else {
         toast({
-          title: "验证失败",
+          title: t("toasts.validationFailed"),
           description: result.error,
           variant: "destructive",
         })
       }
     } catch (error) {
-      const errorMsg = error instanceof Error ? error.message : "验证失败"
-      setValidationResult({
-        valid: false,
-        error: errorMsg,
-      })
+      const errorMsg = error instanceof Error ? error.message : t("toasts.validationError")
+      setValidationResult({ valid: false, error: errorMsg })
       toast({
-        title: "验证失败",
+        title: t("toasts.validationFailed"),
         description: errorMsg,
         variant: "destructive",
       })
@@ -82,24 +81,21 @@ export default function GitHubTokenPage() {
   }
 
   const handleSave = async () => {
-    if (!validationResult?.valid) {
-      return
-    }
+    if (!validationResult?.valid) return
 
     setIsSaving(true)
-
     try {
       await updateSettings({ githubToken: token })
       setToken("")
       setValidationResult(null)
       toast({
-        title: "保存成功",
-        description: hasToken ? "Token 已成功更新" : "Token 已成功保存",
+        title: t("toasts.saveSuccess"),
+        description: hasToken ? t("toasts.tokenUpdated") : t("toasts.tokenSaved"),
       })
     } catch (error) {
       toast({
-        title: "保存失败",
-        description: error instanceof Error ? error.message : "保存失败，请重试",
+        title: t("toasts.saveFailed"),
+        description: error instanceof Error ? error.message : t("toasts.saveRetry"),
         variant: "destructive",
       })
     } finally {
@@ -109,18 +105,16 @@ export default function GitHubTokenPage() {
 
   const handleRemove = async () => {
     setIsSaving(true)
-
     try {
-      // Use null to explicitly delete the token
       await updateSettings({ githubToken: null as any })
       toast({
-        title: "删除成功",
-        description: "Token 已成功删除",
+        title: t("toasts.deleteSuccess"),
+        description: t("toasts.tokenDeleted"),
       })
     } catch (error) {
       toast({
-        title: "删除失败",
-        description: error instanceof Error ? error.message : "删除失败，请重试",
+        title: t("toasts.deleteFailed"),
+        description: error instanceof Error ? error.message : t("toasts.deleteRetry"),
         variant: "destructive",
       })
     } finally {
@@ -129,140 +123,102 @@ export default function GitHubTokenPage() {
     }
   }
 
-  const maskToken = (token?: string) => {
-    if (!token) return "未设置"
-    if (token.length <= 8) return "****"
-    return `${token.slice(0, 4)}****${token.slice(-4)}`
+  const maskToken = (tk?: string) => {
+    if (!tk) return t("status.notSet")
+    if (tk.length <= 8) return "****"
+    return `${tk.slice(0, 4)}****${tk.slice(-4)}`
   }
 
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-3xl font-bold">GitHub Token</h1>
-        <p className="text-muted-foreground mt-2">
-          配置 GitHub Personal Access Token 用于 GitHub 集成功能
-        </p>
+        <h1 className="text-3xl font-bold">{t("title")}</h1>
+        <p className="text-muted-foreground mt-2">{t("description")}</p>
       </div>
 
       <Separator />
 
-      {/* Current Token Status Card */}
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
             <Key className="h-5 w-5" />
-            当前 Token 状态
+            {t("status.cardTitle")}
           </CardTitle>
           <CardDescription>
-            {hasToken ? "您已配置 GitHub Token" : "尚未配置 GitHub Token"}
+            {hasToken ? t("status.configured") : t("status.notConfigured")}
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
           <div className="space-y-2">
-            <Label>Token 值</Label>
+            <Label>{t("status.tokenValue")}</Label>
             <div className="flex items-center gap-2">
-              <Input
-                value={maskToken(settings.githubToken)}
-                disabled
-                className="flex-1 font-mono"
-              />
+              <Input value={maskToken(settings.githubToken)} disabled className="flex-1 font-mono" />
               {hasToken && (
-                <Button
-                  variant="destructive"
-                  onClick={() => setShowDeleteDialog(true)}
-                  disabled={isSaving}
-                  size="sm"
-                >
-                  删除
+                <Button variant="destructive" onClick={() => setShowDeleteDialog(true)} disabled={isSaving} size="sm">
+                  {t("status.delete")}
                 </Button>
               )}
             </div>
-            <p className="text-xs text-muted-foreground">
-              Token 已加密存储，仅在设置时可见
-            </p>
+            <p className="text-xs text-muted-foreground">{t("status.encryptedHint")}</p>
           </div>
         </CardContent>
       </Card>
 
-      {/* Add/Update Token Card */}
       <Card>
         <CardHeader>
-          <CardTitle>{hasToken ? "更新" : "添加"} GitHub Token</CardTitle>
+          <CardTitle>{hasToken ? t("form.updateTitle") : t("form.addTitle")}</CardTitle>
           <CardDescription>
-            {hasToken ? "输入新的 Token 以替换现有配置" : "首次配置 GitHub Token"}
+            {hasToken ? t("form.updateDescription") : t("form.addDescription")}
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
           <div className="space-y-3">
-            <Label htmlFor="github-token">GitHub Personal Access Token</Label>
+            <Label htmlFor="github-token">{t("form.label")}</Label>
             <Input
               id="github-token"
               type="password"
-              placeholder="ghp_xxxxxxxxxxxxxxxxxxxx"
+              placeholder={t("form.placeholder")}
               value={token}
-              onChange={(e) => {
-                setToken(e.target.value)
-                setValidationResult(null)
-              }}
+              onChange={(e) => { setToken(e.target.value); setValidationResult(null) }}
               className="font-mono"
             />
           </div>
-
-          {/* Action Buttons */}
           <div className="flex gap-2">
-            <Button
-              onClick={handleValidate}
-              disabled={!token.trim() || isValidating}
-              variant="outline"
-            >
+            <Button onClick={handleValidate} disabled={!token.trim() || isValidating} variant="outline">
               {isValidating ? (
-                <>
-                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  验证中...
-                </>
-              ) : (
-                "验证 Token"
-              )}
+                <><Loader2 className="mr-2 h-4 w-4 animate-spin" />{t("form.validating")}</>
+              ) : t("form.validateToken")}
             </Button>
-            <Button
-              onClick={handleSave}
-              disabled={!validationResult?.valid || isSaving}
-            >
+            <Button onClick={handleSave} disabled={!validationResult?.valid || isSaving}>
               {isSaving ? (
-                <>
-                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  保存中...
-                </>
-              ) : (
-                hasToken ? "更新 Token" : "保存 Token"
-              )}
+                <><Loader2 className="mr-2 h-4 w-4 animate-spin" />{t("form.saving")}</>
+              ) : hasToken ? t("form.updateToken") : t("form.saveToken")}
             </Button>
           </div>
         </CardContent>
       </Card>
 
-      {/* Instructions Card */}
       <Card className="border-muted">
         <CardHeader>
-          <CardTitle className="text-base">如何创建 GitHub Token</CardTitle>
+          <CardTitle className="text-base">{t("instructions.title")}</CardTitle>
         </CardHeader>
         <CardContent className="space-y-3">
           <ol className="space-y-2 text-sm text-muted-foreground">
             <li className="flex gap-2">
               <span className="font-semibold text-foreground">1.</span>
-              <span>访问 GitHub Settings → Developer settings → Personal access tokens</span>
+              <span>{t("instructions.step1")}</span>
             </li>
             <li className="flex gap-2">
               <span className="font-semibold text-foreground">2.</span>
-              <span>点击 "Generate new token (classic)"</span>
+              <span>{t("instructions.step2")}</span>
             </li>
             <li className="flex gap-2">
               <span className="font-semibold text-foreground">3.</span>
-              <span>选择权限范围：<code className="px-1 py-0.5 bg-muted rounded text-xs">repo</code> 和 <code className="px-1 py-0.5 bg-muted rounded text-xs">user</code></span>
+              <span>{t("instructions.step3Prefix")}<code className="px-1 py-0.5 bg-muted rounded text-xs">repo</code>{t("instructions.step3Conjunction")}<code className="px-1 py-0.5 bg-muted rounded text-xs">user</code></span>
             </li>
             <li className="flex gap-2">
               <span className="font-semibold text-foreground">4.</span>
-              <span>复制生成的 token 并粘贴到上方输入框</span>
+              <span>{t("instructions.step4")}</span>
             </li>
           </ol>
           <div className="pt-2">
@@ -272,36 +228,28 @@ export default function GitHubTokenPage() {
               rel="noopener noreferrer"
               className="inline-flex items-center gap-1 text-sm text-primary hover:underline"
             >
-              在 GitHub 上创建 token
+              {t("instructions.createOnGitHub")}
               <ExternalLink className="h-3 w-3" />
             </a>
           </div>
         </CardContent>
       </Card>
 
-      {/* Delete Confirmation Dialog */}
       <AlertDialog open={showDeleteDialog} onOpenChange={setShowDeleteDialog}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>确认删除</AlertDialogTitle>
-            <AlertDialogDescription>
-              确定要删除 GitHub Token 吗？此操作无法撤销。
-            </AlertDialogDescription>
+            <AlertDialogTitle>{t("deleteDialog.title")}</AlertDialogTitle>
+            <AlertDialogDescription>{t("deleteDialog.description")}</AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel>取消</AlertDialogCancel>
+            <AlertDialogCancel>{t("deleteDialog.cancel")}</AlertDialogCancel>
             <AlertDialogAction
               onClick={handleRemove}
               className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
             >
               {isSaving ? (
-                <>
-                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  删除中...
-                </>
-              ) : (
-                "删除"
-              )}
+                <><Loader2 className="mr-2 h-4 w-4 animate-spin" />{t("deleteDialog.deleting")}</>
+              ) : t("deleteDialog.delete")}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

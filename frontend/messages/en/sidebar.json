@@ -59,6 +59,8 @@
   "renameDialog": {
     "renameFolderTitle": "Rename Folder",
     "renameFeedTitle": "Rename Feed",
+    "folderType": "folder",
+    "feedType": "feed",
     "description": "Enter a new name for this {type}."
   },
   "deleteFeedDialog": {

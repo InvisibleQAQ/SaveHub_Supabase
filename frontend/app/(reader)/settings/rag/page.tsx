@@ -12,6 +12,7 @@ import { Button } from "@/components/ui/button"
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible"
 import { useRSSStore } from "@/lib/store"
 import { cn } from "@/lib/utils"
+import { useTranslations } from "next-intl"
 
 type PresetKey = "fast" | "balanced" | "deep"
 
@@ -157,12 +158,14 @@ function PresetCard({
   title,
   subtitle,
   selected,
+  selectedLabel,
   onApply,
 }: {
   icon: React.ReactNode
   title: string
   subtitle: string
   selected: boolean
+  selectedLabel: string
   onApply: () => void
 }) {
   return (
@@ -187,7 +190,7 @@ function PresetCard({
         </div>
         {selected && (
           <span className="rounded-full border border-primary/30 bg-primary/10 px-2 py-0.5 text-[10px] font-medium text-primary">
-            已选中
+            {selectedLabel}
           </span>
         )}
       </div>
@@ -198,6 +201,7 @@ function PresetCard({
 export default function RagSettingsPage() {
   const { settings, updateSettings } = useRSSStore()
   const [advancedOpen, setAdvancedOpen] = useState(false)
+  const t = useTranslations("settings.rag")
 
   const coreScorePercent = useMemo(
     () => Math.round(settings.agenticRagMinScore * 100),
@@ -249,47 +253,50 @@ export default function RagSettingsPage() {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-3xl font-bold">Agentic RAG</h1>
-        <p className="text-muted-foreground mt-2">给非技术用户也能看懂的 RAG 配置面板</p>
+        <h1 className="text-3xl font-bold">{t("title")}</h1>
+        <p className="text-muted-foreground mt-2">{t("description")}</p>
       </div>
 
       <div className="rounded-md border border-amber-300/40 bg-amber-50/50 dark:bg-amber-950/20 p-3">
         <div className="flex items-start gap-2">
           <AlertTriangle className="h-4 w-4 mt-0.5 text-amber-600" />
           <div className="text-xs text-amber-900 dark:text-amber-200 space-y-1">
-            <p>建议先用下方“快速预设”，再按体验微调 1～2 个核心参数。</p>
-            <p>如果你不确定，直接使用“平衡（推荐）”通常效果最好。</p>
+            <p>{t("alertLine1")}</p>
+            <p>{t("alertLine2")}</p>
           </div>
         </div>
       </div>
 
       <div className="space-y-3">
-        <Label>快速预设（小白推荐）</Label>
+        <Label>{t("presets.label")}</Label>
         <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
           <PresetCard
             icon={<Rocket className="h-4 w-4" />}
-            title="快速"
-            subtitle="响应更快，成本更低，但可能漏掉部分边缘信息"
+            title={t("presets.fast")}
+            subtitle={t("presets.fastDescription")}
             selected={activePreset === "fast"}
+            selectedLabel={t("presets.selected")}
             onApply={applyFastPreset}
           />
           <PresetCard
             icon={<ShieldCheck className="h-4 w-4" />}
-            title="平衡（推荐）"
-            subtitle="速度与质量均衡，适合大多数日常问答"
+            title={t("presets.balanced")}
+            subtitle={t("presets.balancedDescription")}
             selected={activePreset === "balanced"}
+            selectedLabel={t("presets.selected")}
             onApply={applyBalancedPreset}
           />
           <PresetCard
             icon={<Gauge className="h-4 w-4" />}
-            title="深入"
-            subtitle="检索更广、回答更长，但速度更慢，消耗更高"
+            title={t("presets.deep")}
+            subtitle={t("presets.deepDescription")}
             selected={activePreset === "deep"}
+            selectedLabel={t("presets.selected")}
             onApply={applyDeepPreset}
           />
         </div>
         <p className="text-xs text-muted-foreground">
-          {activePreset ? "已匹配到当前预设，可继续微调核心参数" : "当前为自定义参数组合（未命中预设）"}
+          {activePreset ? t("presets.matchedPreset") : t("presets.customParams")}
         </p>
       </div>
 
@@ -298,7 +305,7 @@ export default function RagSettingsPage() {
       <div className="space-y-6">
         <div className="space-y-3">
           <div className="flex items-center justify-between">
-            <Label htmlFor="rag-top-k">检索文档数量 (Top K)</Label>
+            <Label htmlFor="rag-top-k">{t("core.topK")}</Label>
             <span className="text-sm text-muted-foreground font-medium">{settings.agenticRagTopK}</span>
           </div>
           <Slider
@@ -314,14 +321,13 @@ export default function RagSettingsPage() {
             }
           />
           <p className="text-xs text-muted-foreground">
-            范围 {CORE_RANGES.topK.min}～{CORE_RANGES.topK.max}，推荐 6～12。
-            调大：信息更全但更慢；调小：更快但可能漏信息。
+            {t("core.topKHint", { min: CORE_RANGES.topK.min, max: CORE_RANGES.topK.max })}
           </p>
         </div>
 
         <div className="space-y-3">
           <div className="flex items-center justify-between">
-            <Label htmlFor="rag-min-score">最小相似度阈值</Label>
+            <Label htmlFor="rag-min-score">{t("core.minScore")}</Label>
             <span className="text-sm text-muted-foreground font-medium">
               {settings.agenticRagMinScore.toFixed(2)} ({coreScorePercent}%)
             </span>
@@ -339,15 +345,15 @@ export default function RagSettingsPage() {
             }
           />
           <p className="text-xs text-muted-foreground">
-            范围 0～1，推荐 0.30～0.45。调大更严格（更准但可能查不到），调小更宽松（更全但噪音变多）。
+            {t("core.minScoreHint")}
           </p>
         </div>
 
         <NumberInputRow
-          label="最多拆分子问题数"
-          description="复杂问题会先拆解后分别检索"
-          rangeTip={`范围 ${CORE_RANGES.maxSplitQuestions.min}～${CORE_RANGES.maxSplitQuestions.max}，推荐 2～4`}
-          meaningTip="调大：覆盖面更广但更慢；调小：更快但可能回答不完整"
+          label={t("core.maxSplitQuestions")}
+          description={t("core.maxSplitQuestionsDesc")}
+          rangeTip={t("core.maxSplitQuestionsRange", { min: CORE_RANGES.maxSplitQuestions.min, max: CORE_RANGES.maxSplitQuestions.max })}
+          meaningTip={t("core.maxSplitQuestionsMeaning")}
           value={settings.agenticRagMaxSplitQuestions}
           min={CORE_RANGES.maxSplitQuestions.min}
           max={CORE_RANGES.maxSplitQuestions.max}
@@ -356,10 +362,10 @@ export default function RagSettingsPage() {
         />
 
         <NumberInputRow
-          label="每个子问题最大工具轮次"
-          description="每个子问题允许检索/扩展多少轮"
-          rangeTip={`范围 ${CORE_RANGES.maxToolRounds.min}～${CORE_RANGES.maxToolRounds.max}，推荐 2～4`}
-          meaningTip="调大：能补充更多证据但更慢；调小：响应更快"
+          label={t("core.maxToolRounds")}
+          description={t("core.maxToolRoundsDesc")}
+          rangeTip={t("core.maxToolRoundsRange", { min: CORE_RANGES.maxToolRounds.min, max: CORE_RANGES.maxToolRounds.max })}
+          meaningTip={t("core.maxToolRoundsMeaning")}
           value={settings.agenticRagMaxToolRoundsPerQuestion}
           min={CORE_RANGES.maxToolRounds.min}
           max={CORE_RANGES.maxToolRounds.max}
@@ -368,10 +374,10 @@ export default function RagSettingsPage() {
         />
 
         <NumberInputRow
-          label="每个子问题最大扩展次数"
-          description="初次检索不足时，允许追加检索次数"
-          rangeTip={`范围 ${CORE_RANGES.maxExpandCalls.min}～${CORE_RANGES.maxExpandCalls.max}，推荐 1～3`}
-          meaningTip="调大：可减少漏答但更慢；调小：更省时"
+          label={t("core.maxExpandCalls")}
+          description={t("core.maxExpandCallsDesc")}
+          rangeTip={t("core.maxExpandCallsRange", { min: CORE_RANGES.maxExpandCalls.min, max: CORE_RANGES.maxExpandCalls.max })}
+          meaningTip={t("core.maxExpandCallsMeaning")}
           value={settings.agenticRagMaxExpandCallsPerQuestion}
           min={CORE_RANGES.maxExpandCalls.min}
           max={CORE_RANGES.maxExpandCalls.max}
@@ -381,9 +387,9 @@ export default function RagSettingsPage() {
 
         <div className="flex items-center justify-between">
           <div className="space-y-1">
-            <Label htmlFor="rag-retry-on-failure">工具失败自动重试</Label>
-            <p className="text-sm text-muted-foreground">遇到偶发网络波动时更稳</p>
-            <p className="text-xs text-muted-foreground">建议开启。关闭后偶发失败会直接影响回答完整度。</p>
+            <Label htmlFor="rag-retry-on-failure">{t("core.retryOnFailure")}</Label>
+            <p className="text-sm text-muted-foreground">{t("core.retryOnFailureDesc")}</p>
+            <p className="text-xs text-muted-foreground">{t("core.retryOnFailureHint")}</p>
           </div>
           <Switch
             id="rag-retry-on-failure"
@@ -394,10 +400,10 @@ export default function RagSettingsPage() {
 
         {settings.agenticRagRetryToolOnFailure && (
           <NumberInputRow
-            label="工具最大重试次数"
-            description="单次失败后再尝试的次数"
-            rangeTip={`范围 ${CORE_RANGES.maxToolRetry.min}～${CORE_RANGES.maxToolRetry.max}，推荐 1～2`}
-            meaningTip="调大：稳定性更高但更慢；调小：更快"
+            label={t("core.maxToolRetry")}
+            description={t("core.maxToolRetryDesc")}
+            rangeTip={t("core.maxToolRetryRange", { min: CORE_RANGES.maxToolRetry.min, max: CORE_RANGES.maxToolRetry.max })}
+            meaningTip={t("core.maxToolRetryMeaning")}
             value={settings.agenticRagMaxToolRetry}
             min={CORE_RANGES.maxToolRetry.min}
             max={CORE_RANGES.maxToolRetry.max}
@@ -407,10 +413,10 @@ export default function RagSettingsPage() {
         )}
 
         <NumberInputRow
-          label="回答最大输出 Tokens"
-          description="限制最终回答长度（越大可写越长）"
-          rangeTip={`范围 ${CORE_RANGES.answerMaxTokens.min}～${CORE_RANGES.answerMaxTokens.max}，推荐 700～1300`}
-          meaningTip="调大：回答更详细但更慢；调小：更简短更快"
+          label={t("core.answerMaxTokens")}
+          description={t("core.answerMaxTokensDesc")}
+          rangeTip={t("core.answerMaxTokensRange", { min: CORE_RANGES.answerMaxTokens.min, max: CORE_RANGES.answerMaxTokens.max })}
+          meaningTip={t("core.answerMaxTokensMeaning")}
           value={settings.agenticRagAnswerMaxTokens}
           min={CORE_RANGES.answerMaxTokens.min}
           max={CORE_RANGES.answerMaxTokens.max}
@@ -424,21 +430,21 @@ export default function RagSettingsPage() {
       <Collapsible open={advancedOpen} onOpenChange={setAdvancedOpen}>
         <CollapsibleTrigger asChild>
           <Button variant="outline" className="w-full justify-between">
-            <span>高级参数与提示词（进阶）</span>
+            <span>{t("advanced.toggle")}</span>
             {advancedOpen ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
           </Button>
         </CollapsibleTrigger>
         <CollapsibleContent className="mt-4 space-y-6 border rounded-md p-4">
           <div className="rounded-md border border-muted p-3 text-xs text-muted-foreground">
-            这些参数适合进阶调优。若你不确定作用，建议保持默认值。修改前可先记录当前值，便于回滚。
+            {t("advanced.note")}
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <NumberInputRow
-              label="摘要温度"
-              description="历史摘要生成随机性"
-              rangeTip={`范围 ${ADVANCED_RANGES.historySummaryTemperature.min}～${ADVANCED_RANGES.historySummaryTemperature.max}`}
-              meaningTip="越高越发散，越低越稳定"
+              label={t("advanced.summaryTemp")}
+              description={t("advanced.summaryTempDesc")}
+              rangeTip={t("rangeText", { min: ADVANCED_RANGES.historySummaryTemperature.min, max: ADVANCED_RANGES.historySummaryTemperature.max })}
+              meaningTip={t("advanced.summaryTempMeaning")}
               value={settings.agenticRagHistorySummaryTemperature}
               min={ADVANCED_RANGES.historySummaryTemperature.min}
               max={ADVANCED_RANGES.historySummaryTemperature.max}
@@ -450,10 +456,10 @@ export default function RagSettingsPage() {
               }
             />
             <NumberInputRow
-              label="摘要最大 Tokens"
-              description="历史摘要输出上限"
-              rangeTip={`范围 ${ADVANCED_RANGES.historySummaryMaxTokens.min}～${ADVANCED_RANGES.historySummaryMaxTokens.max}`}
-              meaningTip="越大越详细，越小越简短"
+              label={t("advanced.summaryMaxTokens")}
+              description={t("advanced.summaryMaxTokensDesc")}
+              rangeTip={t("rangeText", { min: ADVANCED_RANGES.historySummaryMaxTokens.min, max: ADVANCED_RANGES.historySummaryMaxTokens.max })}
+              meaningTip={t("advanced.summaryMaxTokensMeaning")}
               value={settings.agenticRagHistorySummaryMaxTokens}
               min={ADVANCED_RANGES.historySummaryMaxTokens.min}
               max={ADVANCED_RANGES.historySummaryMaxTokens.max}
@@ -461,10 +467,10 @@ export default function RagSettingsPage() {
               onChange={(value) => updateSettings({ agenticRagHistorySummaryMaxTokens: value })}
             />
             <NumberInputRow
-              label="查询分析温度"
-              description="问题拆分随机性"
-              rangeTip={`范围 ${ADVANCED_RANGES.queryAnalysisTemperature.min}～${ADVANCED_RANGES.queryAnalysisTemperature.max}`}
-              meaningTip="越高拆分更灵活，越低更保守"
+              label={t("advanced.queryTemp")}
+              description={t("advanced.queryTempDesc")}
+              rangeTip={t("rangeText", { min: ADVANCED_RANGES.queryAnalysisTemperature.min, max: ADVANCED_RANGES.queryAnalysisTemperature.max })}
+              meaningTip={t("advanced.queryTempMeaning")}
               value={settings.agenticRagQueryAnalysisTemperature}
               min={ADVANCED_RANGES.queryAnalysisTemperature.min}
               max={ADVANCED_RANGES.queryAnalysisTemperature.max}
@@ -476,10 +482,10 @@ export default function RagSettingsPage() {
               }
             />
             <NumberInputRow
-              label="查询分析最大 Tokens"
-              description="分析结果长度上限"
-              rangeTip={`范围 ${ADVANCED_RANGES.queryAnalysisMaxTokens.min}～${ADVANCED_RANGES.queryAnalysisMaxTokens.max}`}
-              meaningTip="越大可输出更多结构信息"
+              label={t("advanced.queryMaxTokens")}
+              description={t("advanced.queryMaxTokensDesc")}
+              rangeTip={t("rangeText", { min: ADVANCED_RANGES.queryAnalysisMaxTokens.min, max: ADVANCED_RANGES.queryAnalysisMaxTokens.max })}
+              meaningTip={t("advanced.queryMaxTokensMeaning")}
               value={settings.agenticRagQueryAnalysisMaxTokens}
               min={ADVANCED_RANGES.queryAnalysisMaxTokens.min}
               max={ADVANCED_RANGES.queryAnalysisMaxTokens.max}
@@ -487,10 +493,10 @@ export default function RagSettingsPage() {
               onChange={(value) => updateSettings({ agenticRagQueryAnalysisMaxTokens: value })}
             />
             <NumberInputRow
-              label="答案生成温度"
-              description="子答案随机性"
-              rangeTip={`范围 ${ADVANCED_RANGES.answerGenerationTemperature.min}～${ADVANCED_RANGES.answerGenerationTemperature.max}`}
-              meaningTip="越高文风更活，但稳定性下降"
+              label={t("advanced.answerTemp")}
+              description={t("advanced.answerTempDesc")}
+              rangeTip={t("rangeText", { min: ADVANCED_RANGES.answerGenerationTemperature.min, max: ADVANCED_RANGES.answerGenerationTemperature.max })}
+              meaningTip={t("advanced.answerTempMeaning")}
               value={settings.agenticRagAnswerGenerationTemperature}
               min={ADVANCED_RANGES.answerGenerationTemperature.min}
               max={ADVANCED_RANGES.answerGenerationTemperature.max}
@@ -502,10 +508,10 @@ export default function RagSettingsPage() {
               }
             />
             <NumberInputRow
-              label="聚合温度"
-              description="最终答案聚合随机性"
-              rangeTip={`范围 ${ADVANCED_RANGES.aggregationTemperature.min}～${ADVANCED_RANGES.aggregationTemperature.max}`}
-              meaningTip="建议保持低值，减少跳脱"
+              label={t("advanced.aggregationTemp")}
+              description={t("advanced.aggregationTempDesc")}
+              rangeTip={t("rangeText", { min: ADVANCED_RANGES.aggregationTemperature.min, max: ADVANCED_RANGES.aggregationTemperature.max })}
+              meaningTip={t("advanced.aggregationTempMeaning")}
               value={settings.agenticRagAggregationTemperature}
               min={ADVANCED_RANGES.aggregationTemperature.min}
               max={ADVANCED_RANGES.aggregationTemperature.max}
@@ -517,10 +523,10 @@ export default function RagSettingsPage() {
               }
             />
             <NumberInputRow
-              label="上下文扩展窗口"
-              description="邻近 chunk 扩展半径"
-              rangeTip={`范围 ${ADVANCED_RANGES.expandContextWindowSize.min}～${ADVANCED_RANGES.expandContextWindowSize.max}`}
-              meaningTip="越大召回越全，但噪音可能增加"
+              label={t("advanced.expandWindow")}
+              description={t("advanced.expandWindowDesc")}
+              rangeTip={t("rangeText", { min: ADVANCED_RANGES.expandContextWindowSize.min, max: ADVANCED_RANGES.expandContextWindowSize.max })}
+              meaningTip={t("advanced.expandWindowMeaning")}
               value={settings.agenticRagExpandContextWindowSize}
               min={ADVANCED_RANGES.expandContextWindowSize.min}
               max={ADVANCED_RANGES.expandContextWindowSize.max}
@@ -528,10 +534,10 @@ export default function RagSettingsPage() {
               onChange={(value) => updateSettings({ agenticRagExpandContextWindowSize: value })}
             />
             <NumberInputRow
-              label="扩展检索最小 Top K"
-              description="二次扩展最少检索条数"
-              rangeTip={`范围 ${ADVANCED_RANGES.expandContextTopKMin.min}～${ADVANCED_RANGES.expandContextTopKMin.max}`}
-              meaningTip="越大更全面，越小更快"
+              label={t("advanced.expandTopKMin")}
+              description={t("advanced.expandTopKMinDesc")}
+              rangeTip={t("rangeText", { min: ADVANCED_RANGES.expandContextTopKMin.min, max: ADVANCED_RANGES.expandContextTopKMin.max })}
+              meaningTip={t("advanced.expandTopKMinMeaning")}
               value={settings.agenticRagExpandContextTopKMin}
               min={ADVANCED_RANGES.expandContextTopKMin.min}
               max={ADVANCED_RANGES.expandContextTopKMin.max}
@@ -539,10 +545,10 @@ export default function RagSettingsPage() {
               onChange={(value) => updateSettings({ agenticRagExpandContextTopKMin: value })}
             />
             <NumberInputRow
-              label="扩展检索分数偏移"
-              description="扩展时对 min_score 的加减"
-              rangeTip={`范围 ${ADVANCED_RANGES.expandContextMinScoreDelta.min}～${ADVANCED_RANGES.expandContextMinScoreDelta.max}`}
-              meaningTip="负值=更宽松，正值=更严格"
+              label={t("advanced.expandScoreDelta")}
+              description={t("advanced.expandScoreDeltaDesc")}
+              rangeTip={t("rangeText", { min: ADVANCED_RANGES.expandContextMinScoreDelta.min, max: ADVANCED_RANGES.expandContextMinScoreDelta.max })}
+              meaningTip={t("advanced.expandScoreDeltaMeaning")}
               value={settings.agenticRagExpandContextMinScoreDelta}
               min={ADVANCED_RANGES.expandContextMinScoreDelta.min}
               max={ADVANCED_RANGES.expandContextMinScoreDelta.max}
@@ -554,10 +560,10 @@ export default function RagSettingsPage() {
               }
             />
             <NumberInputRow
-              label="重试检索分数偏移"
-              description="重试时对 min_score 的加减"
-              rangeTip={`范围 ${ADVANCED_RANGES.retrySearchMinScoreDelta.min}～${ADVANCED_RANGES.retrySearchMinScoreDelta.max}`}
-              meaningTip="通常保持负值即可"
+              label={t("advanced.retryScoreDelta")}
+              description={t("advanced.retryScoreDeltaDesc")}
+              rangeTip={t("rangeText", { min: ADVANCED_RANGES.retrySearchMinScoreDelta.min, max: ADVANCED_RANGES.retrySearchMinScoreDelta.max })}
+              meaningTip={t("advanced.retryScoreDeltaMeaning")}
               value={settings.agenticRagRetrySearchMinScoreDelta}
               min={ADVANCED_RANGES.retrySearchMinScoreDelta.min}
               max={ADVANCED_RANGES.retrySearchMinScoreDelta.max}
@@ -569,10 +575,10 @@ export default function RagSettingsPage() {
               }
             />
             <NumberInputRow
-              label="种子来源上限"
-              description="二次扩展参考的种子条数"
-              rangeTip={`范围 ${ADVANCED_RANGES.seedSourceLimit.min}～${ADVANCED_RANGES.seedSourceLimit.max}`}
-              meaningTip="越大越全，但更慢"
+              label={t("advanced.seedSourceLimit")}
+              description={t("advanced.seedSourceLimitDesc")}
+              rangeTip={t("rangeText", { min: ADVANCED_RANGES.seedSourceLimit.min, max: ADVANCED_RANGES.seedSourceLimit.max })}
+              meaningTip={t("advanced.seedSourceLimitMeaning")}
               value={settings.agenticRagSeedSourceLimit}
               min={ADVANCED_RANGES.seedSourceLimit.min}
               max={ADVANCED_RANGES.seedSourceLimit.max}
@@ -580,10 +586,10 @@ export default function RagSettingsPage() {
               onChange={(value) => updateSettings({ agenticRagSeedSourceLimit: value })}
             />
             <NumberInputRow
-              label="收敛最小来源数"
-              description="达到该来源数量可提前收敛"
-              rangeTip={`范围 ${ADVANCED_RANGES.finalizeMinSources.min}～${ADVANCED_RANGES.finalizeMinSources.max}`}
-              meaningTip="越大越谨慎，越小越快"
+              label={t("advanced.finalizeMinSources")}
+              description={t("advanced.finalizeMinSourcesDesc")}
+              rangeTip={t("rangeText", { min: ADVANCED_RANGES.finalizeMinSources.min, max: ADVANCED_RANGES.finalizeMinSources.max })}
+              meaningTip={t("advanced.finalizeMinSourcesMeaning")}
               value={settings.agenticRagFinalizeMinSources}
               min={ADVANCED_RANGES.finalizeMinSources.min}
               max={ADVANCED_RANGES.finalizeMinSources.max}
@@ -591,10 +597,10 @@ export default function RagSettingsPage() {
               onChange={(value) => updateSettings({ agenticRagFinalizeMinSources: value })}
             />
             <NumberInputRow
-              label="收敛高置信证据数"
-              description="高分证据达到此值可收敛"
-              rangeTip={`范围 ${ADVANCED_RANGES.finalizeMinHighConfidence.min}～${ADVANCED_RANGES.finalizeMinHighConfidence.max}`}
-              meaningTip="越大越稳，越小更快"
+              label={t("advanced.finalizeMinHighConf")}
+              description={t("advanced.finalizeMinHighConfDesc")}
+              rangeTip={t("rangeText", { min: ADVANCED_RANGES.finalizeMinHighConfidence.min, max: ADVANCED_RANGES.finalizeMinHighConfidence.max })}
+              meaningTip={t("advanced.finalizeMinHighConfMeaning")}
               value={settings.agenticRagFinalizeMinHighConfidence}
               min={ADVANCED_RANGES.finalizeMinHighConfidence.min}
               max={ADVANCED_RANGES.finalizeMinHighConfidence.max}
@@ -602,10 +608,10 @@ export default function RagSettingsPage() {
               onChange={(value) => updateSettings({ agenticRagFinalizeMinHighConfidence: value })}
             />
             <NumberInputRow
-              label="证据引用最大条数"
-              description="单子答案最大证据条数"
-              rangeTip={`范围 ${ADVANCED_RANGES.evidenceMaxSources.min}～${ADVANCED_RANGES.evidenceMaxSources.max}`}
-              meaningTip="越大更全面，越小更简洁"
+              label={t("advanced.evidenceMaxSources")}
+              description={t("advanced.evidenceMaxSourcesDesc")}
+              rangeTip={t("rangeText", { min: ADVANCED_RANGES.evidenceMaxSources.min, max: ADVANCED_RANGES.evidenceMaxSources.max })}
+              meaningTip={t("advanced.evidenceMaxSourcesMeaning")}
               value={settings.agenticRagEvidenceMaxSources}
               min={ADVANCED_RANGES.evidenceMaxSources.min}
               max={ADVANCED_RANGES.evidenceMaxSources.max}
@@ -613,10 +619,10 @@ export default function RagSettingsPage() {
               onChange={(value) => updateSettings({ agenticRagEvidenceMaxSources: value })}
             />
             <NumberInputRow
-              label="证据片段最大字符"
-              description="每条证据最多保留的字符"
-              rangeTip={`范围 ${ADVANCED_RANGES.evidenceSnippetMaxChars.min}～${ADVANCED_RANGES.evidenceSnippetMaxChars.max}`}
-              meaningTip="越大信息更全，但提示词更长"
+              label={t("advanced.evidenceSnippetMaxChars")}
+              description={t("advanced.evidenceSnippetMaxCharsDesc")}
+              rangeTip={t("rangeText", { min: ADVANCED_RANGES.evidenceSnippetMaxChars.min, max: ADVANCED_RANGES.evidenceSnippetMaxChars.max })}
+              meaningTip={t("advanced.evidenceSnippetMaxCharsMeaning")}
               value={settings.agenticRagEvidenceSnippetMaxChars}
               min={ADVANCED_RANGES.evidenceSnippetMaxChars.min}
               max={ADVANCED_RANGES.evidenceSnippetMaxChars.max}
@@ -624,10 +630,10 @@ export default function RagSettingsPage() {
               onChange={(value) => updateSettings({ agenticRagEvidenceSnippetMaxChars: value })}
             />
             <NumberInputRow
-              label="来源内容最大字符"
-              description="检索结果 content 最大长度"
-              rangeTip={`范围 ${ADVANCED_RANGES.sourceContentMaxChars.min}～${ADVANCED_RANGES.sourceContentMaxChars.max}`}
-              meaningTip="越大细节更多，但计算更慢"
+              label={t("advanced.sourceContentMaxChars")}
+              description={t("advanced.sourceContentMaxCharsDesc")}
+              rangeTip={t("rangeText", { min: ADVANCED_RANGES.sourceContentMaxChars.min, max: ADVANCED_RANGES.sourceContentMaxChars.max })}
+              meaningTip={t("advanced.sourceContentMaxCharsMeaning")}
               value={settings.agenticRagSourceContentMaxChars}
               min={ADVANCED_RANGES.sourceContentMaxChars.min}
               max={ADVANCED_RANGES.sourceContentMaxChars.max}
@@ -639,10 +645,10 @@ export default function RagSettingsPage() {
           <Separator />
 
           <div className="space-y-4">
-            <div className="text-xs text-muted-foreground">提示词建议先小幅修改（10%以内），逐步观察回答变化。</div>
+            <div className="text-xs text-muted-foreground">{t("advanced.promptNote")}</div>
 
             <div className="space-y-2">
-              <Label htmlFor="prompt-query-analysis">查询分析 System Prompt</Label>
+              <Label htmlFor="prompt-query-analysis">{t("advanced.queryAnalysisPrompt")}</Label>
               <Textarea
                 id="prompt-query-analysis"
                 className="min-h-[160px]"
@@ -652,7 +658,7 @@ export default function RagSettingsPage() {
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="prompt-clarification">澄清提示词</Label>
+              <Label htmlFor="prompt-clarification">{t("advanced.clarificationPrompt")}</Label>
               <Textarea
                 id="prompt-clarification"
                 className="min-h-[100px]"
@@ -662,7 +668,7 @@ export default function RagSettingsPage() {
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="prompt-answer-generation">答案生成 System Prompt</Label>
+              <Label htmlFor="prompt-answer-generation">{t("advanced.answerGenerationPrompt")}</Label>
               <Textarea
                 id="prompt-answer-generation"
                 className="min-h-[160px]"
@@ -672,7 +678,7 @@ export default function RagSettingsPage() {
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="prompt-aggregation">聚合 System Prompt</Label>
+              <Label htmlFor="prompt-aggregation">{t("advanced.aggregationPrompt")}</Label>
               <Textarea
                 id="prompt-aggregation"
                 className="min-h-[160px]"
@@ -682,7 +688,7 @@ export default function RagSettingsPage() {
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="prompt-history-system">历史摘要 System Prompt</Label>
+              <Label htmlFor="prompt-history-system">{t("advanced.historySummarySystemPrompt")}</Label>
               <Textarea
                 id="prompt-history-system"
                 className="min-h-[100px]"
@@ -692,7 +698,7 @@ export default function RagSettingsPage() {
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="prompt-history-user-template">历史摘要 User Prompt 模板</Label>
+              <Label htmlFor="prompt-history-user-template">{t("advanced.historySummaryUserTemplate")}</Label>
               <Textarea
                 id="prompt-history-user-template"
                 className="min-h-[130px]"
@@ -702,7 +708,7 @@ export default function RagSettingsPage() {
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="prompt-no-kb">无知识库兜底文案</Label>
+              <Label htmlFor="prompt-no-kb">{t("advanced.noKbAnswer")}</Label>
               <Input
                 id="prompt-no-kb"
                 value={settings.agenticRagNoKbAnswer}

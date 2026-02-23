@@ -2,27 +2,29 @@
 
 import Link from "next/link"
 import { usePathname } from "next/navigation"
+import { useTranslations } from "next-intl"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { cn } from "@/lib/utils"
 
-const settingsCategories = [
-  { id: "general", label: "General", href: "/settings/general" },
-  { id: "appearance", label: "Appearance", href: "/settings/appearance" },
-  { id: "rag", label: "Agentic RAG", href: "/settings/rag" },
-  { id: "api", label: "API Configuration", href: "/settings/api" },
-  { id: "storage", label: "Storage", href: "/settings/storage" },
-  { id: "github-token", label: "GitHub Token", href: "/settings/github-token" },
+const settingsCategoryIds = [
+  { id: "general", key: "general" as const, href: "/settings/general" },
+  { id: "appearance", key: "appearance" as const, href: "/settings/appearance" },
+  { id: "rag", key: "rag" as const, href: "/settings/rag" },
+  { id: "api", key: "api" as const, href: "/settings/api" },
+  { id: "storage", key: "storage" as const, href: "/settings/storage" },
+  { id: "github-token", key: "githubToken" as const, href: "/settings/github-token" },
 ]
 
 export default function SettingsLayout({ children }: { children: React.ReactNode }) {
   const pathname = usePathname()
+  const t = useTranslations("settings.layout")
 
   return (
     <div className="flex flex-1 overflow-hidden">
       <div className="w-64 border-r border-border bg-muted/10">
         <ScrollArea className="h-[calc(100vh-120px)]">
           <div className="p-4 space-y-1">
-            {settingsCategories.map((category) => (
+            {settingsCategoryIds.map((category) => (
               <Link
                 key={category.id}
                 href={category.href}
@@ -33,7 +35,7 @@ export default function SettingsLayout({ children }: { children: React.ReactNode
                     : "hover:bg-muted text-muted-foreground hover:text-foreground"
                 )}
               >
-                {category.label}
+                {t(category.key)}
               </Link>
             ))}
           </div>

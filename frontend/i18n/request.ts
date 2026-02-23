@@ -12,6 +12,12 @@ function detectFromAcceptLanguage(value: string | null): AppLocale | null {
   return null
 }
 
+// Explicit loader map for static analysis (Webpack/Turbopack)
+const messageLoaders: Record<AppLocale, () => Promise<{ default: Record<string, unknown> }>> = {
+  en: () => import("@/messages/en/index"),
+  zh: () => import("@/messages/zh/index"),
+}
+
 export default getRequestConfig(async () => {
   const cookieStore = await cookies()
   const cookieLocale = cookieStore.get(localeCookieName)?.value
@@ -24,6 +30,6 @@ export default getRequestConfig(async () => {
 
   return {
     locale,
-    messages: (await import(`@/messages/${locale}/index`)).default,
+    messages: (await messageLoaders[locale]()).default,
   }
 })

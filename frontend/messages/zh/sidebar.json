@@ -59,6 +59,8 @@
   "renameDialog": {
     "renameFolderTitle": "重命名文件夹",
     "renameFeedTitle": "重命名订阅源",
+    "folderType": "文件夹",
+    "feedType": "订阅源",
     "description": "请输入此{type}的新名称。"
   },
   "deleteFeedDialog": {

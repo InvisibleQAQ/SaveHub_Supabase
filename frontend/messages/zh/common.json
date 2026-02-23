@@ -64,6 +64,13 @@
       "authenticationFailed": "身份验证失败"
     }
   },
+  "readerLayout": {
+    "authenticating": "正在验证身份...",
+    "checkingDatabaseStatus": "正在检查数据库状态...",
+    "loadingRssReader": "正在加载 RSS 阅读器...",
+    "errorLoadingData": "数据加载失败",
+    "tryAgain": "重试"
+  },
   "store": {
     "errors": {
       "failedToLoadSavedData": "加载已保存数据失败"

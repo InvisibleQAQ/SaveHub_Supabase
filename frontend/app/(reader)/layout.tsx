@@ -42,6 +42,8 @@ export default function ReaderLayout({ children }: { children: React.ReactNode }
     checkDatabase()
   }, [checkDatabaseStatus])
 
+  const loadErrorMessage = t("store.errors.failedToLoadSavedData")
+
   useEffect(() => {
     if (!isDatabaseReady) {
       return
@@ -52,12 +54,12 @@ export default function ReaderLayout({ children }: { children: React.ReactNode }
         await loadFromSupabase()
       } catch (error) {
         console.error("Failed to initialize data:", error)
-        setError(t("store.errors.failedToLoadSavedData"))
+        setError(loadErrorMessage)
       }
     }
 
     initializeData()
-  }, [isDatabaseReady, loadFromSupabase, setError, t])
+  }, [isDatabaseReady, loadFromSupabase, setError, loadErrorMessage])
 
 
   if (isAuthLoading) {

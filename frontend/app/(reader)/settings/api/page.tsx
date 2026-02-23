@@ -13,37 +13,12 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Trash2, Edit, Plus, CheckCircle, XCircle, Loader2, Power } from "lucide-react"
 import { validateApiConfig, validateApiBaseUrl } from "@/lib/api-validation"
 import { useToast } from "@/hooks/use-toast"
+import { useTranslations } from "next-intl"
 
-const TAB_CONFIG: {
-  type: ApiConfigType
-  label: string
-  description: string
-  placeholder: string
-  hint: string
-  notice?: string  // 重要提示（如维度要求）
-}[] = [
-  {
-    type: "chat",
-    label: "Chat API",
-    description: "用于AI对话和文章摘要",
-    placeholder: "https://api.openai.com/v1/chat/completions",
-    hint: "请填写完整的 Chat API 端点地址, 请求方式为openai兼容格式",
-  },
-  {
-    type: "embedding",
-    label: "Embedding API",
-    description: "用于文本向量化和语义搜索",
-    placeholder: "https://api.openai.com/v1/embeddings",
-    hint: "请填写完整的 Embedding API 端点地址, 请求方式为openai兼容格式",
-    notice: "模型必须支持 1536 维向量输出。推荐: text-embedding-3-small, text-embedding-ada-002",
-  },
-  {
-    type: "rerank",
-    label: "Rerank API",
-    description: "用于搜索结果重排序（支持阿里云DashScope）",
-    placeholder: "dashscope",
-    hint: "支持阿里云DashScope, 请填写 'dashscope'，模型选项: gte-rerank-v2, qwen3-rerank",
-  },
+const TAB_TYPES: { type: ApiConfigType; placeholder: string }[] = [
+  { type: "chat", placeholder: "https://api.openai.com/v1/chat/completions" },
+  { type: "embedding", placeholder: "https://api.openai.com/v1/embeddings" },
+  { type: "rerank", placeholder: "dashscope" },
 ]
 
 interface FormData {
@@ -73,11 +48,7 @@ export default function ApiConfigPage() {
   const [activeTab, setActiveTab] = useState<ApiConfigType>("chat")
   const [isEditDialogOpen, setIsEditDialogOpen] = useState(false)
   const [editingConfig, setEditingConfig] = useState<ApiConfig | null>(null)
-
-  // Form state
   const [formData, setFormData] = useState<FormData>(emptyForm)
-
-  // Validation state
   const [isValidating, setIsValidating] = useState(false)
   const [validationResult, setValidationResult] = useState<{
     success: boolean
@@ -86,6 +57,7 @@ export default function ApiConfigPage() {
   } | null>(null)
 
   const { toast } = useToast()
+  const t = useTranslations("settings.api")
 
   // Prevent duplicate loading on remount
   const hasLoadedRef = useRef(false)
@@ -115,8 +87,8 @@ export default function ApiConfigPage() {
 
     if (!trimmed.apiKey || !trimmed.apiBase || !trimmed.model) {
       toast({
-        title: "错误",
-        description: "请填写API Key、API 端点 URL和模型名称后再验证",
+        title: t("toasts.error"),
+        description: t("toasts.fillFieldsBeforeValidation"),
         variant: "destructive",
       })
       return
@@ -125,7 +97,7 @@ export default function ApiConfigPage() {
     const urlValidation = validateApiBaseUrl(trimmed.apiBase)
     if (!urlValidation.valid) {
       toast({
-        title: "API 端点 URL错误",
+        title: t("toasts.apiBaseUrlError"),
         description: urlValidation.error,
         variant: "destructive",
       })
@@ -151,15 +123,15 @@ export default function ApiConfigPage() {
 
       if (result.success) {
         toast({
-          title: "验证成功",
+          title: t("toasts.validationSuccess"),
           description: result.details?.latency
-            ? `模型 ${trimmed.model} 可用，响应时间: ${result.details.latency}ms`
-            : "模型验证成功",
+            ? t("toasts.modelAvailable", { model: trimmed.model, latency: result.details.latency })
+            : t("toasts.modelValidationSuccess"),
         })
       } else {
         toast({
-          title: "验证失败",
-          description: result.error || "模型验证失败",
+          title: t("toasts.validationFailed"),
+          description: result.error || t("toasts.modelValidationFailed"),
           variant: "destructive",
         })
       }
@@ -167,11 +139,11 @@ export default function ApiConfigPage() {
       console.error("Validation error:", error)
       setValidationResult({
         success: false,
-        error: error instanceof Error ? error.message : "验证过程中发生未知错误",
+        error: error instanceof Error ? error.message : t("toasts.unknownValidationError"),
       })
       toast({
-        title: "验证失败",
-        description: "验证过程中发生错误，请检查网络连接",
+        title: t("toasts.validationFailed"),
+        description: t("toasts.validationNetworkError"),
         variant: "destructive",
       })
     } finally {
@@ -183,20 +155,12 @@ export default function ApiConfigPage() {
     const trimmed = getTrimmedFormData()
 
     if (!trimmed.name || !trimmed.apiKey || !trimmed.apiBase || !trimmed.model) {
-      toast({
-        title: "错误",
-        description: "请填写所有必填字段",
-        variant: "destructive",
-      })
+      toast({ title: t("toasts.error"), description: t("toasts.fillAllFields"), variant: "destructive" })
       return
     }
 
     if (!validationResult?.success) {
-      toast({
-        title: "错误",
-        description: "请先验证API配置",
-        variant: "destructive",
-      })
+      toast({ title: t("toasts.error"), description: t("toasts.validateFirst"), variant: "destructive" })
       return
     }
 
@@ -207,17 +171,14 @@ export default function ApiConfigPage() {
         apiBase: trimmed.apiBase,
         model: trimmed.model,
         type: activeTab,
-        isActive: apiConfigsGrouped[activeTab].length === 0, // First config is auto-active
+        isActive: apiConfigsGrouped[activeTab].length === 0,
       })
       resetForm()
-      toast({
-        title: "成功",
-        description: "API配置已添加",
-      })
+      toast({ title: t("toasts.success"), description: t("toasts.configAdded") })
     } catch (error) {
       toast({
-        title: "错误",
-        description: error instanceof Error ? error.message : "添加配置失败",
+        title: t("toasts.error"),
+        description: error instanceof Error ? error.message : t("toasts.addConfigFailed"),
         variant: "destructive",
       })
     }
@@ -229,20 +190,12 @@ export default function ApiConfigPage() {
     const trimmed = getTrimmedFormData()
 
     if (!trimmed.name || !trimmed.apiKey || !trimmed.apiBase || !trimmed.model) {
-      toast({
-        title: "错误",
-        description: "请填写所有必填字段",
-        variant: "destructive",
-      })
+      toast({ title: t("toasts.error"), description: t("toasts.fillAllFields"), variant: "destructive" })
       return
     }
 
     if (!validationResult?.success) {
-      toast({
-        title: "错误",
-        description: "请先验证API配置",
-        variant: "destructive",
-      })
+      toast({ title: t("toasts.error"), description: t("toasts.validateFirst"), variant: "destructive" })
       return
     }
 
@@ -256,14 +209,11 @@ export default function ApiConfigPage() {
       resetForm()
       setEditingConfig(null)
       setIsEditDialogOpen(false)
-      toast({
-        title: "成功",
-        description: "API配置已更新",
-      })
+      toast({ title: t("toasts.success"), description: t("toasts.configUpdated") })
     } catch (error) {
       toast({
-        title: "错误",
-        description: error instanceof Error ? error.message : "更新配置失败",
+        title: t("toasts.error"),
+        description: error instanceof Error ? error.message : t("toasts.updateConfigFailed"),
         variant: "destructive",
       })
     }
@@ -272,14 +222,11 @@ export default function ApiConfigPage() {
   const handleDelete = async (id: string) => {
     try {
       await deleteApiConfig(id)
-      toast({
-        title: "成功",
-        description: "API配置已删除",
-      })
+      toast({ title: t("toasts.success"), description: t("toasts.configDeleted") })
     } catch (error) {
       toast({
-        title: "错误",
-        description: error instanceof Error ? error.message : "删除配置失败",
+        title: t("toasts.error"),
+        description: error instanceof Error ? error.message : t("toasts.deleteConfigFailed"),
         variant: "destructive",
       })
     }
@@ -288,14 +235,11 @@ export default function ApiConfigPage() {
   const handleActivate = async (id: string) => {
     try {
       await activateApiConfig(id)
-      toast({
-        title: "成功",
-        description: "配置已激活",
-      })
+      toast({ title: t("toasts.success"), description: t("toasts.configActivated") })
     } catch (error) {
       toast({
-        title: "错误",
-        description: error instanceof Error ? error.message : "激活配置失败",
+        title: t("toasts.error"),
+        description: error instanceof Error ? error.message : t("toasts.activateConfigFailed"),
         variant: "destructive",
       })
     }
@@ -316,7 +260,7 @@ export default function ApiConfigPage() {
   const renderValidationSection = () => (
     <div className="space-y-3">
       <div className="flex items-center justify-between">
-        <Label>验证模型</Label>
+        <Label>{t("validation.label")}</Label>
         <div className="flex flex-col items-end gap-2">
           <Button
             type="button"
@@ -328,17 +272,17 @@ export default function ApiConfigPage() {
             {isValidating ? (
               <>
                 <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                验证中...
+                {t("validation.validating")}
               </>
             ) : (
               <>
                 <CheckCircle className="h-4 w-4 mr-2" />
-                验证模型
+                {t("validation.label")}
               </>
             )}
           </Button>
           {(!formData.apiKey || !formData.apiBase || !formData.model) && (
-            <p className="text-xs text-muted-foreground">请填写API Key、API 端点 URL和模型名称后验证</p>
+            <p className="text-xs text-muted-foreground">{t("validation.fillFieldsHint")}</p>
           )}
         </div>
       </div>
@@ -355,9 +299,9 @@ export default function ApiConfigPage() {
             <>
               <CheckCircle className="h-4 w-4 text-green-600 dark:text-green-400" />
               <div>
-                <div className="font-medium">验证成功</div>
+                <div className="font-medium">{t("validation.success")}</div>
                 {validationResult.latency && (
-                  <div className="text-xs opacity-75">响应时间: {validationResult.latency}ms</div>
+                  <div className="text-xs opacity-75">{t("validation.latency", { latency: validationResult.latency })}</div>
                 )}
               </div>
             </>
@@ -365,7 +309,7 @@ export default function ApiConfigPage() {
             <>
               <XCircle className="h-4 w-4 text-red-600 dark:text-red-400" />
               <div>
-                <div className="font-medium">验证失败</div>
+                <div className="font-medium">{t("validation.failed")}</div>
                 <div className="text-xs">{validationResult.error}</div>
               </div>
             </>
@@ -377,28 +321,28 @@ export default function ApiConfigPage() {
 
   const renderModelField = (idPrefix: string, type?: ApiConfigType) => {
     const currentType = type || activeTab
-    const tabConfig = TAB_CONFIG.find((t) => t.type === currentType)
+    const noticeKey = `tabNotices.${currentType}` as Parameters<typeof t>[0]
+    const notice = t.has(noticeKey) ? t(noticeKey) : null
 
     return (
       <div className="space-y-2">
         <Label htmlFor={`${idPrefix}-model`}>
-          模型 <span className="text-red-500">*</span>
+          {t("form.model")} <span className="text-red-500">*</span>
         </Label>
         <Input
           id={`${idPrefix}-model`}
           value={formData.model}
           onChange={(e) => {
             setFormData((prev) => ({ ...prev, model: e.target.value }))
-            // 模型变更时清除验证结果
             if (validationResult) setValidationResult(null)
           }}
-          placeholder="gpt-3.5-turbo, text-embedding-ada-002, etc."
+          placeholder={t("form.modelPlaceholder")}
         />
         <p className="text-xs text-muted-foreground">
-          输入要使用的模型名称
-          {tabConfig?.notice && (
+          {t("form.modelHint")}
+          {notice && (
             <span className="text-amber-600 dark:text-amber-400">
-              。{tabConfig.notice}
+              {notice}
             </span>
           )}
         </p>
@@ -413,8 +357,8 @@ export default function ApiConfigPage() {
       return (
         <Card>
           <CardContent className="flex flex-col items-center justify-center py-8">
-            <p className="text-muted-foreground mb-2">还没有{TAB_CONFIG.find((t) => t.type === type)?.label}配置</p>
-            <p className="text-sm text-muted-foreground text-center">请在上方表单中添加您的第一个配置</p>
+            <p className="text-muted-foreground mb-2">{t("empty.noConfig", { type: t(`tabs.${type}`) })}</p>
+            <p className="text-sm text-muted-foreground text-center">{t("empty.addFirstHint")}</p>
           </CardContent>
         </Card>
       )
@@ -429,13 +373,13 @@ export default function ApiConfigPage() {
                 <CardTitle className="text-base">{config.name}</CardTitle>
                 {config.isActive && (
                   <Badge variant="default" className="bg-green-600">
-                    已激活
+                    {t("configCard.active")}
                   </Badge>
                 )}
               </div>
               <div className="flex items-center gap-2">
                 {!config.isActive && (
-                  <Button variant="outline" size="sm" onClick={() => handleActivate(config.id)} title="激活此配置">
+                  <Button variant="outline" size="sm" onClick={() => handleActivate(config.id)} title={t("configCard.activateTitle")}>
                     <Power className="h-4 w-4" />
                   </Button>
                 )}
@@ -450,11 +394,11 @@ export default function ApiConfigPage() {
             <CardContent>
               <div className="space-y-1 text-sm">
                 <div>
-                  <span className="font-medium">模型: </span>
+                  <span className="font-medium">{t("configCard.modelLabel")}</span>
                   <span className="text-muted-foreground">{config.model}</span>
                 </div>
                 <div>
-                  <span className="font-medium">API 端点: </span>
+                  <span className="font-medium">{t("configCard.apiBaseLabel")}</span>
                   <span className="text-muted-foreground">{config.apiBase}</span>
                 </div>
               </div>
@@ -468,15 +412,15 @@ export default function ApiConfigPage() {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-2xl font-bold">API配置</h1>
-        <p className="text-muted-foreground">管理您的AI API配置，每种类型可设置多个配置，但只能激活一个</p>
+        <h1 className="text-2xl font-bold">{t("title")}</h1>
+        <p className="text-muted-foreground">{t("description")}</p>
       </div>
 
       <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as ApiConfigType)}>
         <TabsList className="grid w-full grid-cols-3">
-          {TAB_CONFIG.map((tab) => (
+          {TAB_TYPES.map((tab) => (
             <TabsTrigger key={tab.type} value={tab.type}>
-              {tab.label}
+              {t(`tabs.${tab.type}`)}
               {apiConfigsGrouped[tab.type].length > 0 && (
                 <Badge variant="secondary" className="ml-2">
                   {apiConfigsGrouped[tab.type].length}
@@ -486,46 +430,46 @@ export default function ApiConfigPage() {
           ))}
         </TabsList>
 
-        {TAB_CONFIG.map((tab) => (
+        {TAB_TYPES.map((tab) => (
           <TabsContent key={tab.type} value={tab.type} className="space-y-6">
             {/* Add Form */}
             <Card>
               <CardHeader>
                 <CardTitle className="flex items-center gap-2">
                   <Plus className="h-5 w-5" />
-                  添加{tab.label}配置
+                  {t("form.addConfig", { type: t(`tabs.${tab.type}`) })}
                 </CardTitle>
-                <CardDescription>{tab.description}</CardDescription>
+                <CardDescription>{t(`tabDescriptions.${tab.type}`)}</CardDescription>
               </CardHeader>
               <CardContent className="space-y-4">
                 <div className="space-y-2">
                   <Label htmlFor={`add-${tab.type}-name`}>
-                    名称 <span className="text-red-500">*</span>
+                    {t("form.name")} <span className="text-red-500">*</span>
                   </Label>
                   <Input
                     id={`add-${tab.type}-name`}
                     value={formData.name}
                     onChange={(e) => setFormData((prev) => ({ ...prev, name: e.target.value }))}
-                    placeholder="配置名称"
+                    placeholder={t("form.namePlaceholder")}
                   />
                 </div>
 
                 <div className="space-y-2">
                   <Label htmlFor={`add-${tab.type}-apiKey`}>
-                    API Key <span className="text-red-500">*</span>
+                    {t("form.apiKey")} <span className="text-red-500">*</span>
                   </Label>
                   <Input
                     id={`add-${tab.type}-apiKey`}
                     type="password"
                     value={formData.apiKey}
                     onChange={(e) => setFormData((prev) => ({ ...prev, apiKey: e.target.value }))}
-                    placeholder="your-api-key"
+                    placeholder={t("form.apiKeyPlaceholder")}
                   />
                 </div>
 
                 <div className="space-y-2">
                   <Label htmlFor={`add-${tab.type}-apiBase`}>
-                    API 端点 URL <span className="text-red-500">*</span>
+                    {t("form.apiBaseUrl")} <span className="text-red-500">*</span>
                   </Label>
                   <Input
                     id={`add-${tab.type}-apiBase`}
@@ -533,7 +477,7 @@ export default function ApiConfigPage() {
                     onChange={(e) => setFormData((prev) => ({ ...prev, apiBase: e.target.value }))}
                     placeholder={tab.placeholder}
                   />
-                  <p className="text-xs text-muted-foreground">{tab.hint}</p>
+                  <p className="text-xs text-muted-foreground">{t(`tabHints.${tab.type}`)}</p>
                 </div>
 
                 {renderModelField(`add-${tab.type}`)}
@@ -541,7 +485,7 @@ export default function ApiConfigPage() {
 
                 <div className="flex justify-end gap-2 pt-2">
                   <Button variant="outline" onClick={resetForm}>
-                    重置
+                    {t("form.reset")}
                   </Button>
                   <Button
                     onClick={handleAdd}
@@ -550,7 +494,7 @@ export default function ApiConfigPage() {
                     }
                   >
                     <Plus className="h-4 w-4 mr-2" />
-                    添加配置
+                    {t("form.addConfigButton")}
                   </Button>
                 </div>
               </CardContent>
@@ -558,7 +502,7 @@ export default function ApiConfigPage() {
 
             {/* Config List */}
             <div className="space-y-4">
-              <h2 className="text-lg font-semibold">现有配置</h2>
+              <h2 className="text-lg font-semibold">{t("form.existingConfigs")}</h2>
               {renderConfigList(tab.type)}
             </div>
           </TabsContent>
@@ -578,45 +522,45 @@ export default function ApiConfigPage() {
       >
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>编辑API配置</DialogTitle>
-            <DialogDescription>修改API配置信息</DialogDescription>
+            <DialogTitle>{t("editDialog.title")}</DialogTitle>
+            <DialogDescription>{t("editDialog.description")}</DialogDescription>
           </DialogHeader>
           <div className="space-y-4">
             <div className="space-y-2">
               <Label htmlFor="edit-name">
-                名称 <span className="text-red-500">*</span>
+                {t("form.name")} <span className="text-red-500">*</span>
               </Label>
               <Input
                 id="edit-name"
                 value={formData.name}
                 onChange={(e) => setFormData((prev) => ({ ...prev, name: e.target.value }))}
-                placeholder="配置名称"
+                placeholder={t("form.namePlaceholder")}
               />
             </div>
             <div className="space-y-2">
               <Label htmlFor="edit-apiKey">
-                API Key <span className="text-red-500">*</span>
+                {t("form.apiKey")} <span className="text-red-500">*</span>
               </Label>
               <Input
                 id="edit-apiKey"
                 type="password"
                 value={formData.apiKey}
                 onChange={(e) => setFormData((prev) => ({ ...prev, apiKey: e.target.value }))}
-                placeholder="your-api-key"
+                placeholder={t("form.apiKeyPlaceholder")}
               />
             </div>
             <div className="space-y-2">
               <Label htmlFor="edit-apiBase">
-                API 端点 URL <span className="text-red-500">*</span>
+                {t("form.apiBaseUrl")} <span className="text-red-500">*</span>
               </Label>
               <Input
                 id="edit-apiBase"
                 value={formData.apiBase}
                 onChange={(e) => setFormData((prev) => ({ ...prev, apiBase: e.target.value }))}
-                placeholder={TAB_CONFIG.find((t) => t.type === editingConfig?.type)?.placeholder || "https://api.openai.com/v1/chat/completions"}
+                placeholder={TAB_TYPES.find((t) => t.type === editingConfig?.type)?.placeholder || "https://api.openai.com/v1/chat/completions"}
               />
               <p className="text-xs text-muted-foreground">
-                {TAB_CONFIG.find((t) => t.type === editingConfig?.type)?.hint || "请填写完整的 API 端点地址"}
+                {editingConfig?.type ? t(`tabHints.${editingConfig.type}`) : t("form.apiBaseHintFallback")}
               </p>
             </div>
 
@@ -625,13 +569,13 @@ export default function ApiConfigPage() {
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setIsEditDialogOpen(false)}>
-              取消
+              {t("editDialog.cancel")}
             </Button>
             <Button
               onClick={handleEdit}
               disabled={!formData.name || !formData.apiKey || !formData.apiBase || !validationResult?.success || !formData.model}
             >
-              保存
+              {t("editDialog.save")}
             </Button>
           </DialogFooter>
         </DialogContent>
